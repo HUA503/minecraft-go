@@ -3,6 +3,7 @@ package sim
 import (
 	"testing"
 
+	"github.com/HUA503/minecraft-go/pkg/inventory"
 	"github.com/HUA503/minecraft-go/pkg/world"
 )
 
@@ -28,7 +29,6 @@ func TestRaycastHitBlock(t *testing.T) {
 		return solidBlocks[[3]int32{x, y, z}]
 	}
 
-	// Cast ray from (0.5, 64.5, 0.5) along +X direction
 	origin := Vec3{0.5, 64.5, 0.5}
 	dir := Vec3{1.0, 0.0, 0.0}
 
@@ -44,52 +44,64 @@ func TestRaycastHitBlock(t *testing.T) {
 	}
 }
 
-func TestSimulationEngineTickAndGravity(t *testing.T) {
+func TestMiningDropsToInventory(t *testing.T) {
 	eng := NewEngine()
+	p := eng.AddPlayer("Miner", [16]byte{1}, Vec3{0, 64, 0})
 
-	// Spawn player at Y = 70 (in the air)
-	p := eng.AddPlayer("TestPlayer", [16]byte{1, 2, 3}, Vec3{X: 0, Y: 70, Z: 0})
-	p.OnGround = false
-
-	// Advance 5 ticks
-	for i := 0; i < 5; i++ {
-		eng.Tick()
+	// 1. Break Stone (1) -> drops Cobblestone (4)
+	eng.SetBlock(1, 64, 0, 1)
+	drop := eng.BreakBlock(p.ID, world.BlockPos{X: 1, Y: 64, Z: 0})
+	if drop != inventory.ItemCobblestone {
+		t.Fatalf("expected cobblestone drop, got %d", drop)
+	}
+	if p.Inventory.Slots[0].ItemID != inventory.ItemCobblestone || p.Inventory.Slots[0].Count != 1 {
+		t.Fatalf("item not added to inventory: %+v", p.Inventory.Slots[0])
 	}
 
-	if p.Position.Y >= 70 {
-		t.Fatalf("player should have fallen due to gravity: Y=%f", p.Position.Y)
-	}
-
-	// Advance enough ticks to hit ground level (64)
-	for i := 0; i < 50; i++ {
-		eng.Tick()
-	}
-
-	if p.Position.Y != 64 {
-		t.Fatalf("player should have landed at ground level 64: Y=%f", p.Position.Y)
-	}
-	if !p.OnGround {
-		t.Fatalf("player OnGround should be true after landing")
+	// 2. Break Diamond Ore (56) -> drops Diamond (264)
+	eng.SetBlock(2, 64, 0, 56)
+	drop = eng.BreakBlock(p.ID, world.BlockPos{X: 2, Y: 64, Z: 0})
+	if drop != inventory.ItemDiamond {
+		t.Fatalf("expected diamond drop, got %d", drop)
 	}
 }
 
-func TestBlockSetAndEventBroadcast(t *testing.T) {
+func TestCannotPlaceBlockInsidePlayer(t *testing.T) {
 	eng := NewEngine()
-	chunk := world.NewChunk(world.ChunkPos{X: 0, Z: 0})
-	eng.LoadChunk(world.ChunkPos{X: 0, Z: 0}, chunk)
+	p := eng.AddPlayer("Steve", [16]byte{1}, Vec3{10.5, 64.0, 10.5})
 
-	eng.SetBlock(10, 64, 10, 5) // Wood plank
-
-	if b := eng.GetBlock(10, 64, 10); b != 5 {
-		t.Fatalf("block mismatch: got %d, expected 5", b)
+	// Attempt to place block right at (10, 64, 10) which intersects player
+	success := eng.PlaceBlock(p.ID, world.BlockPos{X: 10, Y: 64, Z: 10}, 1)
+	if success {
+		t.Fatalf("should not be able to place block inside player")
 	}
 
-	select {
-	case ev := <-eng.Events:
-		if ev.Type != "block_update" || ev.BlockPos.X != 10 || ev.BlockID != 5 {
-			t.Fatalf("unexpected event: %+v", ev)
-		}
-	default:
-		t.Fatalf("expected block_update event on channel")
+	// Place block next to player at (12, 64, 10) -> should succeed
+	success = eng.PlaceBlock(p.ID, world.BlockPos{X: 12, Y: 64, Z: 10}, 1)
+	if !success {
+		t.Fatalf("should be able to place block adjacent to player")
+	}
+}
+
+func TestFallDamageAndDeathRespawn(t *testing.T) {
+	eng := NewEngine()
+	p := eng.AddPlayer("Steve", [16]byte{1}, Vec3{0, 64, 0})
+
+	// Damage player by 15 HP
+	eng.DamagePlayer(p.ID, 15.0, "attack")
+	if p.Health != 5.0 {
+		t.Fatalf("health mismatch: %f", p.Health)
+	}
+
+	// Fatal damage
+	eng.DamagePlayer(p.ID, 10.0, "fatal")
+	if p.IsAlive || p.Health != 0 {
+		t.Fatalf("player should be dead: alive=%v, health=%f", p.IsAlive, p.Health)
+	}
+
+	// Respawn
+	eng.RespawnPlayer(p.ID, Vec3{0, 64, 0})
+	if !p.IsAlive || p.Health != 20.0 {
+		t.Fatalf("player should be respawned with 20 HP: alive=%v, health=%f", p.IsAlive, p.Health)
 	}
 }

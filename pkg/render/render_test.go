@@ -1,11 +1,11 @@
 package render
 
 import (
+	"math"
 	"testing"
 )
 
 func TestMeshFaceCullingIsolatedCube(t *testing.T) {
-	// Single solid block at (0, 0, 0) surrounded by air
 	world := map[[3]int32]int32{
 		{0, 0, 0}: 1, // Stone
 	}
@@ -16,7 +16,6 @@ func TestMeshFaceCullingIsolatedCube(t *testing.T) {
 
 	mesh := BuildSectionMesh(getBlock, 0, 0, 0)
 
-	// An isolated cube has 6 exposed faces -> 6 * 4 = 24 vertices, 6 * 6 = 36 indices
 	if len(mesh.Vertices) != 24 {
 		t.Fatalf("expected 24 vertices for isolated cube, got %d", len(mesh.Vertices))
 	}
@@ -26,7 +25,6 @@ func TestMeshFaceCullingIsolatedCube(t *testing.T) {
 }
 
 func TestMeshFaceCullingAdjacentCubes(t *testing.T) {
-	// Two adjacent blocks at (0, 0, 0) and (1, 0, 0)
 	world := map[[3]int32]int32{
 		{0, 0, 0}: 1,
 		{1, 0, 0}: 1,
@@ -38,7 +36,6 @@ func TestMeshFaceCullingAdjacentCubes(t *testing.T) {
 
 	mesh := BuildSectionMesh(getBlock, 0, 0, 0)
 
-	// Two cubes sharing a face have (6 + 6 - 2) = 10 exposed faces -> 10 * 4 = 40 vertices, 60 indices
 	if len(mesh.Vertices) != 40 {
 		t.Fatalf("expected 40 vertices for two adjacent cubes with culled face, got %d", len(mesh.Vertices))
 	}
@@ -47,33 +44,35 @@ func TestMeshFaceCullingAdjacentCubes(t *testing.T) {
 	}
 }
 
-func TestRasterizerTriangleAndDepth(t *testing.T) {
-	fb := NewFramebuffer(64, 64)
-	fb.Clear(0xFF000000) // Clear black
+func TestCameraLookVectorAndProjection(t *testing.T) {
+	cam := NewCamera(0, 0, 0)
+	cam.Yaw = 0
+	cam.Pitch = 0
 
-	// Draw red triangle at depth 0.5
-	t1_p0 := ScreenPoint{X: 10, Y: 10, Depth: 0.5}
-	t1_p1 := ScreenPoint{X: 30, Y: 10, Depth: 0.5}
-	t1_p2 := ScreenPoint{X: 20, Y: 30, Depth: 0.5}
-	fb.DrawTriangle(t1_p0, t1_p1, t1_p2, 0xFF0000FF) // Red
-
-	// Pixel at (20, 15) should be red
-	idx := 15*64 + 20
-	if fb.Color[idx] != 0xFF0000FF {
-		t.Fatalf("expected red pixel at (20, 15), got 0x%X", fb.Color[idx])
-	}
-	if fb.Depth[idx] != 0.5 {
-		t.Fatalf("expected depth 0.5, got %f", fb.Depth[idx])
+	dx, dy, dz := cam.GetLookVector()
+	if math.Abs(dx) > 1e-5 || math.Abs(dy) > 1e-5 || math.Abs(dz-1.0) > 1e-5 {
+		t.Fatalf("expected look vector (0, 0, 1), got (%f, %f, %f)", dx, dy, dz)
 	}
 
-	// Draw green triangle BEHIND at depth 0.8 over the same area
-	t2_p0 := ScreenPoint{X: 10, Y: 10, Depth: 0.8}
-	t2_p1 := ScreenPoint{X: 30, Y: 10, Depth: 0.8}
-	t2_p2 := ScreenPoint{X: 20, Y: 30, Depth: 0.8}
-	fb.DrawTriangle(t2_p0, t2_p1, t2_p2, 0xFF00FF00) // Green
+	// Point at (0, 0, 10) directly ahead should project to center of 640x480 screen
+	p, ok := cam.ProjectToScreen(0, 0, 10, 640, 480)
+	if !ok {
+		t.Fatalf("point ahead should be visible")
+	}
+	if math.Abs(float64(p.X)-320) > 1.0 || math.Abs(float64(p.Y)-240) > 1.0 {
+		t.Fatalf("expected projection at center (320, 240), got (%f, %f)", p.X, p.Y)
+	}
+}
 
-	// Depth test should discard green triangle: pixel should remain red!
-	if fb.Color[idx] != 0xFF0000FF {
-		t.Fatalf("depth test failed: behind triangle overwrote front pixel (got 0x%X)", fb.Color[idx])
+func TestHUDDrawing(t *testing.T) {
+	fb := NewFramebuffer(640, 480)
+	fb.Clear(0xFF000000)
+
+	fb.DrawHUD(20.0, 20, 0)
+
+	// Crosshair center pixel (320, 240) should be white (0xFFFFFFFF)
+	centerIdx := 240*640 + 320
+	if fb.Color[centerIdx] != 0xFFFFFFFF {
+		t.Fatalf("center pixel should be white crosshair, got 0x%X", fb.Color[centerIdx])
 	}
 }

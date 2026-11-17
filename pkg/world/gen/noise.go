@@ -1,0 +1,93 @@
+package gen
+
+import (
+	"math"
+)
+
+// PerlinNoise provides 2D and 3D gradient noise.
+type PerlinNoise struct {
+	perm [512]int
+}
+
+func NewPerlinNoise(seed int64) *PerlinNoise {
+	p := &PerlinNoise{}
+	permutation := make([]int, 256)
+	for i := 0; i < 256; i++ {
+		permutation[i] = i
+	}
+
+	// Pseudo-random shuffle with seed
+	s := seed
+	for i := 255; i > 0; i-- {
+		s = (s*6364136223846793005 + 1442695040888963407)
+		j := int((s >> 32) & 0x7FFFFFFF) % (i + 1)
+		permutation[i], permutation[j] = permutation[j], permutation[i]
+	}
+
+	for i := 0; i < 512; i++ {
+		p.perm[i] = permutation[i&255]
+	}
+	return p
+}
+
+func fade(t float64) float64 {
+	return t * t * t * (t*(t*6-15) + 10)
+}
+
+func lerp(t, a, b float64) float64 {
+	return a + t*(b-a)
+}
+
+func grad2D(hash int, x, y float64) float64 {
+	h := hash & 7
+	u := x
+	v := y
+	if h >= 4 {
+		u = y
+		v = x
+	}
+	if (h & 1) != 0 {
+		u = -u
+	}
+	if (h & 2) != 0 {
+		v = -v
+	}
+	return u + v
+}
+
+// Noise2D returns perlin noise value in range [-1.0, 1.0].
+func (p *PerlinNoise) Noise2D(x, y float64) float64 {
+	X := int(math.Floor(x)) & 255
+	Y := int(math.Floor(y)) & 255
+
+	x -= math.Floor(x)
+	y -= math.Floor(y)
+
+	u := fade(x)
+	v := fade(y)
+
+	A := p.perm[X] + Y
+	B := p.perm[X+1] + Y
+
+	return lerp(v,
+		lerp(u, grad2D(p.perm[A], x, y), grad2D(p.perm[B], x-1, y)),
+		lerp(u, grad2D(p.perm[A+1], x, y-1), grad2D(p.perm[B+1], x-1, y-1)),
+	)
+}
+
+// FBM2D computes fractional Brownian motion (octaves of noise).
+func (p *PerlinNoise) FBM2D(x, y float64, octaves int, persistence, lacunarity float64) float64 {
+	total := 0.0
+	frequency := 1.0
+	amplitude := 1.0
+	maxValue := 0.0
+
+	for i := 0; i < octaves; i++ {
+		total += p.Noise2D(x*frequency, y*frequency) * amplitude
+		maxValue += amplitude
+		amplitude *= persistence
+		frequency *= lacunarity
+	}
+
+	return total / maxValue
+}
