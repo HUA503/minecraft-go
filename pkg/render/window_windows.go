@@ -4,6 +4,7 @@ package render
 
 import (
 	"fmt"
+	"sync"
 	"syscall"
 	"unsafe"
 )
@@ -25,7 +26,9 @@ var (
 	procGetDC            = user32.NewProc("GetDC")
 	procReleaseDC        = user32.NewProc("ReleaseDC")
 	procPostQuitMessage  = user32.NewProc("PostQuitMessage")
-	procSetWindowTextW   = user32.NewProc("SetWindowTextW")
+	procSetCursorPos     = user32.NewProc("SetCursorPos")
+	procGetCursorPos     = user32.NewProc("GetCursorPos")
+	procShowCursor       = user32.NewProc("ShowCursor")
 	procStretchDIBits     = gdi32.NewProc("StretchDIBits")
 )
 
@@ -91,14 +94,20 @@ type BITMAPINFO struct {
 
 // Window represents a native Win32 graphical game window.
 type Window struct {
-	Hwnd      uintptr
-	Hdc       uintptr
-	Width     int
-	Height    int
-	Closed    bool
-	OnKey     func(vkCode int, isDown bool)
-	OnMouse   func(x, y int, btn int)
-	bmi       BITMAPINFO
+	Hwnd       uintptr
+	Hdc        uintptr
+	Width      int
+	Height     int
+	Closed     bool
+	KeyDown    [256]bool // Continuous key states for smooth movement
+	mu         sync.Mutex
+	OnKeyClick func(vkCode int)
+	OnMouse    func(btn int) // 1: Left, 2: Right
+	OnMouseDelta func(dx, dy float64)
+	lastMouseX int
+	lastMouseY int
+	firstMouse bool
+	bmi        BITMAPINFO
 }
 
 var globalWnd *Window
@@ -112,34 +121,49 @@ func wndProc(hwnd, msg, wparam, lparam uintptr) uintptr {
 		procPostQuitMessage.Call(0)
 		return 0
 	case WM_KEYDOWN:
-		if globalWnd != nil && globalWnd.OnKey != nil {
-			globalWnd.OnKey(int(wparam), true)
+		vk := int(wparam)
+		if vk >= 0 && vk < 256 && globalWnd != nil {
+			globalWnd.mu.Lock()
+			globalWnd.KeyDown[vk] = true
+			globalWnd.mu.Unlock()
+			if globalWnd.OnKeyClick != nil {
+				globalWnd.OnKeyClick(vk)
+			}
 		}
 		return 0
 	case WM_KEYUP:
-		if globalWnd != nil && globalWnd.OnKey != nil {
-			globalWnd.OnKey(int(wparam), false)
+		vk := int(wparam)
+		if vk >= 0 && vk < 256 && globalWnd != nil {
+			globalWnd.mu.Lock()
+			globalWnd.KeyDown[vk] = false
+			globalWnd.mu.Unlock()
 		}
 		return 0
 	case WM_LBUTTONDOWN:
 		if globalWnd != nil && globalWnd.OnMouse != nil {
-			x := int(int16(lparam & 0xFFFF))
-			y := int(int16((lparam >> 16) & 0xFFFF))
-			globalWnd.OnMouse(x, y, 1) // Left Click
+			globalWnd.OnMouse(1) // Left Click (Mine)
 		}
 		return 0
 	case WM_RBUTTONDOWN:
 		if globalWnd != nil && globalWnd.OnMouse != nil {
-			x := int(int16(lparam & 0xFFFF))
-			y := int(int16((lparam >> 16) & 0xFFFF))
-			globalWnd.OnMouse(x, y, 2) // Right Click
+			globalWnd.OnMouse(2) // Right Click (Place)
 		}
 		return 0
 	case WM_MOUSEMOVE:
-		if globalWnd != nil && globalWnd.OnMouse != nil {
+		if globalWnd != nil && globalWnd.OnMouseDelta != nil {
 			x := int(int16(lparam & 0xFFFF))
 			y := int(int16((lparam >> 16) & 0xFFFF))
-			globalWnd.OnMouse(x, y, 0)
+			if globalWnd.firstMouse {
+				globalWnd.lastMouseX = x
+				globalWnd.lastMouseY = y
+				globalWnd.firstMouse = false
+			} else {
+				dx := float64(x - globalWnd.lastMouseX)
+				dy := float64(y - globalWnd.lastMouseY)
+				globalWnd.lastMouseX = x
+				globalWnd.lastMouseY = y
+				globalWnd.OnMouseDelta(dx, dy)
+			}
 		}
 		return 0
 	}
@@ -172,7 +196,7 @@ func NewNativeWindow(title string, width, height int) (*Window, error) {
 		uintptr(unsafe.Pointer(windowTitle)),
 		WS_OVERLAPPEDWINDOW|WS_VISIBLE,
 		100, 100,
-		uintptr(width+16), uintptr(height+39), // adjust for window border & title bar
+		uintptr(width+16), uintptr(height+39),
 		0, 0, hInstance, 0,
 	)
 
@@ -186,16 +210,17 @@ func NewNativeWindow(title string, width, height int) (*Window, error) {
 	hdc, _, _ := procGetDC.Call(hwnd)
 
 	wnd := &Window{
-		Hwnd:   hwnd,
-		Hdc:    hdc,
-		Width:  width,
-		Height: height,
+		Hwnd:       hwnd,
+		Hdc:        hdc,
+		Width:      width,
+		Height:     height,
+		firstMouse: true,
 	}
 
 	wnd.bmi.BmiHeader = BITMAPINFOHEADER{
 		BiSize:        uint32(unsafe.Sizeof(BITMAPINFOHEADER{})),
 		BiWidth:       int32(width),
-		BiHeight:      -int32(height), // top-down bitmap
+		BiHeight:      -int32(height),
 		BiPlanes:      1,
 		BiBitCount:    32,
 		BiCompression: DIB_RGB_COLORS,
@@ -203,6 +228,16 @@ func NewNativeWindow(title string, width, height int) (*Window, error) {
 
 	globalWnd = wnd
 	return wnd, nil
+}
+
+// IsKeyDown checks if a virtual key is continuously held down.
+func (w *Window) IsKeyDown(vkCode int) bool {
+	if vkCode < 0 || vkCode >= 256 {
+		return false
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.KeyDown[vkCode]
 }
 
 // PollEvents pumps OS message queue; returns false if user closed window.

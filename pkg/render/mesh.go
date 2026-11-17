@@ -2,14 +2,15 @@ package render
 
 // Vertex represents a 3D textured, lit vertex in the chunk mesh.
 type Vertex struct {
-	X, Y, Z    float32
-	U, V       float32
-	NormalX    float32
-	NormalY    float32
-	NormalZ    float32
-	BlockID    int32
-	FaceIndex  int // 0: +X, 1: -X, 2: +Y, 3: -Y, 4: +Z, 5: -Z
-	LightLevel uint8
+	X, Y, Z      float32
+	U, V         float32
+	NormalX      float32
+	NormalY      float32
+	NormalZ      float32
+	BlockID      int32
+	FaceIndex    int // 0: +X, 1: -X, 2: +Y, 3: -Y, 4: +Z, 5: -Z
+	LightLevel   uint8
+	LightingMult float32
 }
 
 // Mesh holds generated geometry buffers for rendering.
@@ -26,6 +27,16 @@ var FaceNormals = [6][3]float32{
 	{0, -1, 0}, // -Y (Down)
 	{0, 0, 1},  // +Z (South)
 	{0, 0, -1}, // -Z (North)
+}
+
+// Directional lighting multiplier per face (Minecraft classic standard).
+var FaceLighting = [6]float32{
+	0.6, // +X (East)
+	0.6, // -X (West)
+	1.0, // +Y (Top sunlight)
+	0.5, // -Y (Bottom shadow)
+	0.8, // +Z (South)
+	0.8, // -Z (North)
 }
 
 // Neighbor offsets in block coordinates.
@@ -129,16 +140,17 @@ func addFaceQuad(mesh *Mesh, x, y, z int32, face int, blockID int32) {
 
 	for i := 0; i < 4; i++ {
 		mesh.Vertices = append(mesh.Vertices, Vertex{
-			X:         corners[i][0],
-			Y:         corners[i][1],
-			Z:         corners[i][2],
-			U:         uvs[i][0],
-			V:         uvs[i][1],
-			NormalX:   norm[0],
-			NormalY:   norm[1],
-			NormalZ:   norm[2],
-			BlockID:   blockID,
-			FaceIndex: face,
+			X:            corners[i][0],
+			Y:            corners[i][1],
+			Z:            corners[i][2],
+			U:            uvs[i][0],
+			V:            uvs[i][1],
+			NormalX:      norm[0],
+			NormalY:      norm[1],
+			NormalZ:      norm[2],
+			BlockID:      blockID,
+			FaceIndex:    face,
+			LightingMult: FaceLighting[face],
 		})
 	}
 

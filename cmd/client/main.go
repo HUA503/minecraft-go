@@ -11,6 +11,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/HUA503/minecraft-go/pkg/inventory"
@@ -22,19 +23,21 @@ import (
 )
 
 type Client struct {
-	serverAddr  string
-	username    string
-	uuid        [16]byte
-	conn        net.Conn
-	state       protocol.ConnectionState
-	framebuf    *render.Framebuffer
-	camera      *render.Camera
-	engine      *sim.Engine
-	player      *sim.PlayerEntity
-	craftingMgr *inventory.CraftingManager
-	isLocal     bool
-	lastMouseX  int
-	lastMouseY  int
+	serverAddr   string
+	username     string
+	uuid         [16]byte
+	conn         net.Conn
+	state        protocol.ConnectionState
+	framebuf     *render.Framebuffer
+	camera       *render.Camera
+	engine       *sim.Engine
+	player       *sim.PlayerEntity
+	craftingMgr  *inventory.CraftingManager
+	isLocal      bool
+	meshCache    map[[3]int32]*render.Mesh
+	meshMu       sync.RWMutex
+	targetedPos  world.BlockPos
+	hasTarget    bool
 }
 
 func NewClient(serverAddr, username string, isSingleplayer bool, width, height int) *Client {
@@ -47,15 +50,17 @@ func NewClient(serverAddr, username string, isSingleplayer bool, width, height i
 		uuid:        u,
 		state:       protocol.StateHandshake,
 		framebuf:    render.NewFramebuffer(width, height),
-		camera:      render.NewCamera(8.0, 65.62, 8.0),
+		camera:      render.NewCamera(8.0, 66.62, 8.0),
 		craftingMgr: inventory.NewCraftingManager(),
 		isLocal:     isSingleplayer,
+		meshCache:   make(map[[3]int32]*render.Mesh),
 	}
 
 	if isSingleplayer {
 		cli.engine = sim.NewEngine()
 		genOverworld := gen.NewGenerator(12345, gen.DimensionOverworld)
 
+		// Pre-generate 3x3 chunks around spawn
 		for cx := int32(-1); cx <= 1; cx++ {
 			for cz := int32(-1); cz <= 1; cz++ {
 				chunk := genOverworld.GenerateChunk(world.ChunkPos{X: cx, Z: cz})
@@ -66,12 +71,36 @@ func NewClient(serverAddr, username string, isSingleplayer bool, width, height i
 		cli.engine.StartTickLoop()
 		cli.player = cli.engine.AddPlayer(username, u, sim.Vec3{X: 8.0, Y: 65.0, Z: 8.0})
 
-		// Starter items
-		cli.player.Inventory.AddItem(inventory.ItemOakLog, 16)
-		cli.player.Inventory.AddItem(inventory.ItemCobblestone, 32)
+		// Give classic starter items in hotbar
+		cli.player.Inventory.AddItem(inventory.ItemOakLog, 32)
+		cli.player.Inventory.AddItem(inventory.ItemCobblestone, 64)
+		cli.player.Inventory.AddItem(inventory.ItemDirt, 64)
+
+		cli.RebuildMeshes()
 	}
 
 	return cli
+}
+
+// RebuildMeshes generates and caches chunk meshes once.
+func (c *Client) RebuildMeshes() {
+	c.meshMu.Lock()
+	defer c.meshMu.Unlock()
+
+	getBlock := func(x, y, z int32) int32 {
+		return c.engine.GetBlock(x, y, z)
+	}
+
+	// Rebuild sections around player (Y sections -1 to 5)
+	for cx := int32(-1); cx <= 1; cx++ {
+		for cz := int32(-1); cz <= 1; cz++ {
+			for sy := int32(2); sy <= 5; sy++ { // surface Y=32 to Y=96
+				key := [3]int32{cx, sy, cz}
+				mesh := render.BuildSectionMesh(getBlock, cx*16, sy*16, cz*16)
+				c.meshCache[key] = mesh
+			}
+		}
+	}
 }
 
 func (c *Client) Connect() error {
@@ -115,17 +144,14 @@ func (c *Client) Connect() error {
 	return nil
 }
 
-// MoveRelative moves player along current look direction.
+// MoveRelative moves player along camera horizontal look vector smoothly.
 func (c *Client) MoveRelative(forward, strafe float64) {
 	if c.player == nil {
 		return
 	}
 	radYaw := c.camera.Yaw * math.Pi / 180.0
-	// Forward vector
 	fdx := -math.Sin(radYaw) * forward
 	fdz := math.Cos(radYaw) * forward
-
-	// Strafe vector (perpendicular to forward)
 	sdx := math.Cos(radYaw) * strafe
 	sdz := math.Sin(radYaw) * strafe
 
@@ -138,7 +164,7 @@ func (c *Client) MoveRelative(forward, strafe float64) {
 
 func (c *Client) Jump() {
 	if c.player != nil && c.player.OnGround {
-		c.player.Velocity.Y = 0.42 // Minecraft standard jump velocity
+		c.player.Velocity.Y = 0.42
 		c.player.OnGround = false
 	}
 }
@@ -154,9 +180,9 @@ func (c *Client) RotateView(dYaw, dPitch float64) {
 	}
 }
 
-func (c *Client) MineTargetedBlock() (int32, bool) {
+func (c *Client) UpdateRaycastTarget() {
 	if c.player == nil {
-		return 0, false
+		return
 	}
 	origin := sim.Vec3{X: c.camera.X, Y: c.camera.Y, Z: c.camera.Z}
 	lx, ly, lz := c.camera.GetLookVector()
@@ -167,16 +193,25 @@ func (c *Client) MineTargetedBlock() (int32, bool) {
 	}
 
 	res := sim.Raycast(origin, dir, 5.0, isSolid)
-	if !res.Hit {
+	if res.Hit {
+		c.hasTarget = true
+		c.targetedPos = world.BlockPos{X: res.BlockX, Y: res.BlockY, Z: res.BlockZ}
+	} else {
+		c.hasTarget = false
+	}
+}
+
+func (c *Client) MineTargetedBlock() (int32, bool) {
+	if !c.hasTarget || c.player == nil {
 		return 0, false
 	}
-
-	drop := c.engine.BreakBlock(c.player.ID, world.BlockPos{X: res.BlockX, Y: res.BlockY, Z: res.BlockZ})
+	drop := c.engine.BreakBlock(c.player.ID, c.targetedPos)
+	c.RebuildMeshes() // update cached mesh
 	return drop, true
 }
 
 func (c *Client) PlaceBlockInFront() bool {
-	if c.player == nil {
+	if !c.hasTarget || c.player == nil {
 		return false
 	}
 	selected := c.player.Inventory.GetSelectedItem()
@@ -184,6 +219,7 @@ func (c *Client) PlaceBlockInFront() bool {
 		return false
 	}
 
+	// Calculate face offset
 	origin := sim.Vec3{X: c.camera.X, Y: c.camera.Y, Z: c.camera.Z}
 	lx, ly, lz := c.camera.GetLookVector()
 	dir := sim.Vec3{X: lx, Y: ly, Z: lz}
@@ -191,7 +227,6 @@ func (c *Client) PlaceBlockInFront() bool {
 	isSolid := func(x, y, z int32) bool {
 		return c.engine.GetBlock(x, y, z) != 0
 	}
-
 	res := sim.Raycast(origin, dir, 5.0, isSolid)
 	if !res.Hit {
 		return false
@@ -203,52 +238,55 @@ func (c *Client) PlaceBlockInFront() bool {
 		Z: res.BlockZ + res.FaceZ,
 	}
 
-	return c.engine.PlaceBlock(c.player.ID, targetPos, selected.ItemID)
+	ok := c.engine.PlaceBlock(c.player.ID, targetPos, selected.ItemID)
+	if ok {
+		c.RebuildMeshes()
+	}
+	return ok
 }
 
+// RenderFrame renders Minecraft sky, textured 3D voxel terrain, block outline, first-person hand, and 2D HUD.
 func (c *Client) RenderFrame() {
-	c.framebuf.Clear(0xFF87CEEB) // Sky blue
+	c.UpdateRaycastTarget()
 
-	if c.engine != nil {
-		getBlock := func(x, y, z int32) int32 {
-			return c.engine.GetBlock(x, y, z)
+	// 1. Sky gradient background (Minecraft light blue horizon)
+	c.framebuf.ClearSky()
+
+	// 2. Render cached 3D chunk meshes with authentic textures & face lighting
+	c.meshMu.RLock()
+	for _, mesh := range c.meshCache {
+		if mesh == nil {
+			continue
 		}
+		for i := 0; i < len(mesh.Indices); i += 3 {
+			v0 := mesh.Vertices[mesh.Indices[i]]
+			v1 := mesh.Vertices[mesh.Indices[i+1]]
+			v2 := mesh.Vertices[mesh.Indices[i+2]]
 
-		// Build and render sections around player
-		baseSecY := int32(c.camera.Y / 16.0)
-		for sy := baseSecY - 1; sy <= baseSecY + 1; sy++ {
-			if sy < -4 || sy > 19 {
-				continue
-			}
-			mesh := render.BuildSectionMesh(getBlock, 0, sy*16, 0)
-			for i := 0; i < len(mesh.Indices); i += 3 {
-				v0 := mesh.Vertices[mesh.Indices[i]]
-				v1 := mesh.Vertices[mesh.Indices[i+1]]
-				v2 := mesh.Vertices[mesh.Indices[i+2]]
+			p0, ok0 := c.camera.ProjectToScreen(float64(v0.X), float64(v0.Y), float64(v0.Z), c.framebuf.Width, c.framebuf.Height)
+			p1, ok1 := c.camera.ProjectToScreen(float64(v1.X), float64(v1.Y), float64(v1.Z), c.framebuf.Width, c.framebuf.Height)
+			p2, ok2 := c.camera.ProjectToScreen(float64(v2.X), float64(v2.Y), float64(v2.Z), c.framebuf.Width, c.framebuf.Height)
 
-				p0, ok0 := c.camera.ProjectToScreen(float64(v0.X), float64(v0.Y), float64(v0.Z), c.framebuf.Width, c.framebuf.Height)
-				p1, ok1 := c.camera.ProjectToScreen(float64(v1.X), float64(v1.Y), float64(v1.Z), c.framebuf.Width, c.framebuf.Height)
-				p2, ok2 := c.camera.ProjectToScreen(float64(v2.X), float64(v2.Y), float64(v2.Z), c.framebuf.Width, c.framebuf.Height)
+			if ok0 && ok1 && ok2 {
+				sv0 := render.ScreenVertex{X: p0.X, Y: p0.Y, Depth: p0.Depth, U: v0.U, V: v0.V, BlockID: v0.BlockID, FaceIndex: v0.FaceIndex, LightMult: v0.LightingMult}
+				sv1 := render.ScreenVertex{X: p1.X, Y: p1.Y, Depth: p1.Depth, U: v1.U, V: v1.V, BlockID: v1.BlockID, FaceIndex: v1.FaceIndex, LightMult: v1.LightingMult}
+				sv2 := render.ScreenVertex{X: p2.X, Y: p2.Y, Depth: p2.Depth, U: v2.U, V: v2.V, BlockID: v2.BlockID, FaceIndex: v2.FaceIndex, LightMult: v2.LightingMult}
 
-				if ok0 && ok1 && ok2 {
-					// Block color shading
-					color := uint32(0xFF2E8B57) // Grass green
-					if v0.BlockID == 1 {
-						color = 0xFF808080 // Stone gray
-					} else if v0.BlockID == 3 {
-						color = 0xFF3B5E8B // Dirt brown
-					} else if v0.BlockID == 17 {
-						color = 0xFF2A52BE // Oak log
-					} else if v0.BlockID == 5 {
-						color = 0xFF4A8BBA // Oak plank
-					}
-					c.framebuf.DrawTriangle(p0, p1, p2, color)
-				}
+				c.framebuf.DrawVoxelTriangle(sv0, sv1, sv2)
 			}
 		}
 	}
+	c.meshMu.RUnlock()
 
-	// 2D HUD overlay
+	// 3. Draw targeted block wireframe outline (Classic Minecraft black box highlight)
+	if c.hasTarget {
+		c.framebuf.DrawBlockOutline(c.camera, c.targetedPos.X, c.targetedPos.Y, c.targetedPos.Z)
+	}
+
+	// 4. Draw first-person held item in bottom-right corner
+	c.drawHeldItem()
+
+	// 5. Draw 2D HUD (Centered crosshair, 20 HP hearts, 20 hunger drumsticks, 9 hotbar slots)
 	health := float32(20.0)
 	hunger := 20
 	selectedSlot := 0
@@ -258,6 +296,27 @@ func (c *Client) RenderFrame() {
 		selectedSlot = c.player.Inventory.SelectedHotbar
 	}
 	c.framebuf.DrawHUD(health, hunger, selectedSlot)
+}
+
+func (c *Client) drawHeldItem() {
+	if c.player == nil {
+		return
+	}
+	selected := c.player.Inventory.GetSelectedItem()
+	if selected.IsEmpty() {
+		return
+	}
+
+	// Render held block icon in bottom right of screen
+	hx := c.framebuf.Width - 90
+	hy := c.framebuf.Height - 110
+
+	// Block isometric front-top preview
+	colorTop := render.SampleBlockColor(selected.ItemID, 2, 0.5, 0.5, 1.0)
+	colorSide := render.SampleBlockColor(selected.ItemID, 0, 0.5, 0.5, 0.7)
+
+	c.framebuf.DrawRect(hx+10, hy, 40, 20, colorTop)
+	c.framebuf.DrawRect(hx, hy+20, 60, 45, colorSide)
 }
 
 func main() {
@@ -306,7 +365,6 @@ func main() {
 		return
 	}
 
-	// Run native graphical desktop window
 	runGraphicalWindow(client, *width, *height)
 }
 
@@ -320,32 +378,11 @@ func runGraphicalWindow(c *Client, w, h int) {
 	}
 	defer wnd.Close()
 
-	log.Printf("[Client] Native 3D game window opened (%dx%d)! Controls: WASD to move, Space to jump, Arrow keys to look, Left-click / F to mine, Right-click / R to place, 1-9 to select hotbar.", w, h)
+	log.Printf("[Client] Native 3D game window opened (%dx%d)! Controls: WASD continuous movement, Space to jump, Mouse/Arrows to look, Left-click / F to mine, Right-click / R to place, 1-9 to select hotbar.", w, h)
 
-	// Bind keyboard controls
-	wnd.OnKey = func(vkCode int, isDown bool) {
-		if !isDown {
-			return
-		}
+	// Single key-press actions (Mining, Placing, Slot switching, Hotbar)
+	wnd.OnKeyClick = func(vkCode int) {
 		switch vkCode {
-		case 0x57: // W
-			c.MoveRelative(0.5, 0)
-		case 0x53: // S
-			c.MoveRelative(-0.5, 0)
-		case 0x41: // A
-			c.MoveRelative(0, -0.5)
-		case 0x44: // D
-			c.MoveRelative(0, 0.5)
-		case 0x20: // Space
-			c.Jump()
-		case 0x25: // Left Arrow
-			c.RotateView(-5.0, 0)
-		case 0x27: // Right Arrow
-			c.RotateView(5.0, 0)
-		case 0x26: // Up Arrow
-			c.RotateView(0, -5.0)
-		case 0x28: // Down Arrow
-			c.RotateView(0, 5.0)
 		case 0x46: // F: Mine
 			c.MineTargetedBlock()
 		case 0x52: // R: Place
@@ -364,29 +401,66 @@ func runGraphicalWindow(c *Client, w, h int) {
 		}
 	}
 
-	// Bind mouse controls
-	wnd.OnMouse = func(x, y int, btn int) {
+	// Mouse button clicks
+	wnd.OnMouse = func(btn int) {
 		if btn == 1 { // Left click: Mine
 			c.MineTargetedBlock()
 		} else if btn == 2 { // Right click: Place
 			c.PlaceBlockInFront()
-		} else if btn == 0 { // Move: rotate view
-			if c.lastMouseX != 0 || c.lastMouseY != 0 {
-				dx := float64(x - c.lastMouseX)
-				dy := float64(y - c.lastMouseY)
-				c.RotateView(dx*0.2, dy*0.2)
-			}
-			c.lastMouseX = x
-			c.lastMouseY = y
 		}
 	}
 
-	// 60 FPS Real-time game loop
+	// Smooth mouse look rotation
+	wnd.OnMouseDelta = func(dx, dy float64) {
+		c.RotateView(dx*0.25, dy*0.25)
+	}
+
+	// 60 FPS Buttery-smooth game loop
 	ticker := time.NewTicker(16 * time.Millisecond)
 	defer ticker.Stop()
 
+	moveSpeed := 0.22 // Smooth continuous speed per frame
+
 	for wnd.PollEvents() {
 		<-ticker.C
+
+		// Continuous keyboard input polling (Eliminates OS repeat stutter!)
+		var fwd, strafe float64
+		if wnd.IsKeyDown(0x57) { // W
+			fwd += moveSpeed
+		}
+		if wnd.IsKeyDown(0x53) { // S
+			fwd -= moveSpeed
+		}
+		if wnd.IsKeyDown(0x41) { // A
+			strafe -= moveSpeed
+		}
+		if wnd.IsKeyDown(0x44) { // D
+			strafe += moveSpeed
+		}
+		if fwd != 0 || strafe != 0 {
+			c.MoveRelative(fwd, strafe)
+		}
+
+		if wnd.IsKeyDown(0x20) { // Space (Jump)
+			c.Jump()
+		}
+
+		// Keyboard arrow view look support
+		if wnd.IsKeyDown(0x25) { // Left
+			c.RotateView(-2.5, 0)
+		}
+		if wnd.IsKeyDown(0x27) { // Right
+			c.RotateView(2.5, 0)
+		}
+		if wnd.IsKeyDown(0x26) { // Up
+			c.RotateView(0, -2.5)
+		}
+		if wnd.IsKeyDown(0x28) { // Down
+			c.RotateView(0, 2.5)
+		}
+
+		// Render frame and present directly to window
 		c.RenderFrame()
 		wnd.Present(c.framebuf)
 	}
@@ -402,7 +476,7 @@ func runInteractiveLoop(c *Client) {
 	fmt.Println("  place           : Place active hotbar block")
 	fmt.Println("  slot <1-9>      : Switch active hotbar slot")
 	fmt.Println("  inv             : View inventory")
-	fmt.Println("  craft <recipe>  : Craft items (e.g. 'craft planks', 'craft table', 'craft pickaxe')")
+	fmt.Println("  craft <recipe>  : Craft items")
 	fmt.Println("  status          : View health, hunger, XYZ position")
 	fmt.Println("  render          : Render a full 3D frame and HUD")
 	fmt.Println("  quit            : Exit game")
@@ -442,8 +516,6 @@ func runInteractiveLoop(c *Client) {
 				c.camera.Yaw = yaw
 				c.camera.Pitch = pitch
 				fmt.Printf("Camera rotated: Yaw=%.1f, Pitch=%.1f\n", yaw, pitch)
-			} else {
-				fmt.Println("Usage: look <yaw> <pitch>")
 			}
 		case "mine":
 			drop, ok := c.MineTargetedBlock()
@@ -457,7 +529,7 @@ func runInteractiveLoop(c *Client) {
 			if ok {
 				fmt.Println("Placed block successfully!")
 			} else {
-				fmt.Println("Could not place block (no target block in reach or intersecting player).")
+				fmt.Println("Could not place block.")
 			}
 		case "slot":
 			if len(parts) >= 2 {
@@ -485,22 +557,16 @@ func runInteractiveLoop(c *Client) {
 					if err := c.player.Inventory.RemoveItem(0, 1); err == nil {
 						c.player.Inventory.AddItem(inventory.ItemOakPlanks, 4)
 						fmt.Println("Crafted 4 Oak Planks!")
-					} else {
-						fmt.Println("Not enough Oak Logs in slot 1.")
 					}
 				case "table":
 					if err := c.player.Inventory.RemoveItem(0, 4); err == nil {
 						c.player.Inventory.AddItem(inventory.ItemCraftingTable, 1)
 						fmt.Println("Crafted 1 Crafting Table!")
-					} else {
-						fmt.Println("Not enough Planks.")
 					}
 				case "pickaxe":
 					c.player.Inventory.AddItem(inventory.ItemWoodenPickaxe, 1)
 					fmt.Println("Crafted 1 Wooden Pickaxe!")
 				}
-			} else {
-				fmt.Println("Usage: craft <planks|table|pickaxe>")
 			}
 		case "status":
 			fmt.Printf("Player: %s | Health: %.1f/20 | Hunger: %d/20 | Pos: (%.2f, %.2f, %.2f)\n",
@@ -511,8 +577,6 @@ func runInteractiveLoop(c *Client) {
 		case "quit", "exit":
 			fmt.Println("Goodbye!")
 			return
-		default:
-			fmt.Printf("Unknown command: %s. Type 'help' for options.\n", cmd)
 		}
 	}
 }
