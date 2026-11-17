@@ -1,0 +1,32 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Run directories & logs
+/run/
+/logs/
+/crash-reports/
+*.log
+
+# Vanilla server jars and runtime caches
+server.jar
+libraries/
+versions/
+assets/
+
+# IDE & OS
+.idea/
+.vscode/
+*.swp
+*~
+Thumbs.db
+Desktop.ini
