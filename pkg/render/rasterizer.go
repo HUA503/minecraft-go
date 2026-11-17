@@ -30,10 +30,10 @@ func (fb *Framebuffer) Clear(clearColor uint32) {
 	}
 }
 
-// ClearSky renders a vertical sky gradient (darker blue at zenith, lighter haze at horizon).
+// ClearSky renders authentic Minecraft gradient sky with horizon fog.
 func (fb *Framebuffer) ClearSky() {
-	zenithColor := [3]float32{120, 165, 240} // R, G, B
-	horizonColor := [3]float32{195, 220, 255}
+	zenithColor := [3]float32{120, 168, 245}  // R, G, B (Sky blue)
+	horizonColor := [3]float32{195, 222, 255} // Haze horizon
 
 	for y := 0; y < fb.Height; y++ {
 		t := float32(y) / float32(fb.Height)
@@ -82,14 +82,38 @@ type ScreenPoint struct {
 	Depth float32
 }
 
-// ScreenVertex represents a textured 2D projected vertex.
+// ScreenVertex represents a textured 2D projected vertex with perspective attributes.
 type ScreenVertex struct {
 	X, Y      float32
-	Depth     float32
+	Depth     float32 // View-space linear Z depth
 	U, V      float32
+	InvZ      float32 // 1.0 / Depth for perspective correction
+	UOverZ    float32 // U / Depth
+	VOverZ    float32 // V / Depth
 	BlockID   int32
 	FaceIndex int
 	LightMult float32
+}
+
+func NewScreenVertex(p ScreenPoint, u, v float32, blockID int32, faceIndex int, lightMult float32) ScreenVertex {
+	depth := p.Depth
+	if depth < 0.1 {
+		depth = 0.1
+	}
+	invZ := 1.0 / depth
+	return ScreenVertex{
+		X:         p.X,
+		Y:         p.Y,
+		Depth:     depth,
+		U:         u,
+		V:         v,
+		InvZ:      invZ,
+		UOverZ:    u * invZ,
+		VOverZ:    v * invZ,
+		BlockID:   blockID,
+		FaceIndex: faceIndex,
+		LightMult: lightMult,
+	}
 }
 
 // DrawTriangle draws a flat-shaded triangle into the framebuffer with depth test.
@@ -141,8 +165,8 @@ func (fb *Framebuffer) DrawTriangle(p0, p1, p2 ScreenPoint, col uint32) {
 	}
 }
 
-// DrawVoxelTriangle draws a textured voxel triangle with authentic block texture and directional shading.
-func (fb *Framebuffer) DrawVoxelTriangle(v0, v1, v2 ScreenVertex) {
+// DrawVoxelTrianglePerspective performs mathematically exact perspective-correct texture mapping & distance fog.
+func (fb *Framebuffer) DrawVoxelTrianglePerspective(v0, v1, v2 ScreenVertex) {
 	minX := int(math.Floor(math.Min(float64(v0.X), math.Min(float64(v1.X), float64(v2.X)))))
 	maxX := int(math.Ceil(math.Max(float64(v0.X), math.Max(float64(v1.X), float64(v2.X)))))
 	minY := int(math.Floor(math.Min(float64(v0.Y), math.Min(float64(v1.Y), float64(v2.Y)))))
@@ -170,11 +194,17 @@ func (fb *Framebuffer) DrawVoxelTriangle(v0, v1, v2 ScreenVertex) {
 		return
 	}
 
+	const fogStart = 0.35 // Normalized depth start
+	const fogEnd = 0.85   // Normalized depth end (full fog)
+	skyHazeR := float32(195)
+	skyHazeG := float32(222)
+	skyHazeB := float32(255)
+
 	for y := minY; y <= maxY; y++ {
 		rowOffset := y * fb.Width
+		py := float32(y) + 0.5
 		for x := minX; x <= maxX; x++ {
 			px := float32(x) + 0.5
-			py := float32(y) + 0.5
 
 			w0 := edge(v1.X, v1.Y, v2.X, v2.Y, px, py)
 			w1 := edge(v2.X, v2.Y, v0.X, v0.Y, px, py)
@@ -184,26 +214,49 @@ func (fb *Framebuffer) DrawVoxelTriangle(v0, v1, v2 ScreenVertex) {
 				w0 /= area
 				w1 /= area
 				w2 /= area
-				z := w0*v0.Depth + w1*v1.Depth + w2*v2.Depth
+
+				// Interpolate 1/Z linearly in screen space
+				invZ := w0*v0.InvZ + w1*v1.InvZ + w2*v2.InvZ
+				depth := 1.0 / invZ // Recover true perspective depth
 
 				idx := rowOffset + x
-				if z < fb.Depth[idx] {
-					u := w0*v0.U + w1*v1.U + w2*v2.U
-					v := w0*v0.V + w1*v1.V + w2*v2.V
-					col := SampleBlockColor(v0.BlockID, v0.FaceIndex, u, v, v0.LightMult)
-					fb.Depth[idx] = z
-					fb.Color[idx] = col
+				if depth < fb.Depth[idx] {
+					// Perspective-correct UV interpolation: (U/Z) / (1/Z)
+					u := (w0*v0.UOverZ + w1*v1.UOverZ + w2*v2.UOverZ) * depth
+					v := (w0*v0.VOverZ + w1*v1.VOverZ + w2*v2.VOverZ) * depth
+					light := w0*v0.LightMult + w1*v1.LightMult + w2*v2.LightMult
+
+					pixelCol := SampleBlockColor(v0.BlockID, v0.FaceIndex, u, v, light)
+
+					// Distance fog calculation
+					if depth > fogStart {
+						fogT := (depth - fogStart) / (fogEnd - fogStart)
+						if fogT > 1.0 {
+							fogT = 1.0
+						}
+						// Blend pixel with sky haze
+						pr := float32(pixelCol & 0xFF)
+						pg := float32((pixelCol >> 8) & 0xFF)
+						pb := float32((pixelCol >> 16) & 0xFF)
+
+						finalR := uint32(pr*(1-fogT) + skyHazeR*fogT)
+						finalG := uint32(pg*(1-fogT) + skyHazeG*fogT)
+						finalB := uint32(pb*(1-fogT) + skyHazeB*fogT)
+						pixelCol = 0xFF000000 | (finalB << 16) | (finalG << 8) | finalR
+					}
+
+					fb.Depth[idx] = depth
+					fb.Color[idx] = pixelCol
 				}
 			}
 		}
 	}
 }
 
-// DrawBlockOutline draws a wireframe selection outline around targeted block edges.
+// DrawBlockOutline draws wireframe selection outline around targeted block edges.
 func (fb *Framebuffer) DrawBlockOutline(cam *Camera, bx, by, bz int32) {
 	fx, fy, fz := float64(bx), float64(by), float64(bz)
 
-	// 8 corners of the voxel
 	corners := [8][3]float64{
 		{fx, fy, fz},
 		{fx + 1, fy, fz},
@@ -215,11 +268,10 @@ func (fb *Framebuffer) DrawBlockOutline(cam *Camera, bx, by, bz int32) {
 		{fx, fy + 1, fz + 1},
 	}
 
-	// 12 edges
 	edges := [12][2]int{
-		{0, 1}, {1, 2}, {2, 3}, {3, 0}, // back face
-		{4, 5}, {5, 6}, {6, 7}, {7, 4}, // front face
-		{0, 4}, {1, 5}, {2, 6}, {3, 7}, // connecting edges
+		{0, 1}, {1, 2}, {2, 3}, {3, 0},
+		{4, 5}, {5, 6}, {6, 7}, {7, 4},
+		{0, 4}, {1, 5}, {2, 6}, {3, 7},
 	}
 
 	var projected [8]ScreenPoint
@@ -230,12 +282,11 @@ func (fb *Framebuffer) DrawBlockOutline(cam *Camera, bx, by, bz int32) {
 
 	for _, e := range edges {
 		if valid[e[0]] && valid[e[1]] {
-			fb.DrawLine(int(projected[e[0]].X), int(projected[e[0]].Y), int(projected[e[1]].X), int(projected[e[1]].Y), 0xFF000000) // Black outline
+			fb.DrawLine(int(projected[e[0]].X), int(projected[e[0]].Y), int(projected[e[1]].X), int(projected[e[1]].Y), 0xFF000000)
 		}
 	}
 }
 
-// DrawLine draws a 1px Bresenham line.
 func (fb *Framebuffer) DrawLine(x0, y0, x1, y1 int, col uint32) {
 	dx := int(math.Abs(float64(x1 - x0)))
 	dy := -int(math.Abs(float64(y1 - y0)))

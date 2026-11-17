@@ -29,6 +29,8 @@ var (
 	procSetCursorPos     = user32.NewProc("SetCursorPos")
 	procGetCursorPos     = user32.NewProc("GetCursorPos")
 	procShowCursor       = user32.NewProc("ShowCursor")
+	procClientToScreen   = user32.NewProc("ClientToScreen")
+	procScreenToClient   = user32.NewProc("ScreenToClient")
 	procStretchDIBits     = gdi32.NewProc("StretchDIBits")
 )
 
@@ -43,10 +45,14 @@ const (
 	WM_KEYUP            = 0x0101
 	WM_LBUTTONDOWN      = 0x0201
 	WM_RBUTTONDOWN      = 0x0204
-	WM_MOUSEMOVE        = 0x0200
+	WM_ACTIVATE         = 0x0006
 	DIB_RGB_COLORS      = 0
 	SRCCOPY             = 0x00CC0020
 )
+
+type POINT struct {
+	X, Y int32
+}
 
 type WNDCLASSEXW struct {
 	CbSize        uint32
@@ -69,7 +75,7 @@ type MSG struct {
 	WParam   uintptr
 	LParam   uintptr
 	Time     uint32
-	Pt       struct{ X, Y int32 }
+	Pt       POINT
 	LPrivate uint32
 }
 
@@ -94,20 +100,19 @@ type BITMAPINFO struct {
 
 // Window represents a native Win32 graphical game window.
 type Window struct {
-	Hwnd       uintptr
-	Hdc        uintptr
-	Width      int
-	Height     int
-	Closed     bool
-	KeyDown    [256]bool // Continuous key states for smooth movement
-	mu         sync.Mutex
-	OnKeyClick func(vkCode int)
-	OnMouse    func(btn int) // 1: Left, 2: Right
-	OnMouseDelta func(dx, dy float64)
-	lastMouseX int
-	lastMouseY int
-	firstMouse bool
-	bmi        BITMAPINFO
+	Hwnd           uintptr
+	Hdc            uintptr
+	Width          int
+	Height         int
+	Closed         bool
+	KeyDown        [256]bool
+	mu             sync.Mutex
+	OnKeyClick     func(vkCode int)
+	OnMouseClick   func(btn int)
+	MouseCaptured  bool
+	centerScreenX  int32
+	centerScreenY  int32
+	bmi            BITMAPINFO
 }
 
 var globalWnd *Window
@@ -119,6 +124,14 @@ func wndProc(hwnd, msg, wparam, lparam uintptr) uintptr {
 			globalWnd.Closed = true
 		}
 		procPostQuitMessage.Call(0)
+		return 0
+	case WM_ACTIVATE:
+		active := (wparam & 0xFFFF) != 0
+		if globalWnd != nil {
+			if !active && globalWnd.MouseCaptured {
+				globalWnd.SetMouseCaptured(false)
+			}
+		}
 		return 0
 	case WM_KEYDOWN:
 		vk := int(wparam)
@@ -140,29 +153,20 @@ func wndProc(hwnd, msg, wparam, lparam uintptr) uintptr {
 		}
 		return 0
 	case WM_LBUTTONDOWN:
-		if globalWnd != nil && globalWnd.OnMouse != nil {
-			globalWnd.OnMouse(1) // Left Click (Mine)
+		if globalWnd != nil {
+			if !globalWnd.MouseCaptured {
+				globalWnd.SetMouseCaptured(true)
+			} else if globalWnd.OnMouseClick != nil {
+				globalWnd.OnMouseClick(1) // Left Click (Mine)
+			}
 		}
 		return 0
 	case WM_RBUTTONDOWN:
-		if globalWnd != nil && globalWnd.OnMouse != nil {
-			globalWnd.OnMouse(2) // Right Click (Place)
-		}
-		return 0
-	case WM_MOUSEMOVE:
-		if globalWnd != nil && globalWnd.OnMouseDelta != nil {
-			x := int(int16(lparam & 0xFFFF))
-			y := int(int16((lparam >> 16) & 0xFFFF))
-			if globalWnd.firstMouse {
-				globalWnd.lastMouseX = x
-				globalWnd.lastMouseY = y
-				globalWnd.firstMouse = false
-			} else {
-				dx := float64(x - globalWnd.lastMouseX)
-				dy := float64(y - globalWnd.lastMouseY)
-				globalWnd.lastMouseX = x
-				globalWnd.lastMouseY = y
-				globalWnd.OnMouseDelta(dx, dy)
+		if globalWnd != nil {
+			if !globalWnd.MouseCaptured {
+				globalWnd.SetMouseCaptured(true)
+			} else if globalWnd.OnMouseClick != nil {
+				globalWnd.OnMouseClick(2) // Right Click (Place)
 			}
 		}
 		return 0
@@ -186,9 +190,7 @@ func NewNativeWindow(title string, width, height int) (*Window, error) {
 		LpszClassName: className,
 	}
 
-	if r, _, _ := procRegisterClassExW.Call(uintptr(unsafe.Pointer(&wndClass))); r == 0 {
-		// Class might already be registered
-	}
+	procRegisterClassExW.Call(uintptr(unsafe.Pointer(&wndClass)))
 
 	hwnd, _, _ := procCreateWindowExW.Call(
 		0,
@@ -210,11 +212,10 @@ func NewNativeWindow(title string, width, height int) (*Window, error) {
 	hdc, _, _ := procGetDC.Call(hwnd)
 
 	wnd := &Window{
-		Hwnd:       hwnd,
-		Hdc:        hdc,
-		Width:      width,
-		Height:     height,
-		firstMouse: true,
+		Hwnd:   hwnd,
+		Hdc:    hdc,
+		Width:  width,
+		Height: height,
 	}
 
 	wnd.bmi.BmiHeader = BITMAPINFOHEADER{
@@ -227,10 +228,56 @@ func NewNativeWindow(title string, width, height int) (*Window, error) {
 	}
 
 	globalWnd = wnd
+
+	// Auto capture mouse by default for true FPS gaming
+	wnd.SetMouseCaptured(true)
+
 	return wnd, nil
 }
 
-// IsKeyDown checks if a virtual key is continuously held down.
+// SetMouseCaptured locks or releases the mouse cursor to/from the window center.
+func (w *Window) SetMouseCaptured(capture bool) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	w.MouseCaptured = capture
+	if capture {
+		procShowCursor.Call(0) // Hide cursor
+		w.recenterMouse()
+	} else {
+		procShowCursor.Call(1) // Show cursor
+	}
+}
+
+func (w *Window) recenterMouse() {
+	var center POINT
+	center.X = int32(w.Width / 2)
+	center.Y = int32(w.Height / 2)
+	procClientToScreen.Call(w.Hwnd, uintptr(unsafe.Pointer(&center)))
+	w.centerScreenX = center.X
+	w.centerScreenY = center.Y
+	procSetCursorPos.Call(uintptr(w.centerScreenX), uintptr(w.centerScreenY))
+}
+
+// PollMouseDelta calculates 1:1 mouse movement delta and re-centers cursor.
+func (w *Window) PollMouseDelta() (float64, float64) {
+	if !w.MouseCaptured || w.Closed {
+		return 0, 0
+	}
+
+	var pt POINT
+	procGetCursorPos.Call(uintptr(unsafe.Pointer(&pt)))
+
+	dx := float64(pt.X - w.centerScreenX)
+	dy := float64(pt.Y - w.centerScreenY)
+
+	if dx != 0 || dy != 0 {
+		procSetCursorPos.Call(uintptr(w.centerScreenX), uintptr(w.centerScreenY))
+	}
+
+	return dx, dy
+}
+
 func (w *Window) IsKeyDown(vkCode int) bool {
 	if vkCode < 0 || vkCode >= 256 {
 		return false
@@ -240,7 +287,6 @@ func (w *Window) IsKeyDown(vkCode int) bool {
 	return w.KeyDown[vkCode]
 }
 
-// PollEvents pumps OS message queue; returns false if user closed window.
 func (w *Window) PollEvents() bool {
 	if w.Closed {
 		return false
@@ -261,7 +307,6 @@ func (w *Window) PollEvents() bool {
 	return !w.Closed
 }
 
-// Present blits the software framebuffer directly into the native window.
 func (w *Window) Present(fb *Framebuffer) {
 	if w.Closed || w.Hdc == 0 {
 		return
@@ -277,10 +322,12 @@ func (w *Window) Present(fb *Framebuffer) {
 	)
 }
 
-// Close destroys the window and releases DC.
 func (w *Window) Close() {
 	if !w.Closed {
 		w.Closed = true
+		if w.MouseCaptured {
+			w.SetMouseCaptured(false)
+		}
 		if w.Hdc != 0 {
 			procReleaseDC.Call(w.Hwnd, w.Hdc)
 			w.Hdc = 0
