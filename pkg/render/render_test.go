@@ -62,6 +62,21 @@ func TestCameraLookVectorAndProjection(t *testing.T) {
 	if math.Abs(float64(p.X)-320) > 1.0 || math.Abs(float64(p.Y)-240) > 1.0 {
 		t.Fatalf("expected projection at center (320, 240), got (%f, %f)", p.X, p.Y)
 	}
+
+	// Test Yaw: turning right (+10 deg) makes object ahead move to the LEFT on screen
+	cam.Yaw = 10.0
+	pRight, ok := cam.ProjectToScreen(0, 0, 10, 640, 480)
+	if !ok || pRight.X >= 320 {
+		t.Fatalf("turning right should make center object move LEFT (X < 320), got X=%f", pRight.X)
+	}
+
+	// Test Pitch: looking up (+10 deg) makes object ahead move DOWN on screen
+	cam.Yaw = 0
+	cam.Pitch = 10.0
+	pUp, ok := cam.ProjectToScreen(0, 0, 10, 640, 480)
+	if !ok || pUp.Y <= 240 {
+		t.Fatalf("looking up should make center object move DOWN on screen (Y > 240), got Y=%f", pUp.Y)
+	}
 }
 
 func TestHUDDrawing(t *testing.T) {
@@ -70,9 +85,24 @@ func TestHUDDrawing(t *testing.T) {
 
 	fb.DrawHUD(20.0, 20, 0)
 
-	// Crosshair center pixel (320, 240) should be white (0xFFFFFFFF)
 	centerIdx := 240*640 + 320
 	if fb.Color[centerIdx] != 0xFFFFFFFF {
 		t.Fatalf("center pixel should be white crosshair, got 0x%X", fb.Color[centerIdx])
+	}
+}
+
+func BenchmarkRasterizerTriangle(b *testing.B) {
+	fb := NewFramebuffer(640, 480)
+	p0 := ScreenPoint{X: 100, Y: 100, Depth: 5}
+	p1 := ScreenPoint{X: 200, Y: 100, Depth: 5}
+	p2 := ScreenPoint{X: 150, Y: 200, Depth: 5}
+
+	v0 := NewScreenVertex(p0, 0, 0, 1, 0, 1.0)
+	v1 := NewScreenVertex(p1, 1, 0, 1, 0, 1.0)
+	v2 := NewScreenVertex(p2, 0.5, 1, 1, 0, 1.0)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		fb.DrawVoxelTrianglePerspective(v0, v1, v2)
 	}
 }

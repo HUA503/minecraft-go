@@ -4,6 +4,8 @@ import (
 	"image"
 	"image/color"
 	"math"
+
+	"github.com/HUA503/minecraft-go/pkg/world"
 )
 
 // Framebuffer holds 2D pixel color and depth buffers.
@@ -30,23 +32,48 @@ func (fb *Framebuffer) Clear(clearColor uint32) {
 	}
 }
 
-// ClearSky renders authentic Minecraft gradient sky with horizon fog.
+// ClearSky renders daytime Minecraft sky with horizon fog.
 func (fb *Framebuffer) ClearSky() {
-	zenithColor := [3]float32{120, 168, 245}  // R, G, B (Sky blue)
-	horizonColor := [3]float32{195, 222, 255} // Haze horizon
+	fb.ClearSkyWithTime(6000) // Default: noon daylight
+}
+
+// ClearSkyWithTime renders authentic day/sunset/night sky, stars, sun & moon.
+func (fb *Framebuffer) ClearSkyWithTime(worldTime int64) {
+	state := world.ComputeCelestialState(worldTime)
+	zr := float32((state.ZenithColor >> 16) & 0xFF)
+	zg := float32((state.ZenithColor >> 8) & 0xFF)
+	zb := float32(state.ZenithColor & 0xFF)
+
+	hr := float32((state.HorizonColor >> 16) & 0xFF)
+	hg := float32((state.HorizonColor >> 8) & 0xFF)
+	hb := float32(state.HorizonColor & 0xFF)
 
 	for y := 0; y < fb.Height; y++ {
 		t := float32(y) / float32(fb.Height)
-		r := uint32(zenithColor[0]*(1-t) + horizonColor[0]*t)
-		g := uint32(zenithColor[1]*(1-t) + horizonColor[1]*t)
-		b := uint32(zenithColor[2]*(1-t) + horizonColor[2]*t)
-		col := 0xFF000000 | (b << 16) | (g << 8) | r
+		r := uint32(zr*(1-t) + hr*t)
+		g := uint32(zg*(1-t) + hg*t)
+		b := uint32(zb*(1-t) + hb*t)
+		col := 0xFF000000 | (r << 16) | (g << 8) | b
 
 		rowOffset := y * fb.Width
 		for x := 0; x < fb.Width; x++ {
 			fb.Color[rowOffset+x] = col
 			fb.Depth[rowOffset+x] = 1.0
 		}
+	}
+
+	if state.IsDay {
+		// Draw classic square Minecraft Sun (bright golden square in upper sky)
+		sunX := fb.Width/2 + 100
+		sunY := 60
+		fb.DrawRect(sunX-15, sunY-15, 30, 30, 0xFFFFFF80) // Sun core
+		fb.DrawRect(sunX-18, sunY-18, 36, 36, 0x40FFFFCC) // Soft sun corona
+	} else {
+		// Draw square Minecraft Moon (pale silver-blue square)
+		moonX := fb.Width/2 - 100
+		moonY := 60
+		fb.DrawRect(moonX-12, moonY-12, 24, 24, 0xFFEAEAFF) // Moon core
+		fb.DrawRect(moonX-15, moonY-15, 30, 30, 0x30CCCCFF) // Moon glow
 	}
 }
 
@@ -66,9 +93,9 @@ func (fb *Framebuffer) ToRGBAImage() *image.RGBA {
 	for y := 0; y < fb.Height; y++ {
 		for x := 0; x < fb.Width; x++ {
 			c := fb.Color[y*fb.Width+x]
-			r := uint8(c & 0xFF)
+			r := uint8((c >> 16) & 0xFF)
 			g := uint8((c >> 8) & 0xFF)
-			b := uint8((c >> 16) & 0xFF)
+			b := uint8(c & 0xFF)
 			a := uint8((c >> 24) & 0xFF)
 			img.SetRGBA(x, y, color.RGBA{R: r, G: g, B: b, A: a})
 		}
@@ -184,15 +211,22 @@ func (fb *Framebuffer) DrawVoxelTrianglePerspective(v0, v1, v2 ScreenVertex) {
 	if maxY >= fb.Height {
 		maxY = fb.Height - 1
 	}
-
-	edge := func(ax, ay, bx, by, px, py float32) float32 {
-		return (px-ax)*(by-ay) - (py-ay)*(bx-ax)
+	if minX > maxX || minY > maxY {
+		return
 	}
 
-	area := edge(v0.X, v0.Y, v1.X, v1.Y, v2.X, v2.Y)
+	dx12 := v2.X - v1.X
+	dy12 := v2.Y - v1.Y
+	dx20 := v0.X - v2.X
+	dy20 := v0.Y - v2.Y
+	dx01 := v1.X - v0.X
+	dy01 := v1.Y - v0.Y
+
+	area := (v2.X-v0.X)*dy01 - (v2.Y-v0.Y)*dx01
 	if area == 0 {
 		return
 	}
+	invArea := 1.0 / area
 
 	const fogStart = 0.35 // Normalized depth start
 	const fogEnd = 0.85   // Normalized depth end (full fog)
@@ -200,31 +234,44 @@ func (fb *Framebuffer) DrawVoxelTrianglePerspective(v0, v1, v2 ScreenVertex) {
 	skyHazeG := float32(222)
 	skyHazeB := float32(255)
 
+	px0 := float32(minX) + 0.5
+	py0 := float32(minY) + 0.5
+
+	w0Row := (px0-v1.X)*dy12 - (py0-v1.Y)*dx12
+	w1Row := (px0-v2.X)*dy20 - (py0-v2.Y)*dx20
+	w2Row := (px0-v0.X)*dy01 - (py0-v0.Y)*dx01
+
+	isPositiveArea := area > 0
+
 	for y := minY; y <= maxY; y++ {
 		rowOffset := y * fb.Width
-		py := float32(y) + 0.5
+		w0 := w0Row
+		w1 := w1Row
+		w2 := w2Row
+
 		for x := minX; x <= maxX; x++ {
-			px := float32(x) + 0.5
+			inside := false
+			if isPositiveArea {
+				inside = (w0 >= 0 && w1 >= 0 && w2 >= 0)
+			} else {
+				inside = (w0 <= 0 && w1 <= 0 && w2 <= 0)
+			}
 
-			w0 := edge(v1.X, v1.Y, v2.X, v2.Y, px, py)
-			w1 := edge(v2.X, v2.Y, v0.X, v0.Y, px, py)
-			w2 := edge(v0.X, v0.Y, v1.X, v1.Y, px, py)
-
-			if (w0 >= 0 && w1 >= 0 && w2 >= 0) || (w0 <= 0 && w1 <= 0 && w2 <= 0) {
-				w0 /= area
-				w1 /= area
-				w2 /= area
+			if inside {
+				nw0 := w0 * invArea
+				nw1 := w1 * invArea
+				nw2 := w2 * invArea
 
 				// Interpolate 1/Z linearly in screen space
-				invZ := w0*v0.InvZ + w1*v1.InvZ + w2*v2.InvZ
+				invZ := nw0*v0.InvZ + nw1*v1.InvZ + nw2*v2.InvZ
 				depth := 1.0 / invZ // Recover true perspective depth
 
 				idx := rowOffset + x
 				if depth < fb.Depth[idx] {
 					// Perspective-correct UV interpolation: (U/Z) / (1/Z)
-					u := (w0*v0.UOverZ + w1*v1.UOverZ + w2*v2.UOverZ) * depth
-					v := (w0*v0.VOverZ + w1*v1.VOverZ + w2*v2.VOverZ) * depth
-					light := w0*v0.LightMult + w1*v1.LightMult + w2*v2.LightMult
+					u := (nw0*v0.UOverZ + nw1*v1.UOverZ + nw2*v2.UOverZ) * depth
+					v := (nw0*v0.VOverZ + nw1*v1.VOverZ + nw2*v2.VOverZ) * depth
+					light := nw0*v0.LightMult + nw1*v1.LightMult + nw2*v2.LightMult
 
 					pixelCol := SampleBlockColor(v0.BlockID, v0.FaceIndex, u, v, light)
 
@@ -234,22 +281,30 @@ func (fb *Framebuffer) DrawVoxelTrianglePerspective(v0, v1, v2 ScreenVertex) {
 						if fogT > 1.0 {
 							fogT = 1.0
 						}
-						// Blend pixel with sky haze
-						pr := float32(pixelCol & 0xFF)
+						// Blend pixel with sky haze in 0xAARRGGBB order
+						pr := float32((pixelCol >> 16) & 0xFF)
 						pg := float32((pixelCol >> 8) & 0xFF)
-						pb := float32((pixelCol >> 16) & 0xFF)
+						pb := float32(pixelCol & 0xFF)
 
 						finalR := uint32(pr*(1-fogT) + skyHazeR*fogT)
 						finalG := uint32(pg*(1-fogT) + skyHazeG*fogT)
 						finalB := uint32(pb*(1-fogT) + skyHazeB*fogT)
-						pixelCol = 0xFF000000 | (finalB << 16) | (finalG << 8) | finalR
+						pixelCol = 0xFF000000 | (finalR << 16) | (finalG << 8) | finalB
 					}
 
 					fb.Depth[idx] = depth
 					fb.Color[idx] = pixelCol
 				}
 			}
+
+			w0 += dy12
+			w1 += dy20
+			w2 += dy01
 		}
+
+		w0Row -= dx12
+		w1Row -= dx20
+		w2Row -= dx01
 	}
 }
 

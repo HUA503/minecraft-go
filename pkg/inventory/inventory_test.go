@@ -79,3 +79,78 @@ func TestCraftingRecipes(t *testing.T) {
 		t.Fatalf("furnace recipe failed: %+v", out)
 	}
 }
+
+func TestToolTiersAndDurability(t *testing.T) {
+	// Diamond pickaxe mining speed on stone vs bare hand
+	handMult := CalculateMiningSpeedMultiplier(ItemAir, ItemStone)
+	if handMult != 1.0 {
+		t.Fatalf("expected 1.0 for hand, got %f", handMult)
+	}
+	diaMult := CalculateMiningSpeedMultiplier(ItemDiamondPickaxe, ItemStone)
+	if diaMult != 8.0 {
+		t.Fatalf("expected 8.0 for diamond pickaxe, got %f", diaMult)
+	}
+
+	// Harvestability: Diamond Ore requires at least Iron Pickaxe
+	if CanHarvestBlock(ItemWoodenPickaxe, 56) {
+		t.Fatalf("wooden pickaxe should NOT be able to harvest diamond ore")
+	}
+	if CanHarvestBlock(ItemStonePickaxe, 56) {
+		t.Fatalf("stone pickaxe should NOT be able to harvest diamond ore")
+	}
+	if !CanHarvestBlock(ItemIronPickaxe, 56) {
+		t.Fatalf("iron pickaxe should be able to harvest diamond ore")
+	}
+	if !CanHarvestBlock(ItemDiamondPickaxe, 56) {
+		t.Fatalf("diamond pickaxe should be able to harvest diamond ore")
+	}
+
+	// Tool wear & breaking: 59 uses total (Wood)
+	stack := &ItemStack{ItemID: ItemWoodenPickaxe, Count: 1, Damage: 57}
+	broken := ApplyToolWear(stack)
+	if broken || stack.Damage != 58 {
+		t.Fatalf("wooden pickaxe at 57 wear + 1 should reach 58 without breaking yet: broken=%v, damage=%d", broken, stack.Damage)
+	}
+	// 59th use breaks it
+	broken = ApplyToolWear(stack)
+	if !broken || !stack.IsEmpty() {
+		t.Fatalf("wooden pickaxe should break when reaching 59 damage: broken=%v, stack=%+v", broken, stack)
+	}
+}
+
+func TestFurnaceSmeltingCycle(t *testing.T) {
+	furnace := NewFurnaceBlockEntity()
+	furnace.InputSlot = ItemStack{ItemID: 15, Count: 1}  // 1 Raw Iron Ore
+	furnace.FuelSlot = ItemStack{ItemID: ItemCoal, Count: 1} // 1 Coal (burns 1600 ticks)
+
+	// Before ticking: not burning, cook progress 0
+	if furnace.IsBurning() || furnace.CookTimeProgress != 0 {
+		t.Fatalf("furnace should be idle initially")
+	}
+
+	// Tick 1: Coal ignites, burn time becomes 1600, cook progress becomes 1
+	furnace.Tick()
+	if !furnace.IsBurning() || furnace.FuelSlot.Count != 0 {
+		t.Fatalf("coal should have been consumed to ignite furnace: fuelCount=%d, burning=%v", furnace.FuelSlot.Count, furnace.IsBurning())
+	}
+	if furnace.BurnTimeRemaining != 1600 {
+		t.Fatalf("expected 1600 burn time, got %d", furnace.BurnTimeRemaining)
+	}
+
+	// Fast-forward 199 ticks (total 200 ticks = 10s cook time)
+	for i := 0; i < 199; i++ {
+		furnace.Tick()
+	}
+
+	// Check completed smelt: Input should be empty, Output should be 1 Iron Ingot (ItemIronIngot = 265)
+	if !furnace.InputSlot.IsEmpty() {
+		t.Fatalf("input should be consumed, got %+v", furnace.InputSlot)
+	}
+	if furnace.OutputSlot.ItemID != ItemIronIngot || furnace.OutputSlot.Count != 1 {
+		t.Fatalf("expected 1 Iron Ingot in output, got %+v", furnace.OutputSlot)
+	}
+	// Furnace still has 1600 - 199 = 1401 ticks of fire left
+	if furnace.BurnTimeRemaining != 1401 {
+		t.Fatalf("expected 1401 burn time left, got %d", furnace.BurnTimeRemaining)
+	}
+}

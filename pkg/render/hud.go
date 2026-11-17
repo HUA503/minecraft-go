@@ -45,7 +45,7 @@ func (fb *Framebuffer) DrawHUD(health float32, hunger int, selectedSlot int) {
 		fb.DrawRect(hx, hudBaseY, 8, 8, 0xFF330000)
 		if i < numHearts {
 			// Red heart
-			fb.DrawRect(hx+1, hudBaseY+1, 6, 6, 0xFF0000FF) // Red in 0xAABBGGRR
+			fb.DrawRect(hx+1, hudBaseY+1, 6, 6, 0xFFFF1111) // Minecraft Authentic Red (0xAARRGGBB)
 		}
 	}
 
@@ -54,10 +54,10 @@ func (fb *Framebuffer) DrawHUD(health float32, hunger int, selectedSlot int) {
 	numDrumsticks := hunger / 2
 	for i := 0; i < 10; i++ {
 		hx := hungerStartX + i*10
-		fb.DrawRect(hx, hudBaseY, 8, 8, 0xFF1A1A1A)
+		fb.DrawRect(hx, hudBaseY, 8, 8, 0xFF2A1E14)
 		if i < numDrumsticks {
 			// Orange/brown drumstick
-			fb.DrawRect(hx+1, hudBaseY+1, 6, 6, 0xFF0088CC)
+			fb.DrawRect(hx+1, hudBaseY+1, 6, 6, 0xFFD47C2F) // Minecraft Authentic Cooked Meat
 		}
 	}
 

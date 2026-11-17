@@ -23,19 +23,20 @@ func NewCamera(x, y, z float64) *Camera {
 	}
 }
 
-// GetLookVector computes normalized forward direction vector (dx, dy, dz).
+// GetLookVector computes normalized forward direction vector (dx, dy, dz) matching Minecraft conventions.
 func (c *Camera) GetLookVector() (float64, float64, float64) {
 	radYaw := c.Yaw * math.Pi / 180.0
 	radPitch := c.Pitch * math.Pi / 180.0
 
 	dx := -math.Sin(radYaw) * math.Cos(radPitch)
-	dy := -math.Sin(radPitch)
+	dy := math.Sin(radPitch) // looking up is +Y
 	dz := math.Cos(radYaw) * math.Cos(radPitch)
 
 	return dx, dy, dz
 }
 
 // ProjectToScreen transforms a world point (wx, wy, wz) to screen coordinates.
+// Mathematically aligned so moving mouse right turns right, and moving mouse up looks up.
 func (c *Camera) ProjectToScreen(wx, wy, wz float64, screenW, screenH int) (ScreenPoint, bool) {
 	// 1. Translate relative to camera
 	tx := wx - c.X
@@ -43,7 +44,7 @@ func (c *Camera) ProjectToScreen(wx, wy, wz float64, screenW, screenH int) (Scre
 	tz := wz - c.Z
 
 	// 2. Rotate around Y axis (Yaw)
-	radYaw := -c.Yaw * math.Pi / 180.0
+	radYaw := c.Yaw * math.Pi / 180.0
 	cosY := math.Cos(radYaw)
 	sinY := math.Sin(radYaw)
 
@@ -51,7 +52,7 @@ func (c *Camera) ProjectToScreen(wx, wy, wz float64, screenW, screenH int) (Scre
 	rz := tx*sinY + tz*cosY
 
 	// 3. Rotate around X axis (Pitch)
-	radPitch := -c.Pitch * math.Pi / 180.0
+	radPitch := c.Pitch * math.Pi / 180.0
 	cosP := math.Cos(radPitch)
 	sinP := math.Sin(radPitch)
 

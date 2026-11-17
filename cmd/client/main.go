@@ -257,19 +257,65 @@ func (c *Client) PlaceBlockInFront() bool {
 func (c *Client) RenderFrame() {
 	c.UpdateRaycastTarget()
 
-	// 1. Sky gradient background with distance fog
-	c.framebuf.ClearSky()
+	// 1. Sky gradient background with dynamic day/night celestial simulation & distance fog
+	worldTime := int64(6000)
+	if c.engine != nil {
+		worldTime = c.engine.TickCount * 10
+	}
+	c.framebuf.ClearSkyWithTime(worldTime)
 
 	// 2. Render cached 3D chunk meshes with perspective-correct texturing & distance fog
 	c.meshMu.RLock()
-	for _, mesh := range c.meshCache {
+	lx, ly, lz := c.camera.GetLookVector()
+	camX, camY, camZ := c.camera.X, c.camera.Y, c.camera.Z
+
+	for key, mesh := range c.meshCache {
 		if mesh == nil {
 			continue
 		}
+
+		// Section bounding sphere culling against camera plane
+		scx := float64(key[0]*16 + 8)
+		scy := float64(key[1]*16 + 8)
+		scz := float64(key[2]*16 + 8)
+		distForward := (scx-camX)*lx + (scy-camY)*ly + (scz-camZ)*lz
+		if distForward < -14.0 {
+			// Entire section is behind camera plane, skip!
+			continue
+		}
+
 		for i := 0; i < len(mesh.Indices); i += 3 {
 			v0 := mesh.Vertices[mesh.Indices[i]]
 			v1 := mesh.Vertices[mesh.Indices[i+1]]
 			v2 := mesh.Vertices[mesh.Indices[i+2]]
+
+			// World-space exact normal culling for voxel face
+			switch v0.FaceIndex {
+			case 0: // +X face (visible only if camX > v0.X)
+				if camX <= float64(v0.X) {
+					continue
+				}
+			case 1: // -X face (visible only if camX < v0.X)
+				if camX >= float64(v0.X) {
+					continue
+				}
+			case 2: // +Y face (top, visible only if camY > v0.Y)
+				if camY <= float64(v0.Y) {
+					continue
+				}
+			case 3: // -Y face (bottom, visible only if camY < v0.Y)
+				if camY >= float64(v0.Y) {
+					continue
+				}
+			case 4: // +Z face (visible only if camZ > v0.Z)
+				if camZ <= float64(v0.Z) {
+					continue
+				}
+			case 5: // -Z face (visible only if camZ < v0.Z)
+				if camZ >= float64(v0.Z) {
+					continue
+				}
+			}
 
 			p0, ok0 := c.camera.ProjectToScreen(float64(v0.X), float64(v0.Y), float64(v0.Z), c.framebuf.Width, c.framebuf.Height)
 			p1, ok1 := c.camera.ProjectToScreen(float64(v1.X), float64(v1.Y), float64(v1.Z), c.framebuf.Width, c.framebuf.Height)
@@ -423,15 +469,23 @@ func runGraphicalWindow(c *Client, w, h int) {
 		}
 	}
 
-	// 60 FPS Buttery-smooth game loop
-	ticker := time.NewTicker(16 * time.Millisecond)
-	defer ticker.Stop()
-
-	moveSpeed := 0.22
+	// High-FPS precision delta-time game loop
 	mouseSensitivity := 0.15
+	lastTime := time.Now()
 
 	for wnd.PollEvents() {
-		<-ticker.C
+		now := time.Now()
+		dt := now.Sub(lastTime).Seconds()
+		if dt <= 0 {
+			dt = 0.001
+		}
+		if dt > 0.05 {
+			dt = 0.05 // Cap max dt to avoid physics skipping
+		}
+		lastTime = now
+
+		// Base movement speed scaled by dt (~12 blocks/sec sprint, normalized to 60fps)
+		moveSpeed := 12.0 * dt
 
 		// 1. Continuous keyboard movement polling
 		var fwd, strafe float64
@@ -453,29 +507,33 @@ func runGraphicalWindow(c *Client, w, h int) {
 			c.Jump()
 		}
 
-		// Keyboard arrow view look fallback
-		if wnd.IsKeyDown(0x25) { // Left
-			c.RotateView(-2.5, 0)
+		// Keyboard arrow view look fallback (smooth dt scaled)
+		if wnd.IsKeyDown(0x25) { // Left (turn left)
+			c.RotateView(-120.0*dt, 0)
 		}
-		if wnd.IsKeyDown(0x27) { // Right
-			c.RotateView(2.5, 0)
+		if wnd.IsKeyDown(0x27) { // Right (turn right)
+			c.RotateView(120.0*dt, 0)
 		}
-		if wnd.IsKeyDown(0x26) { // Up
-			c.RotateView(0, -2.5)
+		if wnd.IsKeyDown(0x26) { // Up (look up)
+			c.RotateView(0, 120.0*dt)
 		}
-		if wnd.IsKeyDown(0x28) { // Down
-			c.RotateView(0, 2.5)
+		if wnd.IsKeyDown(0x28) { // Down (look down)
+			c.RotateView(0, -120.0*dt)
 		}
 
 		// 2. Hardware 1:1 Mouse delta polling (Horizon & Minecraft standard centering)
+		// Standard FPS mouse look: +mdx turns yaw right, -mdy pitches camera up
 		mdx, mdy := wnd.PollMouseDelta()
 		if mdx != 0 || mdy != 0 {
-			c.RotateView(mdx*mouseSensitivity, mdy*mouseSensitivity)
+			c.RotateView(mdx*mouseSensitivity, -mdy*mouseSensitivity)
 		}
 
 		// 3. Render frame and present directly to native window
 		c.RenderFrame()
 		wnd.Present(c.framebuf)
+
+		// Brief yield to avoid pegging 100% CPU while delivering maximum smoothness
+		time.Sleep(1 * time.Millisecond)
 	}
 
 	log.Println("[Client] Game window closed.")

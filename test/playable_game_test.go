@@ -107,4 +107,41 @@ func TestFullPlayableSurvivalLoop(t *testing.T) {
 	if !player.IsAlive || player.Health != 20.0 {
 		t.Fatalf("player should be respawned with 20 HP")
 	}
+
+	// 9. Mob Combat & Loot Dropping
+	zombie := engine.SpawnMob(sim.MobZombie, sim.Vec3{X: 12.0, Y: 65.0, Z: 8.0})
+	drops, killed := engine.DamageMob(zombie.ID, 20.0)
+	if !killed || len(drops) == 0 {
+		t.Fatalf("zombie should be defeated and drop loot")
+	}
+	player.Inventory.AddItem(drops[0].ItemID, drops[0].Count)
+
+	// 10. Tool Durability Wear
+	tool := &player.Inventory.Slots[player.Inventory.SelectedHotbar]
+	tool.ItemID = inventory.ItemDiamondPickaxe
+	tool.Count = 1
+	tool.Damage = 0
+	inventory.ApplyToolWear(tool)
+	if tool.Damage != 1 {
+		t.Fatalf("tool should have 1 point of durability wear, got %d", tool.Damage)
+	}
+
+	// 11. Furnace Smelting Loop
+	furnace := inventory.NewFurnaceBlockEntity()
+	furnace.InputSlot = inventory.ItemStack{ItemID: 15, Count: 1} // Iron ore
+	furnace.FuelSlot = inventory.ItemStack{ItemID: inventory.ItemCoal, Count: 1}
+	for i := 0; i < 200; i++ {
+		furnace.Tick()
+	}
+	if furnace.OutputSlot.ItemID != inventory.ItemIronIngot {
+		t.Fatalf("furnace should produce iron ingot, got %+v", furnace.OutputSlot)
+	}
+
+	// 12. Celestial Day/Night Sky Simulation
+	fb.ClearSkyWithTime(18000) // Midnight
+	midnightCenter := fb.Color[10*640+320]
+	// Midnight sky should be dark navy
+	if midnightCenter == 0xFF87CEEB {
+		t.Fatalf("midnight sky should not be daytime blue")
+	}
 }

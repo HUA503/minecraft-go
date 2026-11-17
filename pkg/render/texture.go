@@ -18,32 +18,42 @@ func init() {
 }
 
 func initDefaultTextures() {
-	// Color constants (0xAABBGGRR)
-	dirtDark := uint32(0xFF223A5C)
-	dirtLight := uint32(0xFF2C4A75)
-	dirtMid := uint32(0xFF28436B)
+	// Authentic Minecraft Java color palette (0xAARRGGBB for standard 32-bit native display)
+	// Dirt: rich warm earth brown
+	dirtDark := uint32(0xFF6F4F37)  // R=111, G=79, B=55
+	dirtMid := uint32(0xFF866043)   // R=134, G=96, B=67
+	dirtLight := uint32(0xFF9B6F4E) // R=155, G=111, B=78
 
-	grassGreenDark := uint32(0xFF1E6E36)
-	grassGreenMid := uint32(0xFF258542)
-	grassGreenLight := uint32(0xFF2E9E4F)
+	// Grass: vibrant Minecraft meadow green
+	grassGreenDark := uint32(0xFF46862E)  // R=70, G=134, B=46
+	grassGreenMid := uint32(0xFF5AA53C)   // R=90, G=165, B=60
+	grassGreenLight := uint32(0xFF6FBF4C) // R=111, G=191, B=76
 
-	stoneDark := uint32(0xFF5A5A5A)
-	stoneMid := uint32(0xFF6E6E6E)
-	stoneLight := uint32(0xFF7E7E7E)
+	// Stone: natural mottled gray
+	stoneDark := uint32(0xFF636363)
+	stoneMid := uint32(0xFF7D7D7D)
+	stoneLight := uint32(0xFF969696)
 
-	woodBarkDark := uint32(0xFF18304E)
-	woodBarkLight := uint32(0xFF22446E)
-	woodRingsDark := uint32(0xFF386898)
-	woodRingsLight := uint32(0xFF5088C0)
+	// Wood Bark: oak tree trunk
+	woodBarkDark := uint32(0xFF4D3B26)
+	woodBarkLight := uint32(0xFF6B5336)
+	woodRingsDark := uint32(0xFF9E7C4D)
+	woodRingsLight := uint32(0xFFB8945F)
 
-	plankLine := uint32(0xFF285078)
-	plankBody := uint32(0xFF3E75A8)
-	plankLight := uint32(0xFF4C8ABE)
+	// Oak Planks: crafted wooden building boards
+	plankLine := uint32(0xFF8F6E3E)
+	plankBody := uint32(0xFFB8945F)
+	plankLight := uint32(0xFFC9A66F)
 
-	leafDark := uint32(0xFF165022)
-	leafLight := uint32(0xFF247A34)
+	// Oak Leaves: lush foliage
+	leafDark := uint32(0xFF2E631E)
+	leafLight := uint32(0xFF3D8228)
 
-	diamondCyan := uint32(0xFFE0E020) // Cyan in 0xAABBGGRR (Blue=0xE0, Green=0xE0, Red=0x20)
+	// Diamond: dazzling cyan gemstone
+	diamondCyan := uint32(0xFF4AEDD7) // R=74, G=237, B=215
+	coalBlack := uint32(0xFF242424)
+	ironTan := uint32(0xFFD8AF93)
+	goldYellow := uint32(0xFFFCEE4B)
 
 	// 1. Dirt Texture
 	var dirtTex BlockTexture
@@ -222,6 +232,144 @@ func initDefaultTextures() {
 		Bottom: diamondTex,
 		Side:   diamondTex,
 	}
+
+	// 10. Coal Ore (ID 16)
+	var coalTex BlockTexture
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			c := stoneTex[y][x]
+			if (x == 3 && y == 3) || (x == 4 && y == 3) || (x == 3 && y == 4) ||
+				(x == 10 && y == 11) || (x == 11 && y == 11) || (x == 10 && y == 12) {
+				c = coalBlack
+			}
+			coalTex[y][x] = c
+		}
+	}
+	Textures[16] = &BlockFaceTextures{Top: coalTex, Bottom: coalTex, Side: coalTex}
+
+	// 11. Iron Ore (ID 15)
+	var ironTex BlockTexture
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			c := stoneTex[y][x]
+			if (x == 6 && y == 5) || (x == 7 && y == 5) || (x == 6 && y == 6) ||
+				(x == 12 && y == 7) || (x == 13 && y == 7) || (x == 12 && y == 8) {
+				c = ironTan
+			}
+			ironTex[y][x] = c
+		}
+	}
+	Textures[15] = &BlockFaceTextures{Top: ironTex, Bottom: ironTex, Side: ironTex}
+
+	// 11b. Gold Ore (ID 14)
+	var goldTex BlockTexture
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			c := stoneTex[y][x]
+			if (x == 5 && y == 6) || (x == 6 && y == 6) || (x == 10 && y == 4) || (x == 9 && y == 12) {
+				c = goldYellow
+			}
+			goldTex[y][x] = c
+		}
+	}
+	Textures[14] = &BlockFaceTextures{Top: goldTex, Bottom: goldTex, Side: goldTex}
+
+	// 12. Sand (ID 12)
+	var sandTex BlockTexture
+	sandMid := uint32(0xFFDBCFA3)
+	sandDark := uint32(0xFFCEBF8A)
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			c := sandMid
+			if (x*3+y*7)%4 == 0 {
+				c = sandDark
+			}
+			sandTex[y][x] = c
+		}
+	}
+	Textures[12] = &BlockFaceTextures{Top: sandTex, Bottom: sandTex, Side: sandTex}
+
+	// 13. Bedrock (ID 7)
+	var bedrockTex BlockTexture
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			c := uint32(0xFF353535)
+			if (x*7+y*13)%3 == 0 {
+				c = uint32(0xFF1A1A1A)
+			} else if (x*11+y*5)%4 == 0 {
+				c = uint32(0xFF555555)
+			}
+			bedrockTex[y][x] = c
+		}
+	}
+	Textures[7] = &BlockFaceTextures{Top: bedrockTex, Bottom: bedrockTex, Side: bedrockTex}
+
+	// 14. Water (ID 9)
+	var waterTex BlockTexture
+	waterBlue := uint32(0xFF3F76E4)
+	waterLight := uint32(0xFF4C85F2)
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			c := waterBlue
+			if (x+y)%3 == 0 {
+				c = waterLight
+			}
+			waterTex[y][x] = c
+		}
+	}
+	Textures[9] = &BlockFaceTextures{Top: waterTex, Bottom: waterTex, Side: waterTex}
+
+	// 15. Lava (ID 11)
+	var lavaTex BlockTexture
+	lavaOrange := uint32(0xFFFF5500)
+	lavaYellow := uint32(0xFFFF9900)
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			c := lavaOrange
+			if (x*5+y*3)%4 == 0 {
+				c = lavaYellow
+			}
+			lavaTex[y][x] = c
+		}
+	}
+	Textures[11] = &BlockFaceTextures{Top: lavaTex, Bottom: lavaTex, Side: lavaTex}
+
+	// 16. Crafting Table (ID 58)
+	var craftTopTex BlockTexture
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			c := plankBody
+			if x == 0 || x == 15 || y == 0 || y == 15 || x == 8 || y == 8 {
+				c = plankLine
+			}
+			craftTopTex[y][x] = c
+		}
+	}
+	Textures[58] = &BlockFaceTextures{
+		Top:    craftTopTex,
+		Bottom: plankTex,
+		Side:   plankTex,
+	}
+
+	// 17. Furnace (ID 61)
+	var furnaceFrontTex BlockTexture
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			c := cobbleTex[y][x]
+			if y >= 6 && y <= 11 && x >= 4 && x <= 11 {
+				c = uint32(0xFF151515) // furnace opening
+				if y >= 9 && (x == 7 || x == 8) {
+					c = lavaOrange // warm coal embers
+				}
+			}
+			furnaceFrontTex[y][x] = c
+		}
+	}
+	Textures[61] = &BlockFaceTextures{
+		Top:    cobbleTex,
+		Bottom: cobbleTex,
+		Side:   furnaceFrontTex,
+	}
 }
 
 // SampleBlockColor samples pixel color from block texture and applies directional lighting.
@@ -256,15 +404,15 @@ func SampleBlockColor(blockID int32, faceIndex int, u, v float32, lightMult floa
 	return ApplyLighting(pixel, lightMult)
 }
 
-// ApplyLighting scales RGBA color channels by directional light multiplier.
+// ApplyLighting scales color channels by directional light multiplier in 0xAARRGGBB format.
 func ApplyLighting(col uint32, mult float32) uint32 {
 	if mult >= 1.0 {
 		return col
 	}
-	r := float32(col & 0xFF) * mult
+	r := float32((col >> 16) & 0xFF) * mult
 	g := float32((col >> 8) & 0xFF) * mult
-	b := float32((col >> 16) & 0xFF) * mult
+	b := float32(col & 0xFF) * mult
 	a := (col >> 24) & 0xFF
 
-	return (a << 24) | (uint32(b) << 16) | (uint32(g) << 8) | uint32(r)
+	return (a << 24) | (uint32(r) << 16) | (uint32(g) << 8) | uint32(b)
 }

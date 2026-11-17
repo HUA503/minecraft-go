@@ -105,3 +105,69 @@ func TestFallDamageAndDeathRespawn(t *testing.T) {
 		t.Fatalf("player should be respawned with 20 HP: alive=%v, health=%f", p.IsAlive, p.Health)
 	}
 }
+
+func TestZombieAIAndPlayerCombat(t *testing.T) {
+	eng := NewEngine()
+	player := eng.AddPlayer("Player", [16]byte{2}, Vec3{X: 10, Y: 64, Z: 10})
+
+	// Spawn Zombie 5 blocks away
+	zombie := eng.SpawnMob(MobZombie, Vec3{X: 10, Y: 64, Z: 15})
+	if zombie.Health != 20.0 || !zombie.IsAlive {
+		t.Fatalf("zombie should spawn with 20 HP")
+	}
+
+	// Tick simulation: zombie should detect player and walk towards player (-Z)
+	eng.Tick()
+	if zombie.Velocity.Z >= 0 {
+		t.Fatalf("zombie should move towards player (-Z), got vz=%f", zombie.Velocity.Z)
+	}
+
+	// Move zombie directly next to player (dist < 1.5 blocks)
+	zombie.Position = Vec3{X: 10, Y: 64, Z: 11}
+	zombie.AttackCooldown = 0
+	eng.Tick()
+
+	// Zombie should have attacked player for 3.0 damage (20 - 3 = 17)
+	if player.Health != 17.0 {
+		t.Fatalf("expected player health 17.0 after zombie attack, got %f", player.Health)
+	}
+
+	// Player strikes back and kills zombie
+	drops, killed := eng.DamageMob(zombie.ID, 20.0)
+	if !killed || len(drops) == 0 {
+		t.Fatalf("zombie should be killed and drop items: killed=%v, drops=%+v", killed, drops)
+	}
+	if drops[0].ItemID != 367 { // Rotten flesh
+		t.Fatalf("expected rotten flesh drop (367), got %d", drops[0].ItemID)
+	}
+}
+
+func TestCreeperExplosionDestruction(t *testing.T) {
+	eng := NewEngine()
+	player := eng.AddPlayer("Player", [16]byte{3}, Vec3{X: 0, Y: 64, Z: 0})
+
+	// Place dirt blocks around player
+	eng.SetBlock(1, 64, 1, 3)
+	eng.SetBlock(2, 64, 1, 3)
+
+	// Spawn Creeper 2 blocks away
+	creeper := eng.SpawnMob(MobCreeper, Vec3{X: 1, Y: 64, Z: 1})
+
+	// Tick 30 times to let fuse count down to explosion
+	for i := 0; i < 30; i++ {
+		eng.Tick()
+	}
+
+	// Creeper should have exploded
+	if creeper.IsAlive {
+		t.Fatalf("creeper should have exploded")
+	}
+	// Blocks in radius should have been blasted to Air (0)
+	if eng.GetBlock(1, 64, 1) != 0 {
+		t.Fatalf("dirt block at (1, 64, 1) should be destroyed by explosion")
+	}
+	// Player should have taken blast damage
+	if player.Health >= 20.0 {
+		t.Fatalf("player should have taken explosion damage, health=%f", player.Health)
+	}
+}

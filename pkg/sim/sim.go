@@ -43,6 +43,8 @@ type Engine struct {
 	World        map[world.ChunkPos]*world.Chunk
 	Players      map[int32]*PlayerEntity
 	nextPlayerID int32
+	Mobs         map[int32]*MobEntity
+	nextMobID    int32
 	TickCount    int64
 	Events       chan WorldEvent
 	stopChan     chan struct{}
@@ -53,9 +55,39 @@ func NewEngine() *Engine {
 		World:        make(map[world.ChunkPos]*world.Chunk),
 		Players:      make(map[int32]*PlayerEntity),
 		nextPlayerID: 1,
+		Mobs:         make(map[int32]*MobEntity),
+		nextMobID:    100,
 		Events:       make(chan WorldEvent, 1024),
 		stopChan:     make(chan struct{}),
 	}
+}
+
+func (e *Engine) SpawnMob(mobType MobType, pos Vec3) *MobEntity {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	id := e.nextMobID
+	e.nextMobID++
+	mob := NewMobEntity(id, mobType, pos)
+	e.Mobs[id] = mob
+	return mob
+}
+
+func (e *Engine) DamageMob(mobID int32, damage float32) (drops []inventory.ItemStack, killed bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	mob, ok := e.Mobs[mobID]
+	if !ok || !mob.IsAlive {
+		return nil, false
+	}
+	mob.Health -= damage
+	if mob.Health <= 0 {
+		mob.Health = 0
+		mob.IsAlive = false
+		drops = mob.DeathDrops()
+		delete(e.Mobs, mobID)
+		return drops, true
+	}
+	return nil, false
 }
 
 func (e *Engine) LoadChunk(cp world.ChunkPos, c *world.Chunk) {
@@ -301,7 +333,6 @@ func (e *Engine) MovePlayer(id int32, pos Vec3, yaw, pitch float32, onGround boo
 // Tick executes a single 50ms simulation step.
 func (e *Engine) Tick() {
 	e.mu.Lock()
-	defer e.mu.Unlock()
 	e.TickCount++
 
 	// Apply gravity and drag for free-falling players
@@ -335,6 +366,19 @@ func (e *Engine) Tick() {
 				p.FallDistance = 0
 			}
 		}
+	}
+
+	var activeMobs []*MobEntity
+	for _, m := range e.Mobs {
+		if m.IsAlive {
+			activeMobs = append(activeMobs, m)
+		}
+	}
+	e.mu.Unlock()
+
+	// Tick mob AI and behaviors outside the mutex
+	for _, m := range activeMobs {
+		m.TickMob(e)
 	}
 }
 
