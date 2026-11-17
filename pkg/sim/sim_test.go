@@ -1,6 +1,7 @@
 package sim
 
 import (
+	"math"
 	"testing"
 
 	"github.com/HUA503/minecraft-go/pkg/inventory"
@@ -169,5 +170,41 @@ func TestCreeperExplosionDestruction(t *testing.T) {
 	// Player should have taken blast damage
 	if player.Health >= 20.0 {
 		t.Fatalf("player should have taken explosion damage, health=%f", player.Health)
+	}
+}
+
+func TestMovementCollisionNoClipping(t *testing.T) {
+	eng := NewEngine()
+	// Solid floor at Y=63
+	for x := int32(8); x <= 12; x++ {
+		for z := int32(8); z <= 12; z++ {
+			eng.SetBlock(x, 63, z, 1) // Stone
+		}
+	}
+	// Solid stone wall at X=11 (blocks at (11, 64, 10) and (11, 65, 10))
+	eng.SetBlock(11, 64, 10, 1)
+	eng.SetBlock(11, 65, 10, 1)
+
+	player := eng.AddPlayer("Steve", [16]byte{5}, Vec3{X: 10.0, Y: 64.0, Z: 10.0})
+
+	// 1. Try to walk into the stone wall by delta X = +2.0
+	resPos, _ := eng.MovePlayerRelative(player.ID, Vec3{X: 2.0, Y: 0, Z: 0}, 0, 0)
+
+	// Wall is at X=11. Player has half-width 0.3. Max X allowed is 11.0 - 0.3 = 10.7
+	if resPos.X > 10.701 {
+		t.Fatalf("player clipped into wall! Expected X <= 10.7, got %f", resPos.X)
+	}
+	if resPos.X < 10.69 {
+		t.Fatalf("player stopped too far from wall, got X=%f", resPos.X)
+	}
+
+	// 2. Try to fall through solid stone floor (Y=63)
+	resPos, ground := eng.MovePlayerRelative(player.ID, Vec3{X: 0, Y: -2.0, Z: 0}, 0, 0)
+	if !ground {
+		t.Fatalf("player should be flagged onGround after landing on floor")
+	}
+	// Floor top is Y=63+1 = 64.0
+	if math.Abs(resPos.Y-64.0) > 1e-3 {
+		t.Fatalf("player feet should rest exactly on floor Y=64.0, got %f", resPos.Y)
 	}
 }

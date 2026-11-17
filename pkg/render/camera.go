@@ -23,20 +23,27 @@ func NewCamera(x, y, z float64) *Camera {
 	}
 }
 
-// GetLookVector computes normalized forward direction vector (dx, dy, dz) matching Minecraft conventions.
+// GetLookVector computes normalized forward direction vector (dx, dy, dz).
 func (c *Camera) GetLookVector() (float64, float64, float64) {
 	radYaw := c.Yaw * math.Pi / 180.0
 	radPitch := c.Pitch * math.Pi / 180.0
 
-	dx := -math.Sin(radYaw) * math.Cos(radPitch)
+	dx := math.Sin(radYaw) * math.Cos(radPitch)
 	dy := math.Sin(radPitch) // looking up is +Y
 	dz := math.Cos(radYaw) * math.Cos(radPitch)
 
 	return dx, dy, dz
 }
 
+// GetRightVector computes normalized horizontal right strafe vector (dx, dz).
+func (c *Camera) GetRightVector() (float64, float64) {
+	radYaw := c.Yaw * math.Pi / 180.0
+	return math.Cos(radYaw), -math.Sin(radYaw)
+}
+
 // ProjectToScreen transforms a world point (wx, wy, wz) to screen coordinates.
-// Mathematically aligned so moving mouse right turns right, and moving mouse up looks up.
+// Mathematically aligned so moving mouse right turns right, moving mouse up looks up,
+// and screen space perfectly matches WSAD world movement.
 func (c *Camera) ProjectToScreen(wx, wy, wz float64, screenW, screenH int) (ScreenPoint, bool) {
 	// 1. Translate relative to camera
 	tx := wx - c.X
@@ -59,8 +66,8 @@ func (c *Camera) ProjectToScreen(wx, wy, wz float64, screenW, screenH int) (Scre
 	ry := ty*cosP - rz*sinP
 	finalZ := ty*sinP + rz*cosP
 
-	// Behind camera or near clipping plane
-	if finalZ <= 0.1 {
+	// Behind camera or near clipping plane (relaxed to 0.05 so close blocks stay visible)
+	if finalZ <= 0.05 {
 		return ScreenPoint{}, false
 	}
 

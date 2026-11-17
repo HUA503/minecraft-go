@@ -77,6 +77,23 @@ func TestCameraLookVectorAndProjection(t *testing.T) {
 	if !ok || pUp.Y <= 240 {
 		t.Fatalf("looking up should make center object move DOWN on screen (Y > 240), got Y=%f", pUp.Y)
 	}
+
+	// Test 90-degree Right Turn: Look vector should be (+1, 0, 0), Right vector should be (0, -1)
+	cam.Yaw = 90.0
+	cam.Pitch = 0
+	fx, fy, fz := cam.GetLookVector()
+	if math.Abs(fx-1.0) > 1e-5 || math.Abs(fy) > 1e-5 || math.Abs(fz) > 1e-5 {
+		t.Fatalf("at yaw=90, forward vector should be (1, 0, 0), got (%f, %f, %f)", fx, fy, fz)
+	}
+	rx, rz := cam.GetRightVector()
+	if math.Abs(rx) > 1e-5 || math.Abs(rz-(-1.0)) > 1e-5 {
+		t.Fatalf("at yaw=90, right vector should be (0, -1), got (%f, %f)", rx, rz)
+	}
+	// Point directly ahead at (10, 0, 0) should project at screen center (320, 240)
+	pTurn, ok := cam.ProjectToScreen(10, 0, 0, 640, 480)
+	if !ok || math.Abs(float64(pTurn.X)-320) > 1.0 || math.Abs(float64(pTurn.Y)-240) > 1.0 {
+		t.Fatalf("target ahead at yaw=90 should project to screen center (320, 240), got (%f, %f)", pTurn.X, pTurn.Y)
+	}
 }
 
 func TestHUDDrawing(t *testing.T) {

@@ -179,3 +179,111 @@ func Raycast(origin Vec3, dir Vec3, maxDistance float64, isSolid func(x, y, z in
 
 	return RaycastResult{Hit: false}
 }
+
+// ResolveMovementCollision implements Minecraft standard Axis-Aligned Bounding Box (AABB)
+// swept collision resolution. Resolves Y, X, and Z axes independently so players slide
+// smoothly along walls, stand firmly on ground, and never clip through blocks.
+func ResolveMovementCollision(pos Vec3, delta Vec3, isSolid func(x, y, z int32) bool) (Vec3, bool) {
+	const halfW = 0.3
+	const height = 1.8
+	const epsilon = 1e-4
+
+	onGround := false
+
+	// Search bounding box for nearby candidate solid blocks
+	minX := int32(math.Floor(pos.X + math.Min(0, delta.X) - halfW - 1))
+	maxX := int32(math.Ceil(pos.X + math.Max(0, delta.X) + halfW + 1))
+	minY := int32(math.Floor(pos.Y + math.Min(0, delta.Y) - 1))
+	maxY := int32(math.Ceil(pos.Y + math.Max(0, delta.Y) + height + 1))
+	minZ := int32(math.Floor(pos.Z + math.Min(0, delta.Z) - halfW - 1))
+	maxZ := int32(math.Ceil(pos.Z + math.Max(0, delta.Z) + halfW + 1))
+
+	var solidBoxes []AABB
+	for by := minY; by <= maxY; by++ {
+		for bz := minZ; bz <= maxZ; bz++ {
+			for bx := minX; bx <= maxX; bx++ {
+				if isSolid(bx, by, bz) {
+					solidBoxes = append(solidBoxes, NewBlockAABB(bx, by, bz))
+				}
+			}
+		}
+	}
+
+	pBox := NewPlayerAABB(pos)
+
+	// 1. Resolve Y axis first (gravity / jump / landing)
+	dy := delta.Y
+	for _, b := range solidBoxes {
+		if pBox.Min.X < b.Max.X-epsilon && pBox.Max.X > b.Min.X+epsilon &&
+			pBox.Min.Z < b.Max.Z-epsilon && pBox.Max.Z > b.Min.Z+epsilon {
+			if dy < 0 && pBox.Min.Y >= b.Max.Y-epsilon {
+				maxDown := b.Max.Y - pBox.Min.Y
+				if maxDown > dy {
+					dy = maxDown
+					onGround = true
+				}
+			} else if dy > 0 && pBox.Max.Y <= b.Min.Y+epsilon {
+				maxUp := b.Min.Y - pBox.Max.Y
+				if maxUp < dy {
+					dy = maxUp
+				}
+			}
+		}
+	}
+	pos.Y += dy
+	pBox = NewPlayerAABB(pos)
+
+	// 2. Resolve X axis (sliding along X walls)
+	dx := delta.X
+	for _, b := range solidBoxes {
+		if pBox.Min.Y < b.Max.Y-epsilon && pBox.Max.Y > b.Min.Y+epsilon &&
+			pBox.Min.Z < b.Max.Z-epsilon && pBox.Max.Z > b.Min.Z+epsilon {
+			if dx > 0 && pBox.Max.X <= b.Min.X+epsilon {
+				maxRight := b.Min.X - pBox.Max.X
+				if maxRight < dx {
+					dx = maxRight
+				}
+			} else if dx < 0 && pBox.Min.X >= b.Max.X-epsilon {
+				maxLeft := b.Max.X - pBox.Min.X
+				if maxLeft > dx {
+					dx = maxLeft
+				}
+			}
+		}
+	}
+	pos.X += dx
+	pBox = NewPlayerAABB(pos)
+
+	// 3. Resolve Z axis (sliding along Z walls)
+	dz := delta.Z
+	for _, b := range solidBoxes {
+		if pBox.Min.X < b.Max.X-epsilon && pBox.Max.X > b.Min.X+epsilon &&
+			pBox.Min.Y < b.Max.Y-epsilon && pBox.Max.Y > b.Min.Y+epsilon {
+			if dz > 0 && pBox.Max.Z <= b.Min.Z+epsilon {
+				maxFwd := b.Min.Z - pBox.Max.Z
+				if maxFwd < dz {
+					dz = maxFwd
+				}
+			} else if dz < 0 && pBox.Min.Z >= b.Max.Z-epsilon {
+				maxBack := b.Max.Z - pBox.Min.Z
+				if maxBack > dz {
+					dz = maxBack
+				}
+			}
+		}
+	}
+	pos.Z += dz
+
+	// Extra ground stability check
+	if !onGround {
+		feetX := int32(math.Floor(pos.X))
+		feetY := int32(math.Floor(pos.Y - 0.05))
+		feetZ := int32(math.Floor(pos.Z))
+		if isSolid(feetX, feetY, feetZ) && math.Abs(pos.Y-float64(feetY+1)) < 0.15 {
+			pos.Y = float64(feetY + 1)
+			onGround = true
+		}
+	}
+
+	return pos, onGround
+}

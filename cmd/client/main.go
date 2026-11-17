@@ -40,6 +40,10 @@ type Client struct {
 	hasTarget    bool
 	walkCycle    float64
 	isMoving     bool
+	genOverworld *gen.Generator
+	loadedChunks map[world.ChunkPos]bool
+	lastChunkX   int32
+	lastChunkZ   int32
 }
 
 func NewClient(serverAddr, username string, isSingleplayer bool, width, height int) *Client {
@@ -47,28 +51,23 @@ func NewClient(serverAddr, username string, isSingleplayer bool, width, height i
 	rand.Read(u[:])
 
 	cli := &Client{
-		serverAddr:  serverAddr,
-		username:    username,
-		uuid:        u,
-		state:       protocol.StateHandshake,
-		framebuf:    render.NewFramebuffer(width, height),
-		camera:      render.NewCamera(8.0, 66.62, 8.0),
-		craftingMgr: inventory.NewCraftingManager(),
-		isLocal:     isSingleplayer,
-		meshCache:   make(map[[3]int32]*render.Mesh),
+		serverAddr:   serverAddr,
+		username:     username,
+		uuid:         u,
+		state:        protocol.StateHandshake,
+		framebuf:     render.NewFramebuffer(width, height),
+		camera:       render.NewCamera(8.0, 66.62, 8.0),
+		craftingMgr:  inventory.NewCraftingManager(),
+		isLocal:      isSingleplayer,
+		meshCache:    make(map[[3]int32]*render.Mesh),
+		loadedChunks: make(map[world.ChunkPos]bool),
+		lastChunkX:   -999,
+		lastChunkZ:   -999,
 	}
 
 	if isSingleplayer {
 		cli.engine = sim.NewEngine()
-		genOverworld := gen.NewGenerator(12345, gen.DimensionOverworld)
-
-		for cx := int32(-1); cx <= 1; cx++ {
-			for cz := int32(-1); cz <= 1; cz++ {
-				chunk := genOverworld.GenerateChunk(world.ChunkPos{X: cx, Z: cz})
-				cli.engine.LoadChunk(world.ChunkPos{X: cx, Z: cz}, chunk)
-			}
-		}
-
+		cli.genOverworld = gen.NewGenerator(12345, gen.DimensionOverworld)
 		cli.engine.StartTickLoop()
 		cli.player = cli.engine.AddPlayer(username, u, sim.Vec3{X: 8.0, Y: 65.0, Z: 8.0})
 
@@ -77,13 +76,26 @@ func NewClient(serverAddr, username string, isSingleplayer bool, width, height i
 		cli.player.Inventory.AddItem(inventory.ItemCobblestone, 64)
 		cli.player.Inventory.AddItem(inventory.ItemDirt, 64)
 
-		cli.RebuildMeshes()
+		cli.EnsureChunksAroundPlayer(8.0, 8.0, 2)
 	}
 
 	return cli
 }
 
-func (c *Client) RebuildMeshes() {
+// EnsureChunksAroundPlayer streams procedural world chunks and builds section meshes around the player.
+func (c *Client) EnsureChunksAroundPlayer(playerX, playerZ float64, radius int32) {
+	if c.genOverworld == nil || c.engine == nil {
+		return
+	}
+	pcx := int32(math.Floor(playerX / 16.0))
+	pcz := int32(math.Floor(playerZ / 16.0))
+
+	if pcx == c.lastChunkX && pcz == c.lastChunkZ && len(c.meshCache) > 0 {
+		return
+	}
+	c.lastChunkX = pcx
+	c.lastChunkZ = pcz
+
 	c.meshMu.Lock()
 	defer c.meshMu.Unlock()
 
@@ -91,14 +103,31 @@ func (c *Client) RebuildMeshes() {
 		return c.engine.GetBlock(x, y, z)
 	}
 
-	for cx := int32(-1); cx <= 1; cx++ {
-		for cz := int32(-1); cz <= 1; cz++ {
-			for sy := int32(2); sy <= 5; sy++ { // surface Y=32 to Y=96
-				key := [3]int32{cx, sy, cz}
-				mesh := render.BuildSectionMesh(getBlock, cx*16, sy*16, cz*16)
-				c.meshCache[key] = mesh
+	for dx := -radius; dx <= radius; dx++ {
+		for dz := -radius; dz <= radius; dz++ {
+			cp := world.ChunkPos{X: pcx + dx, Z: pcz + dz}
+			if !c.loadedChunks[cp] {
+				chunk := c.genOverworld.GenerateChunk(cp)
+				c.engine.LoadChunk(cp, chunk)
+				c.loadedChunks[cp] = true
+			}
+
+			// Build mesh for sections Y=16 to Y=128
+			for sy := int32(1); sy <= 7; sy++ {
+				key := [3]int32{cp.X, sy, cp.Z}
+				if c.meshCache[key] == nil {
+					mesh := render.BuildSectionMesh(getBlock, cp.X*16, sy*16, cp.Z*16)
+					c.meshCache[key] = mesh
+				}
 			}
 		}
+	}
+}
+
+func (c *Client) RebuildMeshes() {
+	if c.player != nil {
+		c.lastChunkX = -999
+		c.EnsureChunksAroundPlayer(c.player.Position.X, c.player.Position.Z, 2)
 	}
 }
 
@@ -148,27 +177,34 @@ func (c *Client) MoveRelative(forward, strafe float64) {
 		return
 	}
 	radYaw := c.camera.Yaw * math.Pi / 180.0
-	fdx := -math.Sin(radYaw) * forward
+	// Authentic Minecraft forward & right vectors:
+	// Forward = (sin(Yaw), 0, cos(Yaw))
+	// Right = (cos(Yaw), 0, -sin(Yaw))
+	fdx := math.Sin(radYaw) * forward
 	fdz := math.Cos(radYaw) * forward
 	sdx := math.Cos(radYaw) * strafe
-	sdz := math.Sin(radYaw) * strafe
+	sdz := -math.Sin(radYaw) * strafe
 
-	newPos := c.player.Position.Add(sim.Vec3{X: fdx + sdx, Y: 0, Z: fdz + sdz})
-	c.engine.MovePlayer(c.player.ID, newPos, float32(c.camera.Yaw), float32(c.camera.Pitch), c.player.OnGround)
+	delta := sim.Vec3{X: fdx + sdx, Y: c.player.Velocity.Y, Z: fdz + sdz}
+	resolvedPos, onGround := c.engine.MovePlayerRelative(c.player.ID, delta, float32(c.camera.Yaw), float32(c.camera.Pitch))
 
 	c.isMoving = (forward != 0 || strafe != 0)
-	if c.isMoving {
-		c.walkCycle += 0.25
-	} else {
+	if c.isMoving && onGround {
+		c.walkCycle += 0.20
+	} else if onGround {
 		c.walkCycle = 0
 	}
 
 	// Minecraft authentic head bobbing
-	bobY := math.Sin(c.walkCycle) * 0.05
+	bobY := math.Sin(c.walkCycle) * 0.035
+	bobX := math.Cos(c.walkCycle*0.5) * 0.02
 
-	c.camera.X = newPos.X
-	c.camera.Y = newPos.Y + 1.62 + bobY
-	c.camera.Z = newPos.Z
+	c.camera.X = resolvedPos.X + bobX
+	c.camera.Y = resolvedPos.Y + 1.62 + bobY // Exact eye height 1.62 blocks above ground
+	c.camera.Z = resolvedPos.Z
+
+	// Stream chunks as player moves
+	c.EnsureChunksAroundPlayer(resolvedPos.X, resolvedPos.Z, 2)
 }
 
 func (c *Client) Jump() {
@@ -274,13 +310,13 @@ func (c *Client) RenderFrame() {
 			continue
 		}
 
-		// Section bounding sphere culling against camera plane
+		// Section bounding sphere culling against camera plane (safe -18.0 threshold)
 		scx := float64(key[0]*16 + 8)
 		scy := float64(key[1]*16 + 8)
 		scz := float64(key[2]*16 + 8)
 		distForward := (scx-camX)*lx + (scy-camY)*ly + (scz-camZ)*lz
-		if distForward < -14.0 {
-			// Entire section is behind camera plane, skip!
+		if distForward < -18.0 {
+			// Entire section is safely behind camera plane, skip!
 			continue
 		}
 
@@ -289,30 +325,30 @@ func (c *Client) RenderFrame() {
 			v1 := mesh.Vertices[mesh.Indices[i+1]]
 			v2 := mesh.Vertices[mesh.Indices[i+2]]
 
-			// World-space exact normal culling for voxel face
+			// World-space exact normal culling for voxel face with safe epsilon to avoid grazing culling
 			switch v0.FaceIndex {
 			case 0: // +X face (visible only if camX > v0.X)
-				if camX <= float64(v0.X) {
+				if camX <= float64(v0.X)-0.05 {
 					continue
 				}
 			case 1: // -X face (visible only if camX < v0.X)
-				if camX >= float64(v0.X) {
+				if camX >= float64(v0.X)+0.05 {
 					continue
 				}
 			case 2: // +Y face (top, visible only if camY > v0.Y)
-				if camY <= float64(v0.Y) {
+				if camY <= float64(v0.Y)-0.05 {
 					continue
 				}
 			case 3: // -Y face (bottom, visible only if camY < v0.Y)
-				if camY >= float64(v0.Y) {
+				if camY >= float64(v0.Y)+0.05 {
 					continue
 				}
 			case 4: // +Z face (visible only if camZ > v0.Z)
-				if camZ <= float64(v0.Z) {
+				if camZ <= float64(v0.Z)-0.05 {
 					continue
 				}
 			case 5: // -Z face (visible only if camZ < v0.Z)
-				if camZ >= float64(v0.Z) {
+				if camZ >= float64(v0.Z)+0.05 {
 					continue
 				}
 			}
@@ -484,22 +520,33 @@ func runGraphicalWindow(c *Client, w, h int) {
 		}
 		lastTime = now
 
-		// Base movement speed scaled by dt (~12 blocks/sec sprint, normalized to 60fps)
-		moveSpeed := 12.0 * dt
+		// Authentic Minecraft Java speeds (meters/sec)
+		const (
+			normalWalkSpeed = 4.317
+			sprintSpeed     = 5.612
+			sneakSpeed      = 1.295
+		)
+		speed := normalWalkSpeed
+		if wnd.IsKeyDown(0x10) { // Shift: Sneak
+			speed = sneakSpeed
+		} else if wnd.IsKeyDown(0x11) { // Ctrl: Sprint
+			speed = sprintSpeed
+		}
+		moveStep := speed * dt
 
 		// 1. Continuous keyboard movement polling
 		var fwd, strafe float64
 		if wnd.IsKeyDown(0x57) { // W
-			fwd += moveSpeed
+			fwd += moveStep
 		}
 		if wnd.IsKeyDown(0x53) { // S
-			fwd -= moveSpeed
+			fwd -= moveStep
 		}
 		if wnd.IsKeyDown(0x41) { // A
-			strafe -= moveSpeed
+			strafe -= moveStep
 		}
 		if wnd.IsKeyDown(0x44) { // D
-			strafe += moveSpeed
+			strafe += moveStep
 		}
 		c.MoveRelative(fwd, strafe)
 
