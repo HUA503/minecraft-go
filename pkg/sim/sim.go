@@ -128,10 +128,89 @@ func (e *Engine) DamageMob(mobID int32, damage float32) (drops []inventory.ItemS
 		mob.Health = 0
 		mob.IsAlive = false
 		drops = mob.DeathDrops()
+		for _, stack := range drops {
+			e.nextItemDropID++
+			e.ItemDrops[e.nextItemDropID] = &ItemDrop{
+				ID:          e.nextItemDropID,
+				ItemID:      stack.ItemID,
+				Count:       stack.Count,
+				Position:    mob.Position.Add(Vec3{X: 0, Y: 0.5, Z: 0}),
+				Velocity:    Vec3{X: 0, Y: 0.15, Z: 0},
+				PickupDelay: 0.2,
+			}
+		}
 		delete(e.Mobs, mobID)
 		return drops, true
 	}
 	return nil, false
+}
+
+func (e *Engine) GetMobs() []*MobEntity {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	res := make([]*MobEntity, 0, len(e.Mobs))
+	for _, m := range e.Mobs {
+		if m.IsAlive {
+			res = append(res, m)
+		}
+	}
+	return res
+}
+
+func (e *Engine) AttackMobInFront(origin, look Vec3, reach float64, damage float32) (int32, bool, bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	var closestMob *MobEntity
+	closestDist := reach
+
+	for _, mob := range e.Mobs {
+		if !mob.IsAlive {
+			continue
+		}
+		toMob := mob.Position.Sub(origin)
+		dist := toMob.Length()
+		if dist > reach {
+			continue
+		}
+		dir := toMob.Normalize()
+		dot := dir.X*look.X + dir.Y*look.Y + dir.Z*look.Z
+		if dot > 0.80 && dist < closestDist {
+			closestDist = dist
+			closestMob = mob
+		}
+	}
+
+	if closestMob == nil {
+		return 0, false, false
+	}
+
+	closestMob.Health -= damage
+	knockback := look.Scale(0.25)
+	knockback.Y = 0.12
+	closestMob.Velocity = closestMob.Velocity.Add(knockback)
+
+	killed := false
+	if closestMob.Health <= 0 {
+		closestMob.Health = 0
+		closestMob.IsAlive = false
+		killed = true
+		drops := closestMob.DeathDrops()
+		for _, stack := range drops {
+			e.nextItemDropID++
+			e.ItemDrops[e.nextItemDropID] = &ItemDrop{
+				ID:          e.nextItemDropID,
+				ItemID:      stack.ItemID,
+				Count:       stack.Count,
+				Position:    closestMob.Position.Add(Vec3{X: 0, Y: 0.5, Z: 0}),
+				Velocity:    Vec3{X: 0, Y: 0.15, Z: 0},
+				PickupDelay: 0.2,
+			}
+		}
+		delete(e.Mobs, closestMob.ID)
+	}
+
+	return closestMob.ID, killed, true
 }
 
 func (e *Engine) LoadChunk(cp world.ChunkPos, c *world.Chunk) {

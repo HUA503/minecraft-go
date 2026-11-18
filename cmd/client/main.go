@@ -58,6 +58,7 @@ type Client struct {
 	lastHitSoundTime time.Time
 	placeCooldown    float64
 	particles        []render.Particle
+	showInventoryGUI bool
 }
 
 func NewClient(serverAddr, username string, isSingleplayer bool, width, height int) *Client {
@@ -93,6 +94,12 @@ func NewClient(serverAddr, username string, isSingleplayer bool, width, height i
 		cli.player.Inventory.Slots[4] = inventory.ItemStack{ItemID: 268, Count: 1} // Wooden Sword
 		cli.player.Inventory.Slots[5] = inventory.ItemStack{ItemID: 271, Count: 1} // Wooden Axe
 		cli.player.Inventory.Slots[6] = inventory.ItemStack{ItemID: 269, Count: 1} // Wooden Shovel
+
+		// Spawn living mobs in meadow around player
+		cli.engine.SpawnMob(sim.MobPig, sim.Vec3{X: 13.0, Y: 66.0, Z: 11.0})
+		cli.engine.SpawnMob(sim.MobCow, sim.Vec3{X: 5.0, Y: 66.0, Z: 14.0})
+		cli.engine.SpawnMob(sim.MobZombie, sim.Vec3{X: 17.0, Y: 66.0, Z: 19.0})
+		cli.engine.SpawnMob(sim.MobCreeper, sim.Vec3{X: 6.0, Y: 66.0, Z: 22.0})
 
 		cli.EnsureChunksAroundPlayer(8.0, 8.0, 2)
 	}
@@ -663,6 +670,14 @@ func (c *Client) RenderFrame() {
 		}
 	}
 
+	// 3.7 Render 3D living mobs (Zombies, Creepers, Cows, Pigs, Skeletons)
+	if c.engine != nil {
+		mobs := c.engine.GetMobs()
+		for _, m := range mobs {
+			c.drawMob(m)
+		}
+	}
+
 	// 4. Draw first-person held item with walking sway and authentic arm swing
 	c.drawHeldItem()
 
@@ -680,6 +695,267 @@ func (c *Client) RenderFrame() {
 		}
 	}
 	c.framebuf.DrawHUDWithInventory(health, hunger, selectedSlot, hotbarSlots)
+
+	// 6. Draw 2D Inventory & Crafting GUI if toggled (E key)
+	if c.showInventoryGUI && c.player != nil && c.player.Inventory != nil {
+		c.framebuf.DrawInventoryGUI(c.player.Inventory)
+	}
+}
+
+func (c *Client) drawMob(m *sim.MobEntity) {
+	// Center of mob body at Y+0.85
+	sp, ok := c.camera.ProjectToScreen(m.Position.X, m.Position.Y+0.85, m.Position.Z, c.framebuf.Width, c.framebuf.Height)
+	if !ok || sp.Depth <= 0.2 || sp.Depth > 64.0 {
+		return
+	}
+
+	// Calculate size based on distance
+	baseScale := 42.0 / sp.Depth
+	bw := int(baseScale * 0.45)
+	bh := int(baseScale * 0.95)
+	if bw < 3 {
+		bw = 3
+	} else if bw > 60 {
+		bw = 60
+	}
+	if bh < 6 {
+		bh = 6
+	} else if bh > 120 {
+		bh = 120
+	}
+
+	sx := int(sp.X) - bw/2
+	sy := int(sp.Y) - bh/2
+
+	// Flashing red if recently hurt
+	hurtFlash := m.Health < m.MaxHealth && (int(m.Health*10)%2 == 0)
+
+	headCol := uint32(0xFF4C7838) // Zombie green
+	bodyCol := uint32(0xFF2E8690) // Cyan shirt
+	legCol := uint32(0xFF2A3663)  // Dark blue pants
+
+	switch m.Type {
+	case sim.MobZombie:
+		headCol = 0xFF4C7838
+		bodyCol = 0xFF2E8690
+		legCol = 0xFF2A3663
+	case sim.MobCreeper:
+		headCol = 0xFF48B33B
+		bodyCol = 0xFF3DA330
+		legCol = 0xFF359428
+		if m.FuseTicks > 0 && (m.FuseTicks%4 < 2) {
+			headCol = 0xFFFFFFFF // Flashing fuse white
+			bodyCol = 0xFFEEEEEE
+		}
+	case sim.MobPig:
+		headCol = 0xFFF0A0A0 // Pig pink
+		bodyCol = 0xFFF0A0A0
+		legCol = 0xFFE08E8E
+		bh = int(baseScale * 0.6) // Shorter quadruped body
+		sy = int(sp.Y) - bh/2
+	case sim.MobCow:
+		headCol = 0xFF46382E // Cow dark brown
+		bodyCol = 0xFFECECEC // Cow spotted white
+		legCol = 0xFF33271F
+		bh = int(baseScale * 0.75)
+		sy = int(sp.Y) - bh/2
+	case sim.MobSkeleton:
+		headCol = 0xFFDCDCDC // Bone white
+		bodyCol = 0xFFDCDCDC
+		legCol = 0xFFC0C0C0
+	}
+
+	if hurtFlash {
+		headCol = 0xFFFF3333
+		bodyCol = 0xFFFF2222
+		legCol = 0xFFFF1111
+	}
+
+	// Rasterize mob billboard with depth testing
+	headH := bh / 3
+	bodyH := bh * 2 / 5
+
+	for dy := 0; dy < bh; dy++ {
+		py := sy + dy
+		for dx := 0; dx < bw; dx++ {
+			px := sx + dx
+			col := bodyCol
+			if dy < headH {
+				col = headCol
+				// Draw eye spots on mob face
+				if dy > headH/3 && dy < headH*2/3 {
+					if dx == bw/3 || dx == bw*2/3 {
+						col = 0xFF000000 // Black eyes
+					}
+				}
+			} else if dy > headH+bodyH {
+				col = legCol
+			}
+			c.framebuf.SetPixel(px, py, sp.Depth, col)
+		}
+	}
+
+	// Health bar above mob if damaged
+	if m.Health < m.MaxHealth {
+		barW := bw + 4
+		barH := 3
+		barX := sx - 2
+		barY := sy - 6
+		c.framebuf.DrawRect(barX, barY, barW, barH, 0xFF000000)
+		hpFrac := m.Health / m.MaxHealth
+		if hpFrac < 0 {
+			hpFrac = 0
+		}
+		fillW := int(float32(barW-2) * hpFrac)
+		c.framebuf.DrawRect(barX+1, barY+1, fillW, barH-2, 0xFF00FF00)
+	}
+}
+
+func (c *Client) AttackMob() bool {
+	if c.player == nil || c.engine == nil {
+		return false
+	}
+	dmg := float32(1.0) // Bare fist base damage
+	if sel := c.player.Inventory.GetSelectedItem(); !sel.IsEmpty() {
+		if props, ok := inventory.GetToolProperties(sel.ItemID); ok {
+			dmg = props.AttackDamage
+		}
+	}
+
+	camPos := sim.Vec3{X: c.camera.X, Y: c.camera.Y, Z: c.camera.Z}
+	lx, ly, lz := c.camera.GetLookVector()
+	look := sim.Vec3{X: lx, Y: ly, Z: lz}
+
+	mobID, killed, hit := c.engine.AttackMobInFront(camPos, look, 3.5, dmg)
+	if hit {
+		c.isSwinging = true
+		c.swingProgress = 0.0
+		sound.PlayHardwareFeedback("minecraft:entity.generic.hurt")
+
+		// Emit red blood / strike particles
+		for i := 0; i < 8; i++ {
+			rx := (randFloat() - 0.5) * 0.5
+			ry := (randFloat() - 0.5) * 0.5
+			rz := (randFloat() - 0.5) * 0.5
+			c.particles = append(c.particles, render.Particle{
+				X:       c.camera.X + lx*2.0 + rx,
+				Y:       c.camera.Y + ly*2.0 + ry,
+				Z:       c.camera.Z + lz*2.0 + rz,
+				Vx:      (randFloat() - 0.5) * 2.0,
+				Vy:      randFloat()*2.0 + 1.0,
+				Vz:      (randFloat() - 0.5) * 2.0,
+				Color:   0xFFFF2222,
+				Life:    0.3,
+				MaxLife: 0.3,
+			})
+		}
+
+		if killed {
+			sound.PlayHardwareFeedback("minecraft:entity.generic.death")
+			// Mob death puff particles
+			for i := 0; i < 16; i++ {
+				rx := (randFloat() - 0.5) * 0.8
+				ry := (randFloat() - 0.5) * 0.8
+				rz := (randFloat() - 0.5) * 0.8
+				c.particles = append(c.particles, render.Particle{
+					X:       c.camera.X + lx*2.0 + rx,
+					Y:       c.camera.Y + ly*2.0 + ry,
+					Z:       c.camera.Z + lz*2.0 + rz,
+					Vx:      (randFloat() - 0.5) * 3.0,
+					Vy:      randFloat()*3.0 + 1.0,
+					Vz:      (randFloat() - 0.5) * 3.0,
+					Color:   0xFFEEEEEE, // Smoke white
+					Life:    0.5,
+					MaxLife: 0.5,
+				})
+			}
+			log.Printf("[Combat] Slew mob #%d!", mobID)
+		}
+		return true
+	}
+	return false
+}
+
+func (c *Client) TryQuickCraft(recipeIndex int) bool {
+	if c.player == nil || c.player.Inventory == nil {
+		return false
+	}
+	inv := c.player.Inventory
+
+	findItem := func(id int32, minCount int) int {
+		for i, s := range inv.Slots {
+			if s.ItemID == id && s.Count >= minCount {
+				return i
+			}
+		}
+		return -1
+	}
+
+	switch recipeIndex {
+	case 1: // 1 Log -> 4 Planks
+		slot := findItem(inventory.ItemOakLog, 1)
+		if slot >= 0 {
+			_ = inv.RemoveItem(slot, 1)
+			inv.AddItem(inventory.ItemOakPlanks, 4)
+			sound.PlayHardwareFeedback("minecraft:item.craft")
+			return true
+		}
+	case 2: // 2 Planks -> 4 Sticks (ID 280)
+		slot := findItem(inventory.ItemOakPlanks, 2)
+		if slot >= 0 {
+			_ = inv.RemoveItem(slot, 2)
+			inv.AddItem(280, 4)
+			sound.PlayHardwareFeedback("minecraft:item.craft")
+			return true
+		}
+	case 3: // 4 Planks -> Crafting Table
+		slot := findItem(inventory.ItemOakPlanks, 4)
+		if slot >= 0 {
+			_ = inv.RemoveItem(slot, 4)
+			inv.AddItem(inventory.ItemCraftingTable, 1)
+			sound.PlayHardwareFeedback("minecraft:item.craft")
+			return true
+		}
+	case 4: // 3 Planks + 2 Sticks -> Wooden Pickaxe
+		pSlot := findItem(inventory.ItemOakPlanks, 3)
+		sSlot := findItem(280, 2)
+		if pSlot >= 0 && sSlot >= 0 {
+			_ = inv.RemoveItem(pSlot, 3)
+			_ = inv.RemoveItem(sSlot, 2)
+			inv.AddItem(inventory.ItemWoodenPickaxe, 1)
+			sound.PlayHardwareFeedback("minecraft:item.craft")
+			return true
+		}
+	case 5: // 2 Planks + 1 Stick -> Wooden Sword
+		pSlot := findItem(inventory.ItemOakPlanks, 2)
+		sSlot := findItem(280, 1)
+		if pSlot >= 0 && sSlot >= 0 {
+			_ = inv.RemoveItem(pSlot, 2)
+			_ = inv.RemoveItem(sSlot, 1)
+			inv.AddItem(268, 1)
+			sound.PlayHardwareFeedback("minecraft:item.craft")
+			return true
+		}
+	case 6: // 3 Cobble + 2 Sticks -> Stone Pickaxe
+		cSlot := findItem(inventory.ItemCobblestone, 3)
+		sSlot := findItem(280, 2)
+		if cSlot >= 0 && sSlot >= 0 {
+			_ = inv.RemoveItem(cSlot, 3)
+			_ = inv.RemoveItem(sSlot, 2)
+			inv.AddItem(inventory.ItemStonePickaxe, 1)
+			sound.PlayHardwareFeedback("minecraft:item.craft")
+			return true
+		}
+	case 7: // 8 Cobble -> Furnace
+		cSlot := findItem(inventory.ItemCobblestone, 8)
+		if cSlot >= 0 {
+			_ = inv.RemoveItem(cSlot, 8)
+			inv.AddItem(inventory.ItemFurnace, 1)
+			sound.PlayHardwareFeedback("minecraft:item.craft")
+			return true
+		}
+	}
+	return false
 }
 
 func (c *Client) drawItemDrop(drop sim.ItemDrop) {
@@ -878,23 +1154,36 @@ func runGraphicalWindow(c *Client, w, h int) {
 			c.MineTargetedBlock()
 		case 0x52: // R: Place
 			c.PlaceBlockInFront()
-		case 0x45: // E: Craft
-			if c.player != nil {
-				c.player.Inventory.AddItem(inventory.ItemOakPlanks, 4)
+		case 0x45: // E: Toggle Inventory & Crafting GUI
+			c.showInventoryGUI = !c.showInventoryGUI
+			wnd.SetMouseCaptured(!c.showInventoryGUI)
+		case 0x1B: // Escape: Close GUI or toggle mouse lock
+			if c.showInventoryGUI {
+				c.showInventoryGUI = false
+				wnd.SetMouseCaptured(true)
+			} else {
+				wnd.SetMouseCaptured(!wnd.MouseCaptured)
 			}
 		case 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39: // 1-9
-			slot := vkCode - 0x31
-			if c.player != nil {
-				c.player.Inventory.SelectedHotbar = slot
+			idx := vkCode - 0x31 + 1
+			if c.showInventoryGUI {
+				c.TryQuickCraft(idx)
+			} else if c.player != nil {
+				c.player.Inventory.SelectedHotbar = idx - 1
 			}
-		case 0x1B: // Escape: Toggle mouse lock
-			wnd.SetMouseCaptured(!wnd.MouseCaptured)
 		}
 	}
 
 	// Mouse button clicks (instant single-tap actions)
 	wnd.OnMouseClick = func(btn int) {
+		if c.showInventoryGUI {
+			return
+		}
 		if btn == 1 {
+			// Check if attacking living mob in front
+			if c.AttackMob() {
+				return
+			}
 			// Trigger arm swing on click
 			if !c.isSwinging {
 				c.isSwinging = true
@@ -926,6 +1215,14 @@ func runGraphicalWindow(c *Client, w, h int) {
 			dt = 0.05 // Cap max dt to avoid physics skipping
 		}
 		lastTime = now
+
+		// If Inventory & Crafting GUI is open, freeze world controls and display GUI
+		if c.showInventoryGUI {
+			time.Sleep(16 * time.Millisecond)
+			c.RenderFrame()
+			wnd.Present(c.framebuf)
+			continue
+		}
 
 		// 1. Edge-triggered Spacebar Jump (prevents continuous hopping)
 		spaceDown := wnd.IsKeyDown(0x20)
