@@ -373,3 +373,156 @@ func (fb *Framebuffer) DrawLine(x0, y0, x1, y1 int, col uint32) {
 		}
 	}
 }
+
+// Particle represents a 3D textured debris particle emitted during block mining or breaking.
+type Particle struct {
+	X, Y, Z    float64
+	Vx, Vy, Vz float64
+	Color      uint32
+	Life       float64
+	MaxLife    float64
+}
+
+// DrawParticles renders 3D physical debris particles with perspective projection.
+func (fb *Framebuffer) DrawParticles(cam *Camera, particles []Particle) {
+	for _, p := range particles {
+		if p.Life <= 0 {
+			continue
+		}
+		sp, ok := cam.ProjectToScreen(p.X, p.Y, p.Z, fb.Width, fb.Height)
+		if !ok {
+			continue
+		}
+		sx := int(sp.X)
+		sy := int(sp.Y)
+		for dy := -1; dy <= 1; dy++ {
+			for dx := -1; dx <= 1; dx++ {
+				fb.SetPixel(sx+dx, sy+dy, sp.Depth, p.Color)
+			}
+		}
+	}
+}
+
+// Canonical Minecraft crack lines per stage (0 through 9) in normalized [0, 1] face coordinates.
+var crackSegments = [][4]float64{
+	// Stage 0 (early hairline crack)
+	{0.45, 0.45, 0.55, 0.55},
+	{0.55, 0.45, 0.48, 0.52},
+	// Stage 1
+	{0.35, 0.35, 0.45, 0.45},
+	{0.55, 0.55, 0.65, 0.65},
+	// Stage 2
+	{0.45, 0.45, 0.40, 0.70},
+	{0.55, 0.45, 0.70, 0.40},
+	// Stage 3
+	{0.25, 0.30, 0.35, 0.35},
+	{0.65, 0.65, 0.75, 0.80},
+	// Stage 4
+	{0.40, 0.70, 0.25, 0.85},
+	{0.70, 0.40, 0.85, 0.30},
+	// Stage 5
+	{0.50, 0.50, 0.50, 0.20},
+	{0.50, 0.20, 0.30, 0.15},
+	// Stage 6
+	{0.50, 0.20, 0.70, 0.10},
+	{0.40, 0.70, 0.60, 0.80},
+	// Stage 7
+	{0.25, 0.85, 0.10, 0.90},
+	{0.85, 0.30, 0.95, 0.35},
+	// Stage 8
+	{0.15, 0.15, 0.25, 0.30},
+	{0.85, 0.85, 0.75, 0.80},
+	// Stage 9 (full shattered spiderweb)
+	{0.05, 0.50, 0.25, 0.45},
+	{0.95, 0.50, 0.75, 0.55},
+	{0.50, 0.05, 0.50, 0.20},
+	{0.50, 0.95, 0.50, 0.80},
+}
+
+// DrawBlockDamage renders Minecraft 10-stage destruction cracks across the visible faces of a block.
+func (fb *Framebuffer) DrawBlockDamage(cam *Camera, bx, by, bz int32, stage int) {
+	if stage < 0 {
+		return
+	}
+	if stage > 9 {
+		stage = 9
+	}
+
+	// Determine how many crack lines to render for this destruction stage
+	numSegments := (stage + 1) * 2 + (stage / 3)
+	if numSegments > len(crackSegments) {
+		numSegments = len(crackSegments)
+	}
+
+	fx, fy, fz := float64(bx), float64(by), float64(bz)
+	crackColor := uint32(0xFF181818) // Dark charcoal crack texture
+
+	// Check each face and draw cracks if face is pointing towards camera
+	type faceSpec struct {
+		visible bool
+		pointAt func(u, v float64) (float64, float64, float64)
+	}
+
+	faces := [6]faceSpec{
+		// 0: +X face
+		{
+			visible: cam.X > fx+1.0,
+			pointAt: func(u, v float64) (float64, float64, float64) {
+				return fx + 1.002, fy + v, fz + u
+			},
+		},
+		// 1: -X face
+		{
+			visible: cam.X < fx,
+			pointAt: func(u, v float64) (float64, float64, float64) {
+				return fx - 0.002, fy + v, fz + (1.0 - u)
+			},
+		},
+		// 2: +Y face (Top)
+		{
+			visible: cam.Y > fy+1.0,
+			pointAt: func(u, v float64) (float64, float64, float64) {
+				return fx + u, fy + 1.002, fz + v
+			},
+		},
+		// 3: -Y face (Bottom)
+		{
+			visible: cam.Y < fy,
+			pointAt: func(u, v float64) (float64, float64, float64) {
+				return fx + u, fy - 0.002, fz + (1.0 - v)
+			},
+		},
+		// 4: +Z face
+		{
+			visible: cam.Z > fz+1.0,
+			pointAt: func(u, v float64) (float64, float64, float64) {
+				return fx + (1.0 - u), fy + v, fz + 1.002
+			},
+		},
+		// 5: -Z face
+		{
+			visible: cam.Z < fz,
+			pointAt: func(u, v float64) (float64, float64, float64) {
+				return fx + u, fy + v, fz - 0.002
+			},
+		},
+	}
+
+	for _, f := range faces {
+		if !f.visible {
+			continue
+		}
+		for i := 0; i < numSegments; i++ {
+			seg := crackSegments[i]
+			x0, y0, z0 := f.pointAt(seg[0], seg[1])
+			x1, y1, z1 := f.pointAt(seg[2], seg[3])
+
+			p0, ok0 := cam.ProjectToScreen(x0, y0, z0, fb.Width, fb.Height)
+			p1, ok1 := cam.ProjectToScreen(x1, y1, z1, fb.Width, fb.Height)
+
+			if ok0 && ok1 {
+				fb.DrawLine(int(p0.X), int(p0.Y), int(p1.X), int(p1.Y), crackColor)
+			}
+		}
+	}
+}

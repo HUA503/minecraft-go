@@ -109,6 +109,71 @@ func IsShovelEffective(blockID int32) bool {
 	}
 }
 
+// BlockHardness defines canonical Minecraft Java Edition block hardness values.
+// Negative values (-1.0) indicate unbreakable blocks such as Bedrock.
+var BlockHardness = map[int32]float64{
+	0:   0.0,  // Air
+	1:   1.5,  // Stone
+	2:   0.6,  // Grass Block
+	3:   0.5,  // Dirt
+	4:   2.0,  // Cobblestone
+	5:   2.0,  // Oak Planks
+	7:   -1.0, // Bedrock (unbreakable)
+	8:   100.0, // Water
+	9:   100.0, // Flowing Water
+	10:  100.0, // Lava
+	11:  100.0, // Flowing Lava
+	12:  0.5,  // Sand
+	13:  0.6,  // Gravel
+	14:  3.0,  // Gold Ore
+	15:  3.0,  // Iron Ore
+	16:  3.0,  // Coal Ore
+	17:  2.0,  // Oak Log
+	18:  0.2,  // Oak Leaves
+	20:  0.3,  // Glass
+	49:  50.0, // Obsidian
+	50:  0.0,  // Torch (instant)
+	56:  3.0,  // Diamond Ore
+	58:  2.5,  // Crafting Table
+	61:  3.5,  // Furnace
+	87:  0.4,  // Netherrack
+	89:  0.3,  // Glowstone
+	121: 3.0,  // End Stone
+	150: 3.0,  // Deepslate
+}
+
+// GetBlockHardness returns the hardness of a block ID.
+func GetBlockHardness(blockID int32) float64 {
+	h, ok := BlockHardness[blockID]
+	if !ok {
+		return 1.5 // Default standard block hardness
+	}
+	return h
+}
+
+// CalculateBlockDamagePerSecond computes fractional damage (0.0 to 1.0) inflicted per second.
+// Returns 0.0 for unbreakable blocks, and >=100.0 for instantly breakable blocks.
+func CalculateBlockDamagePerSecond(toolID, blockID int32) float64 {
+	hardness := GetBlockHardness(blockID)
+	if hardness < 0 {
+		return 0.0 // Bedrock is unbreakable
+	}
+	if hardness == 0 {
+		return 100.0 // Instant break (e.g. torch, flowers)
+	}
+
+	canHarvest := CanHarvestBlock(toolID, blockID)
+	speedMultiplier := CalculateMiningSpeedMultiplier(toolID, blockID)
+
+	canHarvestFactor := 30.0
+	if !canHarvest {
+		canHarvestFactor = 100.0
+	}
+
+	damagePerTick := speedMultiplier / (hardness * canHarvestFactor)
+	return damagePerTick * 20.0 // 20 ticks per second
+}
+
 // CanHarvestBlock checks if current tool tier is sufficient to drop items.
 func CanHarvestBlock(toolID, blockID int32) bool {
 	reqTier, requiresTool := BlockRequiredHarvestLevel[blockID]

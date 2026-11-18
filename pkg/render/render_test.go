@@ -108,6 +108,58 @@ func TestHUDDrawing(t *testing.T) {
 	}
 }
 
+func TestClipTriangleNear(t *testing.T) {
+	zNear := 0.05
+
+	// Case 1: All vertices behind near plane
+	v0 := ViewVertex{X: 0, Y: 0, Z: 0.01}
+	v1 := ViewVertex{X: 1, Y: 0, Z: -0.5}
+	v2 := ViewVertex{X: 0, Y: 1, Z: 0.02}
+	tris, n := ClipTriangleNear(v0, v1, v2, zNear)
+	if n != 0 {
+		t.Fatalf("expected 0 triangles for triangle fully behind near plane, got %d", n)
+	}
+
+	// Case 2: All vertices in front of near plane
+	v0 = ViewVertex{X: 0, Y: 0, Z: 1.0}
+	v1 = ViewVertex{X: 1, Y: 0, Z: 1.5}
+	v2 = ViewVertex{X: 0, Y: 1, Z: 1.2}
+	tris, n = ClipTriangleNear(v0, v1, v2, zNear)
+	if n != 1 {
+		t.Fatalf("expected 1 triangle for fully visible triangle, got %d", n)
+	}
+	if tris[0].V0.Z != 1.0 || tris[0].V1.Z != 1.5 || tris[0].V2.Z != 1.2 {
+		t.Fatalf("expected unchanged vertices")
+	}
+
+	// Case 3: 1 vertex in front (v0), 2 behind (v1, v2)
+	v0 = ViewVertex{X: 0, Y: 0, Z: 1.0}
+	v1 = ViewVertex{X: 1, Y: 0, Z: -1.0}
+	v2 = ViewVertex{X: 0, Y: 1, Z: -1.0}
+	tris, n = ClipTriangleNear(v0, v1, v2, zNear)
+	if n != 1 {
+		t.Fatalf("expected 1 clipped triangle, got %d", n)
+	}
+	if math.Abs(tris[0].V1.Z-zNear) > 1e-5 || math.Abs(tris[0].V2.Z-zNear) > 1e-5 {
+		t.Fatalf("clipped intersection points must have Z == zNear, got %f and %f", tris[0].V1.Z, tris[0].V2.Z)
+	}
+
+	// Case 4: 2 vertices in front (v1, v2), 1 behind (v0)
+	v0 = ViewVertex{X: 0, Y: 0, Z: -1.0}
+	v1 = ViewVertex{X: 1, Y: 0, Z: 1.0}
+	v2 = ViewVertex{X: 0, Y: 1, Z: 1.0}
+	tris, n = ClipTriangleNear(v0, v1, v2, zNear)
+	if n != 2 {
+		t.Fatalf("expected 2 clipped triangles (clipped quad), got %d", n)
+	}
+	for i := 0; i < 2; i++ {
+		tri := tris[i]
+		if tri.V0.Z < zNear-1e-5 || tri.V1.Z < zNear-1e-5 || tri.V2.Z < zNear-1e-5 {
+			t.Fatalf("tri %d has vertex behind near plane: %f, %f, %f", i, tri.V0.Z, tri.V1.Z, tri.V2.Z)
+		}
+	}
+}
+
 func BenchmarkRasterizerTriangle(b *testing.B) {
 	fb := NewFramebuffer(640, 480)
 	p0 := ScreenPoint{X: 100, Y: 100, Depth: 5}

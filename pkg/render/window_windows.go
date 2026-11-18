@@ -32,6 +32,7 @@ var (
 	procClientToScreen   = user32.NewProc("ClientToScreen")
 	procScreenToClient   = user32.NewProc("ScreenToClient")
 	procStretchDIBits     = gdi32.NewProc("StretchDIBits")
+	procGetAsyncKeyState = user32.NewProc("GetAsyncKeyState")
 )
 
 const (
@@ -128,8 +129,13 @@ func wndProc(hwnd, msg, wparam, lparam uintptr) uintptr {
 	case WM_ACTIVATE:
 		active := (wparam & 0xFFFF) != 0
 		if globalWnd != nil {
-			if !active && globalWnd.MouseCaptured {
-				globalWnd.SetMouseCaptured(false)
+			if !active {
+				if globalWnd.MouseCaptured {
+					globalWnd.SetMouseCaptured(false)
+				}
+				globalWnd.mu.Lock()
+				globalWnd.KeyDown = [256]bool{} // Clear keys on focus loss
+				globalWnd.mu.Unlock()
 			}
 		}
 		return 0
@@ -278,9 +284,31 @@ func (w *Window) PollMouseDelta() (float64, float64) {
 	return dx, dy
 }
 
+// IsMouseDown queries whether the given mouse button (1=Left, 2=Right) is currently physically pressed down.
+func (w *Window) IsMouseDown(btn int) bool {
+	if !w.MouseCaptured || w.Closed {
+		return false
+	}
+	var vk int
+	if btn == 1 {
+		vk = 0x01 // VK_LBUTTON
+	} else if btn == 2 {
+		vk = 0x02 // VK_RBUTTON
+	} else {
+		return false
+	}
+	ret, _, _ := procGetAsyncKeyState.Call(uintptr(vk))
+	return (ret & 0x8000) != 0
+}
+
 func (w *Window) IsKeyDown(vkCode int) bool {
 	if vkCode < 0 || vkCode >= 256 {
 		return false
+	}
+	// Query direct hardware key status (high bit set = key is currently physically pressed down)
+	ret, _, _ := procGetAsyncKeyState.Call(uintptr(vkCode))
+	if (ret & 0x8000) != 0 {
+		return true
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()

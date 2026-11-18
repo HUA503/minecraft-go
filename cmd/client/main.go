@@ -18,6 +18,7 @@ import (
 	"github.com/HUA503/minecraft-go/pkg/protocol"
 	"github.com/HUA503/minecraft-go/pkg/render"
 	"github.com/HUA503/minecraft-go/pkg/sim"
+	"github.com/HUA503/minecraft-go/pkg/sound"
 	"github.com/HUA503/minecraft-go/pkg/world"
 	"github.com/HUA503/minecraft-go/pkg/world/gen"
 )
@@ -40,10 +41,23 @@ type Client struct {
 	hasTarget    bool
 	walkCycle    float64
 	isMoving     bool
-	genOverworld *gen.Generator
-	loadedChunks map[world.ChunkPos]bool
-	lastChunkX   int32
-	lastChunkZ   int32
+	isSprinting  bool
+	isSneaking   bool
+	wasSpaceDown bool
+	genOverworld     *gen.Generator
+	loadedChunks     map[world.ChunkPos]bool
+	lastChunkX       int32
+	lastChunkZ       int32
+	// Authentic Minecraft Mining State
+	isMining         bool
+	breakProgress    float64 // 0.0 to 1.0
+	miningPos        world.BlockPos
+	hasMiningBlock   bool
+	swingProgress    float64 // 0.0 to 1.0
+	isSwinging       bool
+	lastHitSoundTime time.Time
+	placeCooldown    float64
+	particles        []render.Particle
 }
 
 func NewClient(serverAddr, username string, isSingleplayer bool, width, height int) *Client {
@@ -172,44 +186,87 @@ func (c *Client) Connect() error {
 	return nil
 }
 
-func (c *Client) MoveRelative(forward, strafe float64) {
+// PhysicsStep executes one delta-time scaled physics step with authentic Minecraft Java Edition physics.
+func (c *Client) PhysicsStep(fwdInput, strafeInput float64, jumpRequested bool, dt float64) {
 	if c.player == nil {
 		return
 	}
+
+	// 1. Jumping: Authentic Minecraft initial upward impulse of 8.4 m/s (0.42 blocks/tick * 20)
+	if jumpRequested && c.player.OnGround {
+		c.player.Velocity.Y = 8.4
+		c.player.OnGround = false
+	}
+
+	// 2. Gravity: Authentic Minecraft 32.0 m/s^2 (0.08 blocks/tick^2 * 400), terminal velocity -78.4 m/s
+	if !c.player.OnGround {
+		c.player.Velocity.Y -= 32.0 * dt
+		if c.player.Velocity.Y < -78.4 {
+			c.player.Velocity.Y = -78.4
+		}
+	}
+
+	// 3. Horizontal Speeds: Walk 4.317 m/s, Sprint 5.612 m/s, Sneak 1.295 m/s
+	speed := 4.317
+	if c.isSneaking {
+		speed = 1.295
+	} else if c.isSprinting {
+		speed = 5.612
+	}
+
+	var fwd, strafe float64
+	lenInput := math.Hypot(fwdInput, strafeInput)
+	if lenInput > 0 {
+		fwd = (fwdInput / lenInput) * speed * dt
+		strafe = (strafeInput / lenInput) * speed * dt
+	}
+
 	radYaw := c.camera.Yaw * math.Pi / 180.0
 	// Authentic Minecraft forward & right vectors:
 	// Forward = (sin(Yaw), 0, cos(Yaw))
 	// Right = (cos(Yaw), 0, -sin(Yaw))
-	fdx := math.Sin(radYaw) * forward
-	fdz := math.Cos(radYaw) * forward
-	sdx := math.Cos(radYaw) * strafe
-	sdz := -math.Sin(radYaw) * strafe
+	dx := math.Sin(radYaw)*fwd + math.Cos(radYaw)*strafe
+	dz := math.Cos(radYaw)*fwd - math.Sin(radYaw)*strafe
+	dy := c.player.Velocity.Y * dt
 
-	delta := sim.Vec3{X: fdx + sdx, Y: c.player.Velocity.Y, Z: fdz + sdz}
+	delta := sim.Vec3{X: dx, Y: dy, Z: dz}
 	resolvedPos, onGround := c.engine.MovePlayerRelative(c.player.ID, delta, float32(c.camera.Yaw), float32(c.camera.Pitch))
 
-	c.isMoving = (forward != 0 || strafe != 0)
+	c.player.OnGround = onGround
+	if onGround {
+		c.player.Velocity.Y = 0
+	}
+
+	// 4. Update Camera & Bobbing
+	c.isMoving = (lenInput > 0)
 	if c.isMoving && onGround {
-		c.walkCycle += 0.20
+		c.walkCycle += 10.0 * dt // Authentic Minecraft walk cycle speed
 	} else if onGround {
 		c.walkCycle = 0
 	}
 
-	// Minecraft authentic head bobbing
-	bobY := math.Sin(c.walkCycle) * 0.035
-	bobX := math.Cos(c.walkCycle*0.5) * 0.02
+	bobY := 0.0
+	bobX := 0.0
+	if onGround && c.isMoving {
+		bobY = math.Sin(c.walkCycle) * 0.035
+		bobX = math.Cos(c.walkCycle*0.5) * 0.02
+	}
 
 	c.camera.X = resolvedPos.X + bobX
-	c.camera.Y = resolvedPos.Y + 1.62 + bobY // Exact eye height 1.62 blocks above ground
+	c.camera.Y = resolvedPos.Y + 1.62 + bobY // Eye level = 1.62 blocks above ground
 	c.camera.Z = resolvedPos.Z
 
 	// Stream chunks as player moves
 	c.EnsureChunksAroundPlayer(resolvedPos.X, resolvedPos.Z, 2)
 }
 
+func (c *Client) MoveRelative(forward, strafe float64) {
+	c.PhysicsStep(forward, strafe, false, 0.05)
+}
+
 func (c *Client) Jump() {
 	if c.player != nil && c.player.OnGround {
-		c.player.Velocity.Y = 0.42
+		c.player.Velocity.Y = 8.4
 		c.player.OnGround = false
 	}
 }
@@ -246,13 +303,146 @@ func (c *Client) UpdateRaycastTarget() {
 	}
 }
 
+func (c *Client) UpdateMining(isLeftMouseDown bool, dt float64) {
+	if c.player == nil || c.engine == nil {
+		return
+	}
+
+	// Update block place cooldown
+	if c.placeCooldown > 0 {
+		c.placeCooldown -= dt
+	}
+
+	// Update active debris particles
+	var activeParticles []render.Particle
+	for i := range c.particles {
+		p := &c.particles[i]
+		p.Life -= dt
+		if p.Life > 0 {
+			p.X += p.Vx * dt
+			p.Y += p.Vy * dt
+			p.Z += p.Vz * dt
+			p.Vy -= 12.0 * dt // Particle gravity
+			activeParticles = append(activeParticles, *p)
+		}
+	}
+	c.particles = activeParticles
+
+	// Arm swing animation decay when not actively mining
+	if !isLeftMouseDown {
+		c.breakProgress = 0.0
+		c.hasMiningBlock = false
+		c.isMining = false
+		if c.isSwinging {
+			c.swingProgress += dt * 4.0
+			if c.swingProgress >= 1.0 {
+				c.isSwinging = false
+				c.swingProgress = 0.0
+			}
+		}
+		return
+	}
+
+	// Left click is held down: start or continue swinging arm
+	c.isSwinging = true
+	c.swingProgress += dt * 4.0 // Authentic rhythmic arm swing (4 swings per second)
+	if c.swingProgress >= 1.0 {
+		c.swingProgress -= 1.0
+	}
+
+	if !c.hasTarget {
+		// Punching air
+		c.breakProgress = 0.0
+		c.hasMiningBlock = false
+		c.isMining = false
+		return
+	}
+
+	blockID := c.engine.GetBlock(c.targetedPos.X, c.targetedPos.Y, c.targetedPos.Z)
+	if blockID == 0 || blockID == 7 { // Air or Bedrock cannot be broken
+		c.breakProgress = 0.0
+		c.hasMiningBlock = false
+		c.isMining = false
+		return
+	}
+
+	// Target changed: reset breaking progress
+	if !c.hasMiningBlock || c.miningPos != c.targetedPos {
+		c.miningPos = c.targetedPos
+		c.hasMiningBlock = true
+		c.breakProgress = 0.0
+	}
+
+	c.isMining = true
+	heldToolID := int32(0)
+	if sel := c.player.Inventory.GetSelectedItem(); !sel.IsEmpty() {
+		heldToolID = sel.ItemID
+	}
+
+	dps := inventory.CalculateBlockDamagePerSecond(heldToolID, blockID)
+	c.breakProgress += dps * dt
+
+	// Periodically emit hitting sounds and small debris particles
+	if time.Since(c.lastHitSoundTime) > 220*time.Millisecond {
+		c.lastHitSoundTime = time.Now()
+		sound.PlayHardwareFeedback("minecraft:block.hit")
+		c.spawnBlockDebris(c.miningPos, blockID, 3)
+	}
+
+	// Block breaking completion threshold (100% progress)
+	if c.breakProgress >= 1.0 {
+		c.engine.BreakBlockWithTool(c.player.ID, c.miningPos, heldToolID)
+		c.spawnBlockDebris(c.miningPos, blockID, 20) // Explosion of particles
+		sound.PlayHardwareFeedback(sound.GetBlockBreakSound(blockID))
+
+		c.breakProgress = 0.0
+		c.hasMiningBlock = false
+		c.isMining = false
+		c.RebuildMeshes()
+	}
+}
+
+func (c *Client) spawnBlockDebris(pos world.BlockPos, blockID int32, count int) {
+	col := render.SampleBlockColor(blockID, 2, 0.5, 0.5, 1.0)
+	for i := 0; i < count; i++ {
+		rx := (randFloat() - 0.5) * 0.8
+		ry := (randFloat() - 0.5) * 0.8
+		rz := (randFloat() - 0.5) * 0.8
+		vx := (randFloat() - 0.5) * 3.5
+		vy := randFloat()*3.0 + 1.2
+		vz := (randFloat() - 0.5) * 3.5
+		c.particles = append(c.particles, render.Particle{
+			X:       float64(pos.X) + 0.5 + rx,
+			Y:       float64(pos.Y) + 0.5 + ry,
+			Z:       float64(pos.Z) + 0.5 + rz,
+			Vx:      vx,
+			Vy:      vy,
+			Vz:      vz,
+			Color:   col,
+			Life:    0.4 + randFloat()*0.3,
+			MaxLife: 0.7,
+		})
+	}
+}
+
+func randFloat() float64 {
+	var b [1]byte
+	rand.Read(b[:])
+	return float64(b[0]) / 255.0
+}
+
 func (c *Client) MineTargetedBlock() (int32, bool) {
 	if !c.hasTarget || c.player == nil {
 		return 0, false
 	}
-	drop := c.engine.BreakBlock(c.player.ID, c.targetedPos)
+	heldToolID := int32(0)
+	if sel := c.player.Inventory.GetSelectedItem(); !sel.IsEmpty() {
+		heldToolID = sel.ItemID
+	}
+	drop, ok := c.engine.BreakBlockWithTool(c.player.ID, c.targetedPos, heldToolID)
+	c.spawnBlockDebris(c.targetedPos, drop, 16)
 	c.RebuildMeshes()
-	return drop, true
+	return drop, ok
 }
 
 func (c *Client) PlaceBlockInFront() bool {
@@ -325,42 +515,52 @@ func (c *Client) RenderFrame() {
 			v1 := mesh.Vertices[mesh.Indices[i+1]]
 			v2 := mesh.Vertices[mesh.Indices[i+2]]
 
-			// World-space exact normal culling for voxel face with safe epsilon to avoid grazing culling
+			// World-space exact normal culling for planar voxel face (zero arbitrary epsilon to prevent flickering)
 			switch v0.FaceIndex {
 			case 0: // +X face (visible only if camX > v0.X)
-				if camX <= float64(v0.X)-0.05 {
+				if camX <= float64(v0.X) {
 					continue
 				}
 			case 1: // -X face (visible only if camX < v0.X)
-				if camX >= float64(v0.X)+0.05 {
+				if camX >= float64(v0.X) {
 					continue
 				}
 			case 2: // +Y face (top, visible only if camY > v0.Y)
-				if camY <= float64(v0.Y)-0.05 {
+				if camY <= float64(v0.Y) {
 					continue
 				}
 			case 3: // -Y face (bottom, visible only if camY < v0.Y)
-				if camY >= float64(v0.Y)+0.05 {
+				if camY >= float64(v0.Y) {
 					continue
 				}
 			case 4: // +Z face (visible only if camZ > v0.Z)
-				if camZ <= float64(v0.Z)-0.05 {
+				if camZ <= float64(v0.Z) {
 					continue
 				}
 			case 5: // -Z face (visible only if camZ < v0.Z)
-				if camZ >= float64(v0.Z)+0.05 {
+				if camZ >= float64(v0.Z) {
 					continue
 				}
 			}
 
-			p0, ok0 := c.camera.ProjectToScreen(float64(v0.X), float64(v0.Y), float64(v0.Z), c.framebuf.Width, c.framebuf.Height)
-			p1, ok1 := c.camera.ProjectToScreen(float64(v1.X), float64(v1.Y), float64(v1.Z), c.framebuf.Width, c.framebuf.Height)
-			p2, ok2 := c.camera.ProjectToScreen(float64(v2.X), float64(v2.Y), float64(v2.Z), c.framebuf.Width, c.framebuf.Height)
+			vx0, vy0, vz0 := c.camera.ToViewSpace(float64(v0.X), float64(v0.Y), float64(v0.Z))
+			vx1, vy1, vz1 := c.camera.ToViewSpace(float64(v1.X), float64(v1.Y), float64(v1.Z))
+			vx2, vy2, vz2 := c.camera.ToViewSpace(float64(v2.X), float64(v2.Y), float64(v2.Z))
 
-			if ok0 && ok1 && ok2 {
-				sv0 := render.NewScreenVertex(p0, v0.U, v0.V, v0.BlockID, v0.FaceIndex, v0.LightingMult)
-				sv1 := render.NewScreenVertex(p1, v1.U, v1.V, v1.BlockID, v1.FaceIndex, v1.LightingMult)
-				sv2 := render.NewScreenVertex(p2, v2.U, v2.V, v2.BlockID, v2.FaceIndex, v2.LightingMult)
+			vv0 := render.ViewVertex{X: vx0, Y: vy0, Z: vz0, U: v0.U, V: v0.V, BlockID: v0.BlockID, FaceIndex: v0.FaceIndex, LightingMult: v0.LightingMult}
+			vv1 := render.ViewVertex{X: vx1, Y: vy1, Z: vz1, U: v1.U, V: v1.V, BlockID: v1.BlockID, FaceIndex: v1.FaceIndex, LightingMult: v1.LightingMult}
+			vv2 := render.ViewVertex{X: vx2, Y: vy2, Z: vz2, U: v2.U, V: v2.V, BlockID: v2.BlockID, FaceIndex: v2.FaceIndex, LightingMult: v2.LightingMult}
+
+			clipped, count := render.ClipTriangleNear(vv0, vv1, vv2, 0.02)
+			for ci := 0; ci < count; ci++ {
+				tri := clipped[ci]
+				p0 := c.camera.ProjectViewToScreen(tri.V0.X, tri.V0.Y, tri.V0.Z, c.framebuf.Width, c.framebuf.Height)
+				p1 := c.camera.ProjectViewToScreen(tri.V1.X, tri.V1.Y, tri.V1.Z, c.framebuf.Width, c.framebuf.Height)
+				p2 := c.camera.ProjectViewToScreen(tri.V2.X, tri.V2.Y, tri.V2.Z, c.framebuf.Width, c.framebuf.Height)
+
+				sv0 := render.NewScreenVertex(p0, tri.V0.U, tri.V0.V, tri.V0.BlockID, tri.V0.FaceIndex, tri.V0.LightingMult)
+				sv1 := render.NewScreenVertex(p1, tri.V1.U, tri.V1.V, tri.V1.BlockID, tri.V1.FaceIndex, tri.V1.LightingMult)
+				sv2 := render.NewScreenVertex(p2, tri.V2.U, tri.V2.V, tri.V2.BlockID, tri.V2.FaceIndex, tri.V2.LightingMult)
 
 				c.framebuf.DrawVoxelTrianglePerspective(sv0, sv1, sv2)
 			}
@@ -368,12 +568,24 @@ func (c *Client) RenderFrame() {
 	}
 	c.meshMu.RUnlock()
 
-	// 3. Draw targeted block wireframe outline (Classic Minecraft black block box highlight)
+	// 3. Draw targeted block wireframe outline and progressive destruction cracks
 	if c.hasTarget {
 		c.framebuf.DrawBlockOutline(c.camera, c.targetedPos.X, c.targetedPos.Y, c.targetedPos.Z)
+		if c.isMining && c.breakProgress > 0 {
+			stage := int(c.breakProgress * 10)
+			if stage > 9 {
+				stage = 9
+			}
+			c.framebuf.DrawBlockDamage(c.camera, c.miningPos.X, c.miningPos.Y, c.miningPos.Z, stage)
+		}
 	}
 
-	// 4. Draw first-person held item with walking sway
+	// 3.5 Render 3D physical debris particles
+	if len(c.particles) > 0 {
+		c.framebuf.DrawParticles(c.camera, c.particles)
+	}
+
+	// 4. Draw first-person held item with walking sway and authentic arm swing
 	c.drawHeldItem()
 
 	// 5. Draw 2D HUD (Centered crosshair, 20 HP hearts, 20 hunger drumsticks, 9 hotbar slots)
@@ -393,16 +605,37 @@ func (c *Client) drawHeldItem() {
 		return
 	}
 	selected := c.player.Inventory.GetSelectedItem()
-	if selected.IsEmpty() {
-		return
-	}
 
 	// Walking sway calculation
 	swayX := int(math.Cos(c.walkCycle*0.5) * 6.0)
 	swayY := int(math.Abs(math.Sin(c.walkCycle)) * 5.0)
 
-	hx := c.framebuf.Width - 95 + swayX
-	hy := c.framebuf.Height - 110 + swayY
+	// Arm / Tool swing animation trajectory
+	swingOffset := 0
+	swingDrop := 0
+	if c.isSwinging {
+		arc := math.Sin(c.swingProgress * math.Pi)
+		swingOffset = int(arc * 40.0)
+		swingDrop = int(arc * 25.0)
+	}
+
+	hx := c.framebuf.Width - 95 + swayX - swingOffset
+	hy := c.framebuf.Height - 110 + swayY + swingDrop
+
+	if selected.IsEmpty() {
+		// Steve's authentic first-person player arm / fist
+		skinTone := uint32(0xFFD6A07E)   // Tan skin
+		skinShade := uint32(0xFFB57C5E)  // Shading
+		sleeveTone := uint32(0xFF2E8690) // Classic Cyan shirt sleeve
+
+		// Cyan sleeve
+		c.framebuf.DrawRect(hx+20, hy+40, 45, 60, sleeveTone)
+		// Forearm
+		c.framebuf.DrawRect(hx+25, hy+15, 35, 25, skinTone)
+		// Fist
+		c.framebuf.DrawRect(hx+20, hy, 40, 15, skinShade)
+		return
+	}
 
 	// 3D isometric held block
 	colorTop := render.SampleBlockColor(selected.ItemID, 2, 0.5, 0.5, 1.0)
@@ -496,12 +729,23 @@ func runGraphicalWindow(c *Client, w, h int) {
 		}
 	}
 
-	// Mouse button clicks (Mine & Place)
+	// Mouse button clicks (instant single-tap actions)
 	wnd.OnMouseClick = func(btn int) {
-		if btn == 1 { // Left click: Mine
-			c.MineTargetedBlock()
-		} else if btn == 2 { // Right click: Place
-			c.PlaceBlockInFront()
+		if btn == 1 {
+			// Trigger arm swing on click
+			if !c.isSwinging {
+				c.isSwinging = true
+				c.swingProgress = 0.0
+			}
+		} else if btn == 2 {
+			// Right click: Place block immediately if cooldown ready
+			if c.placeCooldown <= 0 {
+				if c.PlaceBlockInFront() {
+					c.placeCooldown = 0.25
+					sel := c.player.Inventory.GetSelectedItem()
+					sound.PlayHardwareFeedback(sound.GetBlockPlaceSound(sel.ItemID))
+				}
+			}
 		}
 	}
 
@@ -520,38 +764,48 @@ func runGraphicalWindow(c *Client, w, h int) {
 		}
 		lastTime = now
 
-		// Authentic Minecraft Java speeds (meters/sec)
-		const (
-			normalWalkSpeed = 4.317
-			sprintSpeed     = 5.612
-			sneakSpeed      = 1.295
-		)
-		speed := normalWalkSpeed
-		if wnd.IsKeyDown(0x10) { // Shift: Sneak
-			speed = sneakSpeed
-		} else if wnd.IsKeyDown(0x11) { // Ctrl: Sprint
-			speed = sprintSpeed
+		// 1. Edge-triggered Spacebar Jump (prevents continuous hopping)
+		spaceDown := wnd.IsKeyDown(0x20)
+		jumpNow := false
+		if spaceDown && !c.wasSpaceDown {
+			jumpNow = true
 		}
-		moveStep := speed * dt
+		c.wasSpaceDown = spaceDown
 
-		// 1. Continuous keyboard movement polling
-		var fwd, strafe float64
+		// 2. Sprint & Sneak modifiers
+		c.isSneaking = wnd.IsKeyDown(0x10)  // Shift
+		c.isSprinting = wnd.IsKeyDown(0x11) // Ctrl
+
+		// 3. Movement input polling
+		var fwdInput, strafeInput float64
 		if wnd.IsKeyDown(0x57) { // W
-			fwd += moveStep
+			fwdInput += 1.0
 		}
 		if wnd.IsKeyDown(0x53) { // S
-			fwd -= moveStep
+			fwdInput -= 1.0
 		}
 		if wnd.IsKeyDown(0x41) { // A
-			strafe -= moveStep
+			strafeInput -= 1.0
 		}
 		if wnd.IsKeyDown(0x44) { // D
-			strafe += moveStep
+			strafeInput += 1.0
 		}
-		c.MoveRelative(fwd, strafe)
 
-		if wnd.IsKeyDown(0x20) { // Space (Jump)
-			c.Jump()
+		c.PhysicsStep(fwdInput, strafeInput, jumpNow, dt)
+
+		// 4. Authentic Minecraft Mining: Hold Left Mouse to mine with cracking & tool times
+		isLeftDown := wnd.IsMouseDown(1)
+		c.UpdateMining(isLeftDown, dt)
+
+		// 5. Placing Blocks: Hold Right Mouse Button (with 0.25s authentic cooldown)
+		if wnd.IsMouseDown(2) {
+			if c.placeCooldown <= 0 {
+				if c.PlaceBlockInFront() {
+					c.placeCooldown = 0.25
+					sel := c.player.Inventory.GetSelectedItem()
+					sound.PlayHardwareFeedback(sound.GetBlockPlaceSound(sel.ItemID))
+				}
+			}
 		}
 
 		// Keyboard arrow view look fallback (smooth dt scaled)

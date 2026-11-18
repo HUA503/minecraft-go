@@ -183,12 +183,14 @@ func Raycast(origin Vec3, dir Vec3, maxDistance float64, isSolid func(x, y, z in
 // ResolveMovementCollision implements Minecraft standard Axis-Aligned Bounding Box (AABB)
 // swept collision resolution. Resolves Y, X, and Z axes independently so players slide
 // smoothly along walls, stand firmly on ground, and never clip through blocks.
-func ResolveMovementCollision(pos Vec3, delta Vec3, isSolid func(x, y, z int32) bool) (Vec3, bool) {
+// Returns resolved position, whether player is on ground, and whether ceiling was hit.
+func ResolveMovementCollision(pos Vec3, delta Vec3, isSolid func(x, y, z int32) bool) (Vec3, bool, bool) {
 	const halfW = 0.3
 	const height = 1.8
 	const epsilon = 1e-4
 
 	onGround := false
+	hitCeiling := false
 
 	// Search bounding box for nearby candidate solid blocks
 	minX := int32(math.Floor(pos.X + math.Min(0, delta.X) - halfW - 1))
@@ -226,6 +228,7 @@ func ResolveMovementCollision(pos Vec3, delta Vec3, isSolid func(x, y, z int32) 
 				maxUp := b.Min.Y - pBox.Max.Y
 				if maxUp < dy {
 					dy = maxUp
+					hitCeiling = true
 				}
 			}
 		}
@@ -274,8 +277,8 @@ func ResolveMovementCollision(pos Vec3, delta Vec3, isSolid func(x, y, z int32) 
 	}
 	pos.Z += dz
 
-	// Extra ground stability check
-	if !onGround {
+	// Extra ground stability check (feet resting on solid block, only when not jumping upward)
+	if !onGround && delta.Y <= 0 {
 		feetX := int32(math.Floor(pos.X))
 		feetY := int32(math.Floor(pos.Y - 0.05))
 		feetZ := int32(math.Floor(pos.Z))
@@ -285,5 +288,5 @@ func ResolveMovementCollision(pos Vec3, delta Vec3, isSolid func(x, y, z int32) 
 		}
 	}
 
-	return pos, onGround
+	return pos, onGround, hitCeiling
 }

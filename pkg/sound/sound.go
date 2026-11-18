@@ -95,6 +95,8 @@ func (sm *SoundManager) PlaySound(name string, cat SoundCategory, x, y, z float6
 	for _, l := range sm.listeners {
 		l(event)
 	}
+
+	PlayHardwareFeedback(name)
 }
 
 // GetBlockBreakSound returns the authentic breaking sound event for a block ID.

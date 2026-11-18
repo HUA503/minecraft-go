@@ -208,3 +208,65 @@ func TestMovementCollisionNoClipping(t *testing.T) {
 		t.Fatalf("player feet should rest exactly on floor Y=64.0, got %f", resPos.Y)
 	}
 }
+
+func TestAuthenticMiningAndToolProgression(t *testing.T) {
+	eng := NewEngine()
+	player := eng.AddPlayer("Miner", [16]byte{9}, Vec3{X: 0, Y: 64, Z: 0})
+
+	// 1. Bare hand breaking Stone (ID: 1): cannot harvest, yields no item
+	eng.SetBlock(1, 64, 0, 1) // Stone
+	drop, harvested := eng.BreakBlockWithTool(player.ID, world.BlockPos{X: 1, Y: 64, Z: 0}, inventory.ItemAir)
+	if harvested || drop != 0 {
+		t.Fatalf("bare hands should NOT harvest stone, got drop=%d, harvested=%v", drop, harvested)
+	}
+
+	// 2. Wooden Pickaxe breaking Stone (ID: 1): can harvest, yields Cobblestone (4)
+	eng.SetBlock(2, 64, 0, 1) // Stone
+	player.Inventory.Slots[0] = inventory.ItemStack{ItemID: inventory.ItemWoodenPickaxe, Count: 1, Damage: 0}
+	player.Inventory.SelectedHotbar = 0
+
+	drop, harvested = eng.BreakBlockWithTool(player.ID, world.BlockPos{X: 2, Y: 64, Z: 0}, inventory.ItemWoodenPickaxe)
+	if !harvested || drop != inventory.ItemCobblestone {
+		t.Fatalf("wooden pickaxe must harvest stone into cobblestone, got drop=%d, harvested=%v", drop, harvested)
+	}
+	// Tool durability must decrease by 1
+	if player.Inventory.Slots[0].Damage != 1 {
+		t.Fatalf("wooden pickaxe should have taken 1 damage, got %d", player.Inventory.Slots[0].Damage)
+	}
+
+	// 3. Diamond Ore (56) with Stone Pickaxe (Tier 1): cannot harvest (needs Iron Tier 2)
+	eng.SetBlock(3, 64, 0, 56)
+	drop, harvested = eng.BreakBlockWithTool(player.ID, world.BlockPos{X: 3, Y: 64, Z: 0}, inventory.ItemStonePickaxe)
+	if harvested || drop != 0 {
+		t.Fatalf("stone pickaxe cannot harvest diamond ore, got drop=%d, harvested=%v", drop, harvested)
+	}
+
+	// 4. Diamond Ore (56) with Iron Pickaxe (Tier 2): yields Diamond (264)
+	eng.SetBlock(4, 64, 0, 56)
+	drop, harvested = eng.BreakBlockWithTool(player.ID, world.BlockPos{X: 4, Y: 64, Z: 0}, inventory.ItemIronPickaxe)
+	if !harvested || drop != inventory.ItemDiamond {
+		t.Fatalf("iron pickaxe must harvest diamond ore into diamond, got drop=%d, harvested=%v", drop, harvested)
+	}
+
+	// 5. Bedrock (7) cannot be broken
+	eng.SetBlock(5, 64, 0, 7)
+	drop, harvested = eng.BreakBlockWithTool(player.ID, world.BlockPos{X: 5, Y: 64, Z: 0}, inventory.ItemDiamondPickaxe)
+	if harvested || eng.GetBlock(5, 64, 0) != 7 {
+		t.Fatalf("bedrock must be unbreakable")
+	}
+
+	// 6. Mining break speed calculations
+	dpsDirtHand := inventory.CalculateBlockDamagePerSecond(inventory.ItemAir, inventory.ItemDirt)
+	// Time = 1.0 / dpsDirtHand ~ 0.75 seconds
+	timeDirtHand := 1.0 / dpsDirtHand
+	if math.Abs(timeDirtHand-0.75) > 0.05 {
+		t.Fatalf("dirt hand break time should be ~0.75s, got %f", timeDirtHand)
+	}
+
+	dpsStonePick := inventory.CalculateBlockDamagePerSecond(inventory.ItemWoodenPickaxe, inventory.ItemStone)
+	// Time = 1.0 / dpsStonePick ~ 1.125 seconds
+	timeStonePick := 1.0 / dpsStonePick
+	if math.Abs(timeStonePick-1.125) > 0.05 {
+		t.Fatalf("stone wooden pick break time should be ~1.125s, got %f", timeStonePick)
+	}
+}

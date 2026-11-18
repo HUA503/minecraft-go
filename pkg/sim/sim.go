@@ -135,10 +135,59 @@ func (e *Engine) SetBlock(x, y, z int32, state int32) {
 	}
 }
 
+// BreakBlockWithTool processes player mining using held tool, enforcing authentic harvest requirements and tool wear.
+func (e *Engine) BreakBlockWithTool(playerID int32, pos world.BlockPos, toolID int32) (int32, bool) {
+	origBlock := e.GetBlock(pos.X, pos.Y, pos.Z)
+	if origBlock == 0 || origBlock == 7 { // Air or Bedrock cannot be mined
+		return 0, false
+	}
+
+	e.SetBlock(pos.X, pos.Y, pos.Z, 0) // Air
+
+	canHarvest := inventory.CanHarvestBlock(toolID, origBlock)
+	var dropItem int32
+
+	if canHarvest {
+		// Determine drop item
+		dropItem = origBlock
+		switch origBlock {
+		case 1: // Stone -> Cobblestone
+			dropItem = inventory.ItemCobblestone
+		case 2: // Grass -> Dirt
+			dropItem = inventory.ItemDirt
+		case 16: // Coal Ore -> Coal
+			dropItem = inventory.ItemCoal
+		case 56: // Diamond Ore -> Diamond
+			dropItem = inventory.ItemDiamond
+		}
+
+		e.mu.Lock()
+		if p, ok := e.Players[playerID]; ok && p.Inventory != nil {
+			p.Inventory.AddItem(dropItem, 1)
+		}
+		e.mu.Unlock()
+	}
+
+	// Apply tool durability loss if player used a tool
+	e.mu.Lock()
+	if p, ok := e.Players[playerID]; ok && p.Inventory != nil {
+		slot := p.Inventory.SelectedHotbar
+		if slot >= 0 && slot < len(p.Inventory.Slots) {
+			item := &p.Inventory.Slots[slot]
+			if !item.IsEmpty() {
+				inventory.ApplyToolWear(item)
+			}
+		}
+	}
+	e.mu.Unlock()
+
+	return dropItem, canHarvest
+}
+
 // BreakBlock processes player mining, updates block to Air, and adds dropped item to inventory.
 func (e *Engine) BreakBlock(playerID int32, pos world.BlockPos) int32 {
 	origBlock := e.GetBlock(pos.X, pos.Y, pos.Z)
-	if origBlock == 0 {
+	if origBlock == 0 || origBlock == 7 {
 		return 0
 	}
 
@@ -346,9 +395,44 @@ func (e *Engine) MovePlayerRelative(id int32, delta Vec3, yaw, pitch float32) (V
 		return e.GetBlock(x, y, z) != 0
 	}
 
-	resolvedPos, ground := ResolveMovementCollision(oldPos, delta, isSolid)
+	resolvedPos, ground, hitCeiling := ResolveMovementCollision(oldPos, delta, isSolid)
 
-	e.MovePlayer(id, resolvedPos, yaw, pitch, ground)
+	e.mu.Lock()
+	if p, ok := e.Players[id]; ok && p.IsAlive {
+		if ground {
+			p.Velocity.Y = 0
+			if p.FallDistance > 3.0 {
+				fallDmg := p.FallDistance - 3.0
+				p.Health -= fallDmg
+				if p.Health <= 0 {
+					p.Health = 0
+					p.IsAlive = false
+				}
+			}
+			p.FallDistance = 0
+		} else if hitCeiling && p.Velocity.Y > 0 {
+			p.Velocity.Y = 0
+		} else if resolvedPos.Y < oldPos.Y {
+			p.FallDistance += float32(oldPos.Y - resolvedPos.Y)
+		}
+		p.Position = resolvedPos
+		p.Yaw = yaw
+		p.Pitch = pitch
+		p.OnGround = ground
+	}
+	e.mu.Unlock()
+
+	select {
+	case e.Events <- WorldEvent{
+		Type:     "player_move",
+		PlayerID: id,
+		Position: resolvedPos,
+		Yaw:      yaw,
+		Pitch:    pitch,
+	}:
+	default:
+	}
+
 	return resolvedPos, ground
 }
 
@@ -357,37 +441,42 @@ func (e *Engine) Tick() {
 	e.mu.Lock()
 	e.TickCount++
 
+	isSolid := func(x, y, z int32) bool {
+		cp := world.BlockPos{X: x, Y: y, Z: z}.ToChunkPos()
+		chunk, ok := e.World[cp]
+		if !ok || chunk == nil {
+			return false
+		}
+		return chunk.GetBlock(x, y, z) != 0
+	}
+
 	// Apply gravity and drag for free-falling players
 	for _, p := range e.Players {
-		if !p.IsAlive {
+		if !p.IsAlive || p.OnGround {
 			continue
 		}
-		if !p.OnGround {
-			p.Velocity.Y -= 0.08               // Minecraft standard gravity per tick
-			p.Velocity = p.Velocity.Scale(0.98) // Air resistance
-			prevY := p.Position.Y
-			p.Position = p.Position.Add(p.Velocity)
-			if p.Position.Y < prevY {
-				p.FallDistance += float32(prevY - p.Position.Y)
-			}
-
-			// Simple ground check against block at feet
-			footBlockY := int32(p.Position.Y)
-			if footBlockY <= 64 { // Flat surface ground level
-				p.Position.Y = 64
-				p.Velocity.Y = 0
-				p.OnGround = true
-				if p.FallDistance > 3.0 {
-					fallDmg := p.FallDistance - 3.0
-					p.Health -= fallDmg
-					if p.Health <= 0 {
-						p.Health = 0
-						p.IsAlive = false
-					}
+		p.Velocity.Y -= 0.08               // Minecraft standard gravity per tick
+		p.Velocity = p.Velocity.Scale(0.98) // Air resistance
+		delta := Vec3{X: p.Velocity.X, Y: p.Velocity.Y, Z: p.Velocity.Z}
+		resPos, ground, hitCeiling := ResolveMovementCollision(p.Position, delta, isSolid)
+		if ground {
+			p.Velocity.Y = 0
+			if p.FallDistance > 3.0 {
+				fallDmg := p.FallDistance - 3.0
+				p.Health -= fallDmg
+				if p.Health <= 0 {
+					p.Health = 0
+					p.IsAlive = false
 				}
-				p.FallDistance = 0
 			}
+			p.FallDistance = 0
+		} else if hitCeiling && p.Velocity.Y > 0 {
+			p.Velocity.Y = 0
+		} else if resPos.Y < p.Position.Y {
+			p.FallDistance += float32(p.Position.Y - resPos.Y)
 		}
+		p.Position = resPos
+		p.OnGround = ground
 	}
 
 	var activeMobs []*MobEntity
