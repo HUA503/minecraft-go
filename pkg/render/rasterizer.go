@@ -61,19 +61,153 @@ func (fb *Framebuffer) ClearSkyWithTime(worldTime int64) {
 			fb.Depth[rowOffset+x] = 1e9
 		}
 	}
+}
 
-	if state.IsDay {
-		// Draw classic square Minecraft Sun (bright golden square in upper sky)
-		sunX := fb.Width/2 + 100
-		sunY := 60
-		fb.DrawRect(sunX-15, sunY-15, 30, 30, 0xFFFFFF80) // Sun core
-		fb.DrawRect(sunX-18, sunY-18, 36, 36, 0x40FFFFCC) // Soft sun corona
-	} else {
-		// Draw square Minecraft Moon (pale silver-blue square)
-		moonX := fb.Width/2 - 100
-		moonY := 60
-		fb.DrawRect(moonX-12, moonY-12, 24, 24, 0xFFEAEAFF) // Moon core
-		fb.DrawRect(moonX-15, moonY-15, 30, 30, 0x30CCCCFF) // Moon glow
+var fixedStars [64][3]float64
+
+func init() {
+	// Deterministic spherical Fibonacci distribution across celestial dome
+	for i := 0; i < len(fixedStars); i++ {
+		fi := float64(i)
+		theta := fi * 2.399963229728653 // Golden ratio angle
+		y := 0.15 + (float64(i)/float64(len(fixedStars)))*0.85 // Upper hemisphere
+		r := math.Sqrt(1.0 - y*y)
+		fixedStars[i] = [3]float64{
+			math.Cos(theta) * r,
+			y,
+			math.Sin(theta) * r,
+		}
+	}
+}
+
+// DrawCelestialBodies renders 3D celestial bodies (Sun, Moon, Stars) accurately anchored in 3D world space.
+func (fb *Framebuffer) DrawCelestialBodies(cam *Camera, worldTime int64) {
+	state := world.ComputeCelestialState(worldTime)
+	dayProgress := float64(worldTime%24000) / 24000.0
+	// In Minecraft: tick 0 is sunrise (+X East), tick 6000 is noon (+Y Zenith), tick 12000 is sunset (-X West)
+	angle := dayProgress * 2.0 * math.Pi
+
+	const celestialDist = 120.0
+
+	// East-West axis celestial orbit
+	sunOffsetX := math.Cos(angle) * celestialDist
+	sunOffsetY := math.Sin(angle) * celestialDist
+
+	// Sun 3D position relative to camera
+	sunX := cam.X + sunOffsetX
+	sunY := cam.Y + sunOffsetY
+	sunZ := cam.Z
+
+	// 1. Draw 3D Sun if above or near horizon
+	if sunOffsetY > -25.0 {
+		pSun, ok := cam.ProjectToScreen(sunX, sunY, sunZ, fb.Width, fb.Height)
+		if ok && pSun.Depth > 0 {
+			sx := int(pSun.X)
+			sy := int(pSun.Y)
+			sunDepth := float32(celestialDist - 1.0)
+			// Sun corona (outer glow)
+			fb.drawBillboard(sx, sy, 38, 38, sunDepth, 0x50FFE57F)
+			// Sun core (bright Minecraft golden square)
+			fb.drawBillboard(sx, sy, 26, 26, sunDepth, 0xFFFFFFCC)
+		}
+	}
+
+	// 2. Draw 3D Moon (opposite direction)
+	moonOffsetX := -sunOffsetX
+	moonOffsetY := -sunOffsetY
+	moonX := cam.X + moonOffsetX
+	moonY := cam.Y + moonOffsetY
+	moonZ := cam.Z
+
+	if moonOffsetY > -25.0 {
+		pMoon, ok := cam.ProjectToScreen(moonX, moonY, moonZ, fb.Width, fb.Height)
+		if ok && pMoon.Depth > 0 {
+			mx := int(pMoon.X)
+			my := int(pMoon.Y)
+			moonDepth := float32(celestialDist - 1.0)
+			// Moon glow
+			fb.drawBillboard(mx, my, 32, 32, moonDepth, 0x4099BBEE)
+			// Moon core (pale silver square)
+			fb.drawBillboard(mx, my, 20, 20, moonDepth, 0xFFF0F4FF)
+		}
+	}
+
+	// 3. Draw 3D Stars at night / twilight
+	starAlpha := float32(0.0)
+	if !state.IsDay {
+		starAlpha = 1.0 - float32(state.SkyLightLevel-4)/11.0
+	}
+	if starAlpha > 0 {
+		fb.drawStars3D(cam, starAlpha, celestialDist-2.0)
+	}
+}
+
+func (fb *Framebuffer) drawBillboard(cx, cy, w, h int, depth float32, col uint32) {
+	halfW := w / 2
+	halfH := h / 2
+	alpha := (col >> 24) & 0xFF
+	if alpha == 0 {
+		return
+	}
+	r := (col >> 16) & 0xFF
+	g := (col >> 8) & 0xFF
+	b := col & 0xFF
+
+	for y := cy - halfH; y <= cy+halfH; y++ {
+		if y < 0 || y >= fb.Height {
+			continue
+		}
+		rowOffset := y * fb.Width
+		for x := cx - halfW; x <= cx+halfW; x++ {
+			if x < 0 || x >= fb.Width {
+				continue
+			}
+			idx := rowOffset + x
+			if depth < fb.Depth[idx] {
+				if alpha == 255 {
+					fb.Color[idx] = col
+				} else {
+					bg := fb.Color[idx]
+					bgr := (bg >> 16) & 0xFF
+					bgg := (bg >> 8) & 0xFF
+					bgb := bg & 0xFF
+					a := float32(alpha) / 255.0
+					outR := uint32(float32(r)*a + float32(bgr)*(1-a))
+					outG := uint32(float32(g)*a + float32(bgg)*(1-a))
+					outB := uint32(float32(b)*a + float32(bgb)*(1-a))
+					fb.Color[idx] = 0xFF000000 | (outR << 16) | (outG << 8) | outB
+				}
+			}
+		}
+	}
+}
+
+func (fb *Framebuffer) drawStars3D(cam *Camera, starAlpha float32, dist float64) {
+	if starAlpha <= 0 {
+		return
+	}
+	intensity := uint32(starAlpha * 255)
+	if intensity > 255 {
+		intensity = 255
+	}
+	col := 0xFF000000 | (intensity << 16) | (intensity << 8) | intensity
+	depth := float32(dist)
+
+	for _, s := range fixedStars {
+		wx := cam.X + s[0]*dist
+		wy := cam.Y + s[1]*dist
+		wz := cam.Z + s[2]*dist
+		p, ok := cam.ProjectToScreen(wx, wy, wz, fb.Width, fb.Height)
+		if ok && p.Depth > 0 {
+			sx := int(p.X)
+			sy := int(p.Y)
+			if sx >= 0 && sx < fb.Width && sy >= 0 && sy < fb.Height {
+				idx := sy*fb.Width + sx
+				if depth < fb.Depth[idx] {
+					fb.Color[idx] = col
+				}
+			}
+		}
 	}
 }
 
@@ -223,13 +357,13 @@ func (fb *Framebuffer) DrawVoxelTrianglePerspective(v0, v1, v2 ScreenVertex) {
 	dy01 := v1.Y - v0.Y
 
 	area := (v2.X-v0.X)*dy01 - (v2.Y-v0.Y)*dx01
-	if area == 0 {
+	if math.Abs(float64(area)) < 1e-4 {
 		return
 	}
 	invArea := 1.0 / area
 
-	const fogStart = 35.0 // Distance fog start (in meters)
-	const fogEnd = 70.0   // Distance fog end (full horizon haze)
+	const fogStart = 20.0 // Distance fog start (in meters, tailored for 2-chunk radius horizon)
+	const fogEnd = 33.0   // Distance fog end (full horizon haze)
 	skyHazeR := float32(195)
 	skyHazeG := float32(222)
 	skyHazeB := float32(255)

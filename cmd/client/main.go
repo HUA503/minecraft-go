@@ -95,11 +95,11 @@ func NewClient(serverAddr, username string, isSingleplayer bool, width, height i
 		cli.player.Inventory.Slots[5] = inventory.ItemStack{ItemID: 271, Count: 1} // Wooden Axe
 		cli.player.Inventory.Slots[6] = inventory.ItemStack{ItemID: 269, Count: 1} // Wooden Shovel
 
-		// Spawn living mobs in meadow around player
-		cli.engine.SpawnMob(sim.MobPig, sim.Vec3{X: 13.0, Y: 66.0, Z: 11.0})
-		cli.engine.SpawnMob(sim.MobCow, sim.Vec3{X: 5.0, Y: 66.0, Z: 14.0})
-		cli.engine.SpawnMob(sim.MobZombie, sim.Vec3{X: 17.0, Y: 66.0, Z: 19.0})
-		cli.engine.SpawnMob(sim.MobCreeper, sim.Vec3{X: 6.0, Y: 66.0, Z: 22.0})
+		// Spawn living mobs in meadow around player (safe distance from spawn point)
+		cli.engine.SpawnMob(sim.MobPig, sim.Vec3{X: 12.0, Y: 66.0, Z: 11.0})
+		cli.engine.SpawnMob(sim.MobCow, sim.Vec3{X: 5.0, Y: 66.0, Z: 13.0})
+		cli.engine.SpawnMob(sim.MobZombie, sim.Vec3{X: 32.0, Y: 66.0, Z: 32.0})
+		cli.engine.SpawnMob(sim.MobCreeper, sim.Vec3{X: 38.0, Y: 66.0, Z: 38.0})
 
 		cli.EnsureChunksAroundPlayer(8.0, 8.0, 2)
 	}
@@ -118,11 +118,11 @@ func (c *Client) EnsureChunksAroundPlayer(playerX, playerZ float64, radius int32
 	c.meshMu.Lock()
 	defer c.meshMu.Unlock()
 
-	// Check if all needed sections are already meshed
+	// Check if all needed sections are already meshed (sy: 0 to 7 covering Y=0..127)
 	allCached := true
 	for dx := -radius; dx <= radius; dx++ {
 		for dz := -radius; dz <= radius; dz++ {
-			for sy := int32(1); sy <= 7; sy++ {
+			for sy := int32(0); sy <= 7; sy++ {
 				if c.meshCache[[3]int32{pcx + dx, sy, pcz + dz}] == nil {
 					allCached = false
 					break
@@ -160,7 +160,7 @@ func (c *Client) EnsureChunksAroundPlayer(playerX, playerZ float64, radius int32
 	for dx := -radius; dx <= radius; dx++ {
 		for dz := -radius; dz <= radius; dz++ {
 			cp := world.ChunkPos{X: pcx + dx, Z: pcz + dz}
-			for sy := int32(1); sy <= 7; sy++ {
+			for sy := int32(0); sy <= 7; sy++ {
 				key := [3]int32{cp.X, sy, cp.Z}
 				if c.meshCache[key] == nil {
 					mesh := render.BuildSectionMesh(getBlock, cp.X*16, sy*16, cp.Z*16)
@@ -177,13 +177,13 @@ func (c *Client) InvalidateBlockMesh(pos world.BlockPos) {
 	defer c.meshMu.Unlock()
 
 	secX := int32(math.Floor(float64(pos.X) / 16.0))
-	secY := pos.Y / 16
+	secY := int32(math.Floor(float64(pos.Y) / 16.0))
 	secZ := int32(math.Floor(float64(pos.Z) / 16.0))
 
 	delete(c.meshCache, [3]int32{secX, secY, secZ})
 
 	remX := ((pos.X % 16) + 16) % 16
-	remY := pos.Y % 16
+	remY := ((pos.Y % 16) + 16) % 16
 	remZ := ((pos.Z % 16) + 16) % 16
 
 	if remX == 0 {
@@ -193,7 +193,7 @@ func (c *Client) InvalidateBlockMesh(pos world.BlockPos) {
 	}
 	if remY == 0 && secY > 0 {
 		delete(c.meshCache, [3]int32{secX, secY - 1, secZ})
-	} else if remY == 15 && secY < 15 {
+	} else if remY == 15 && secY < 7 {
 		delete(c.meshCache, [3]int32{secX, secY + 1, secZ})
 	}
 	if remZ == 0 {
@@ -419,27 +419,46 @@ func (c *Client) UpdateMining(isLeftMouseDown bool, dt float64) {
 		c.swingProgress -= 1.0
 	}
 
-	if !c.hasTarget {
-		// Punching air
-		c.breakProgress = 0.0
-		c.hasMiningBlock = false
-		c.isMining = false
-		return
+	// Mining target resolution with authentic target-lock:
+	// If already mining a block, stay locked to it as long as it remains within reach (~5.5 blocks)
+	var activePos world.BlockPos
+	if c.hasMiningBlock {
+		blockPosVec := sim.Vec3{X: float64(c.miningPos.X) + 0.5, Y: float64(c.miningPos.Y) + 0.5, Z: float64(c.miningPos.Z) + 0.5}
+		camPosVec := sim.Vec3{X: c.camera.X, Y: c.camera.Y, Z: c.camera.Z}
+		dist := camPosVec.DistanceTo(blockPosVec)
+		blockID := c.engine.GetBlock(c.miningPos.X, c.miningPos.Y, c.miningPos.Z)
+		if dist <= 5.5 && blockID != 0 && blockID != 7 {
+			activePos = c.miningPos
+		} else {
+			c.hasMiningBlock = false
+			c.breakProgress = 0.0
+		}
 	}
 
-	blockID := c.engine.GetBlock(c.targetedPos.X, c.targetedPos.Y, c.targetedPos.Z)
-	if blockID == 0 || blockID == 7 { // Air or Bedrock cannot be broken
-		c.breakProgress = 0.0
-		c.hasMiningBlock = false
-		c.isMining = false
-		return
-	}
-
-	// Target changed: reset breaking progress
-	if !c.hasMiningBlock || c.miningPos != c.targetedPos {
-		c.miningPos = c.targetedPos
+	if !c.hasMiningBlock {
+		if !c.hasTarget {
+			c.breakProgress = 0.0
+			c.isMining = false
+			return
+		}
+		blockID := c.engine.GetBlock(c.targetedPos.X, c.targetedPos.Y, c.targetedPos.Z)
+		if blockID == 0 || blockID == 7 { // Air or Bedrock
+			c.breakProgress = 0.0
+			c.isMining = false
+			return
+		}
+		activePos = c.targetedPos
+		c.miningPos = activePos
 		c.hasMiningBlock = true
 		c.breakProgress = 0.0
+	}
+
+	blockID := c.engine.GetBlock(activePos.X, activePos.Y, activePos.Z)
+	if blockID == 0 || blockID == 7 {
+		c.breakProgress = 0.0
+		c.hasMiningBlock = false
+		c.isMining = false
+		return
 	}
 
 	c.isMining = true
@@ -455,12 +474,12 @@ func (c *Client) UpdateMining(isLeftMouseDown bool, dt float64) {
 	if time.Since(c.lastHitSoundTime) > 220*time.Millisecond {
 		c.lastHitSoundTime = time.Now()
 		sound.PlayHardwareFeedback("minecraft:block.hit")
-		c.spawnBlockDebris(c.miningPos, blockID, 3)
+		c.spawnBlockDebris(activePos, blockID, 3)
 	}
 
 	// Block breaking completion threshold (100% progress)
 	if c.breakProgress >= 1.0 {
-		minedPos := c.miningPos
+		minedPos := activePos
 		c.engine.BreakBlockWithTool(c.player.ID, minedPos, heldToolID)
 		c.spawnBlockDebris(minedPos, blockID, 24) // Explosion of particles
 		sound.PlayHardwareFeedback(sound.GetBlockBreakSound(blockID))
@@ -566,6 +585,7 @@ func (c *Client) RenderFrame() {
 		worldTime = c.engine.TickCount * 10
 	}
 	c.framebuf.ClearSkyWithTime(worldTime)
+	c.framebuf.DrawCelestialBodies(c.camera, worldTime)
 
 	// 2. Render cached 3D chunk meshes with perspective-correct texturing & distance fog
 	c.meshMu.RLock()

@@ -210,6 +210,56 @@ func TestZBufferSubMillimeterPrecision(t *testing.T) {
 	}
 }
 
+func TestCelestialBodies3D(t *testing.T) {
+	fb := NewFramebuffer(400, 300)
+	cam := NewCamera(0, 64, 0)
+
+	// Noon daylight (tick 6000): sun should be visible high in the sky
+	fb.ClearSkyWithTime(6000)
+	cam.Pitch = 85.0 // Look up towards sun at zenith
+	fb.DrawCelestialBodies(cam, 6000)
+
+	// Verify sun pixels were drawn on upper screen
+	hasSunPixel := false
+	for y := 0; y < fb.Height; y++ {
+		for x := 0; x < fb.Width; x++ {
+			c := fb.Color[y*fb.Width+x]
+			// Sun core is 0xFFFFFFCC
+			if c == 0xFFFFFFCC {
+				hasSunPixel = true
+				break
+			}
+		}
+		if hasSunPixel {
+			break
+		}
+	}
+	if !hasSunPixel {
+		t.Fatalf("expected sun to be rendered in 3D sky at noon when looking up")
+	}
+
+	// Midnight (tick 18000): moon should be visible high in the sky
+	fb.ClearSkyWithTime(18000)
+	fb.DrawCelestialBodies(cam, 18000)
+
+	hasMoonPixel := false
+	for y := 0; y < fb.Height; y++ {
+		for x := 0; x < fb.Width; x++ {
+			c := fb.Color[y*fb.Width+x]
+			if c == 0xFFF0F4FF {
+				hasMoonPixel = true
+				break
+			}
+		}
+		if hasMoonPixel {
+			break
+		}
+	}
+	if !hasMoonPixel {
+		t.Fatalf("expected moon to be rendered in 3D sky at midnight when looking up")
+	}
+}
+
 func BenchmarkRasterizerTriangle(b *testing.B) {
 	fb := NewFramebuffer(640, 480)
 	p0 := ScreenPoint{X: 100, Y: 100, Depth: 5}

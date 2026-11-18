@@ -270,3 +270,59 @@ func TestAuthenticMiningAndToolProgression(t *testing.T) {
 		t.Fatalf("stone wooden pick break time should be ~1.125s, got %f", timeStonePick)
 	}
 }
+
+func TestDropSpawningAndAutoRespawn(t *testing.T) {
+	eng := NewEngine()
+	player := eng.AddPlayer("Miner", [16]byte{5}, Vec3{X: 8, Y: 64, Z: 8})
+
+	// 1. Mine a dirt block: verify physical ItemDrop entity is spawned
+	eng.SetBlock(8, 64, 9, 3) // Dirt
+	dropID, ok := eng.BreakBlockWithTool(player.ID, world.BlockPos{X: 8, Y: 64, Z: 9}, inventory.ItemAir)
+	if !ok || dropID != inventory.ItemDirt {
+		t.Fatalf("expected dirt drop, got %d, %v", dropID, ok)
+	}
+
+	drops := eng.GetItemDrops()
+	if len(drops) == 0 {
+		t.Fatalf("expected 3D ItemDrop entity in world after mining block")
+	}
+	drop := drops[0]
+	if drop.ItemID != inventory.ItemDirt {
+		t.Fatalf("expected ItemDrop to be dirt, got %d", drop.ItemID)
+	}
+
+	// Fast forward past pickup delay (0.4s = 8 ticks)
+	for i := 0; i < 9; i++ {
+		eng.Tick()
+	}
+
+	// ItemDrop should now be picked up into player inventory
+	remainingDrops := eng.GetItemDrops()
+	if len(remainingDrops) != 0 {
+		t.Fatalf("expected ItemDrop to be collected by player after pickup delay")
+	}
+	foundDirt := 0
+	for _, s := range player.Inventory.Slots {
+		if s.ItemID == inventory.ItemDirt {
+			foundDirt += s.Count
+		}
+	}
+	if foundDirt != 1 {
+		t.Fatalf("expected 1 dirt in inventory, got %d", foundDirt)
+	}
+
+	// 2. Fatal damage: test automatic safe respawn prevention of void teleportation
+	eng.DamagePlayer(player.ID, 100.0, "explosion")
+	if player.IsAlive {
+		t.Fatalf("player should be dead after 100 damage")
+	}
+
+	// Next client movement must auto-respawn and return valid world position, never {0, 0, 0}
+	newPos, ok := eng.MovePlayerRelative(player.ID, Vec3{X: 0, Y: 0, Z: 0}, 0, 0)
+	if !ok || newPos.Y < 60.0 {
+		t.Fatalf("expected safe auto-respawn position, got %+v, ok=%v", newPos, ok)
+	}
+	if !player.IsAlive || player.Health != 20.0 {
+		t.Fatalf("player should be fully respawned with 20 HP")
+	}
+}

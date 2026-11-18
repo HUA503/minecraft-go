@@ -23,6 +23,7 @@ type PlayerEntity struct {
 	Hunger       int     // 0 to 20
 	FallDistance float32
 	IsAlive      bool
+	ClientDriven bool
 	Inventory    *inventory.PlayerInventory
 }
 
@@ -294,27 +295,14 @@ func (e *Engine) BreakBlockWithTool(playerID int32, pos world.BlockPos, toolID i
 
 		dropPos := Vec3{X: float64(pos.X) + 0.5, Y: float64(pos.Y) + 0.5, Z: float64(pos.Z) + 0.5}
 		e.mu.Lock()
-		p, hasPlayer := e.Players[playerID]
-		if hasPlayer && p.IsAlive && p.Position.DistanceTo(dropPos) < 3.5 {
-			p.Inventory.AddItem(dropItem, 1)
-			select {
-			case e.Events <- WorldEvent{
-				Type:     "item_pickup",
-				PlayerID: playerID,
-				BlockID:  dropItem,
-			}:
-			default:
-			}
-		} else {
-			e.nextItemDropID++
-			e.ItemDrops[e.nextItemDropID] = &ItemDrop{
-				ID:          e.nextItemDropID,
-				ItemID:      dropItem,
-				Count:       1,
-				Position:    dropPos,
-				Velocity:    Vec3{X: 0, Y: 0.15, Z: 0},
-				PickupDelay: 0.4,
-			}
+		e.nextItemDropID++
+		e.ItemDrops[e.nextItemDropID] = &ItemDrop{
+			ID:          e.nextItemDropID,
+			ItemID:      dropItem,
+			Count:       1,
+			Position:    dropPos,
+			Velocity:    Vec3{X: 0, Y: 0.18, Z: 0},
+			PickupDelay: 0.4,
 		}
 		e.mu.Unlock()
 	}
@@ -536,9 +524,23 @@ func (e *Engine) MovePlayerRelative(id int32, delta Vec3, yaw, pitch float32) (V
 	e.mu.Lock()
 	p, ok := e.Players[id]
 	if !ok || !p.IsAlive {
+		if ok && !p.IsAlive {
+			// Auto respawn player at safe spawn location
+			p.Health = 20.0
+			p.Hunger = 20
+			p.IsAlive = true
+			p.Position = Vec3{X: 8.0, Y: 66.0, Z: 8.0}
+			p.Velocity = Vec3{}
+			p.FallDistance = 0
+			p.OnGround = true
+			p.ClientDriven = true
+			e.mu.Unlock()
+			return p.Position, true
+		}
 		e.mu.Unlock()
-		return Vec3{}, false
+		return Vec3{X: 8.0, Y: 66.0, Z: 8.0}, false
 	}
+	p.ClientDriven = true
 	oldPos := p.Position
 	e.mu.Unlock()
 
@@ -601,9 +603,9 @@ func (e *Engine) Tick() {
 		return chunk.GetBlock(x, y, z) != 0
 	}
 
-	// Apply gravity and drag for free-falling players
+	// Apply gravity and drag for free-falling players (skip client-driven players to avoid jitter/double gravity)
 	for _, p := range e.Players {
-		if !p.IsAlive || p.OnGround {
+		if !p.IsAlive || p.OnGround || p.ClientDriven {
 			continue
 		}
 		p.Velocity.Y -= 0.08               // Minecraft standard gravity per tick

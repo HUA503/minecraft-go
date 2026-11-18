@@ -83,11 +83,11 @@ func initDefaultTextures() {
 		}
 	}
 
-	// 3. Grass Side Texture (Top 3-4 pixels grass fringe, bottom dirt)
+	// 3. Grass Side Texture (Top 3-4 pixels grass fringe at y>=12, bottom dirt)
 	var grassSideTex BlockTexture
 	for y := 0; y < 16; y++ {
 		for x := 0; x < 16; x++ {
-			if y < 3 || (y == 3 && (x%3 == 0 || x%4 == 0)) {
+			if y >= 13 || (y == 12 && (x%3 == 0 || x%4 == 0)) {
 				grassSideTex[y][x] = grassGreenMid
 			} else {
 				grassSideTex[y][x] = dirtTex[y][x]
