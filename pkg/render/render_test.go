@@ -398,3 +398,17 @@ func TestChatAndCommandOverlay(t *testing.T) {
 		t.Fatalf("expected white text pixels in chat overlay")
 	}
 }
+
+func TestHurtVignette(t *testing.T) {
+	fb := NewFramebuffer(640, 480)
+	fb.Clear(0xFF000000)
+
+	fb.DrawHurtVignette(1.0)
+
+	// Check top-left corner border pixel (should have red component > 0)
+	pixel := fb.Color[0]
+	r := (pixel >> 16) & 0xFF
+	if r == 0 {
+		t.Fatalf("expected red vignette on screen border, got %X", pixel)
+	}
+}

@@ -41,6 +41,8 @@ func PlayHardwareFeedback(name string) {
 			procBeep.Call(480, 15)
 		case SoundBlockWoodStep:
 			procBeep.Call(360, 20)
+		case SoundPlayerHurt:
+			procBeep.Call(220, 80)
 		default:
 			procBeep.Call(400, 20)
 		}

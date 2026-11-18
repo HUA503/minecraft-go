@@ -77,6 +77,9 @@ type Client struct {
 	chatMessages     []render.ChatMessage
 	isCreative       bool
 	isFlying         bool
+	perspectiveMode  int // 0: 1st person, 1: 3rd person back, 2: 3rd person front
+	lastPlayerHealth float32
+	hurtFlashTimer   float64
 }
 
 func NewClient(serverAddr, username string, isSingleplayer bool, width, height int) *Client {
@@ -400,9 +403,36 @@ func (c *Client) PhysicsStep(fwdInput, strafeInput float64, jumpRequested bool, 
 		bobX = math.Cos(c.walkCycle*0.5) * 0.02
 	}
 
-	c.camera.X = resolvedPos.X + bobX
-	c.camera.Y = resolvedPos.Y + 1.62 + bobY // Eye level = 1.62 blocks above ground
-	c.camera.Z = resolvedPos.Z
+	eyeX := resolvedPos.X + bobX
+	eyeY := resolvedPos.Y + 1.62 + bobY // Eye level = 1.62 blocks above ground
+	eyeZ := resolvedPos.Z
+
+	// Perspective camera positioning (F5 toggle: 0=First Person, 1=Third Person Back, 2=Third Person Front)
+	lx, ly, lz := c.camera.GetLookVector()
+	switch c.perspectiveMode {
+	case 1: // Third-person back: 3.5 blocks behind
+		c.camera.X = eyeX - lx*3.5
+		c.camera.Y = eyeY - ly*3.5 + 0.2
+		c.camera.Z = eyeZ - lz*3.5
+	case 2: // Third-person front: 3.5 blocks in front
+		c.camera.X = eyeX + lx*3.5
+		c.camera.Y = eyeY + ly*3.5 + 0.2
+		c.camera.Z = eyeZ + lz*3.5
+	default: // First-person
+		c.camera.X = eyeX
+		c.camera.Y = eyeY
+		c.camera.Z = eyeZ
+	}
+
+	// Hurt flash & sound detection
+	if c.player.Health < c.lastPlayerHealth && c.lastPlayerHealth > 0 {
+		sound.PlayHardwareFeedback(sound.SoundPlayerHurt)
+		c.hurtFlashTimer = 0.4
+	}
+	c.lastPlayerHealth = c.player.Health
+	if c.hurtFlashTimer > 0 {
+		c.hurtFlashTimer -= dt
+	}
 
 	// Stream chunks as player moves
 	c.EnsureChunksAroundPlayer(resolvedPos.X, resolvedPos.Z, 2)
@@ -1027,8 +1057,17 @@ func (c *Client) RenderFrame() {
 		}
 	}
 
-	// 4. Draw first-person held item with walking sway and authentic arm swing
-	c.drawHeldItem()
+	// 4. Draw player model in third person or held item in first person
+	if c.perspectiveMode != 0 {
+		c.drawPlayerModel()
+	} else {
+		c.drawHeldItem()
+	}
+
+	// 4.5 Draw hurt vignette if recently damaged
+	if c.hurtFlashTimer > 0 {
+		c.framebuf.DrawHurtVignette(float32(c.hurtFlashTimer * 2.5))
+	}
 
 	// 5. Draw 2D HUD (Centered crosshair, 20 HP hearts, 20 hunger drumsticks, 9 hotbar slots with item icons & counts)
 	health := float32(20.0)
@@ -1257,6 +1296,108 @@ func (c *Client) drawMob(m *sim.MobEntity) {
 		}
 		fillW := int(float32(barW-2) * hpFrac)
 		c.framebuf.DrawRect(barX+1, barY+1, fillW, barH-2, 0xFF00FF00)
+	}
+}
+
+// drawPlayerModel renders the 3D Steve character in third-person view with limb swing animations.
+func (c *Client) drawPlayerModel() {
+	if c.player == nil {
+		return
+	}
+	// Project Steve body center to screen (Y+0.9m)
+	sp, ok := c.camera.ProjectToScreen(c.player.Position.X, c.player.Position.Y+0.9, c.player.Position.Z, c.framebuf.Width, c.framebuf.Height)
+	if !ok || sp.Depth <= 0.2 || sp.Depth > 32.0 {
+		return
+	}
+
+	baseScale := 42.0 / sp.Depth
+	bw := int(baseScale * 0.5)
+	bh := int(baseScale * 1.05)
+	if bw < 4 {
+		bw = 4
+	}
+	if bh < 8 {
+		bh = 8
+	}
+
+	sx := int(sp.X) - bw/2
+	sy := int(sp.Y) - bh/2
+
+	// Steve color palette
+	headCol := uint32(0xFFD6A07E) // Skin
+	hairCol := uint32(0xFF4D3B26) // Brown hair
+	bodyCol := uint32(0xFF2E8690) // Classic Cyan shirt
+	legCol := uint32(0xFF2A3663)  // Indigo blue pants
+	handCol := uint32(0xFFD6A07E)
+
+	if c.hurtFlashTimer > 0 {
+		headCol = 0xFFFF4444
+		hairCol = 0xFFFF2222
+		bodyCol = 0xFFFF3333
+		legCol = 0xFFFF2222
+		handCol = 0xFFFF4444
+	}
+
+	headH := bh * 2 / 7
+	bodyH := bh * 3 / 7
+
+	limbSwing := 0
+	if c.isMoving {
+		limbSwing = int(math.Sin(c.walkCycle) * float64(bw) * 0.25)
+	}
+
+	for dy := 0; dy < bh; dy++ {
+		py := sy + dy
+		if py < 0 || py >= c.framebuf.Height {
+			continue
+		}
+		for dx := 0; dx < bw; dx++ {
+			col := bodyCol
+			if dy < headH {
+				col = headCol
+				if dy < headH/3 {
+					col = hairCol // Hair on top
+				}
+			} else if dy >= headH+bodyH {
+				col = legCol
+				if dx == bw/2 {
+					col = 0xFF1A2244 // Center seam shadow
+				}
+			} else {
+				// Torso & Arms
+				if dx < bw/5 { // Left arm
+					if dy > headH+bodyH/2 {
+						col = handCol
+					}
+				} else if dx > bw*4/5 { // Right arm
+					if dy > headH+bodyH/2 {
+						col = handCol
+					}
+				}
+			}
+
+			drawX := sx + dx
+			// Animate swinging arms in walk cycle
+			if dy >= headH && dy < headH+bodyH {
+				if dx < bw/5 {
+					drawX += limbSwing
+				} else if dx > bw*4/5 {
+					drawX -= limbSwing
+				}
+			}
+			// Animate swinging legs in walk cycle
+			if dy >= headH+bodyH {
+				if dx < bw/2 {
+					drawX -= limbSwing / 2
+				} else {
+					drawX += limbSwing / 2
+				}
+			}
+
+			if drawX >= 0 && drawX < c.framebuf.Width {
+				c.framebuf.SetPixel(drawX, py, sp.Depth, col)
+			}
+		}
 	}
 }
 
@@ -1641,6 +1782,8 @@ func runGraphicalWindow(c *Client, w, h int) {
 			}
 		case 0x72: // F3: Toggle Debug Screen
 			c.showDebugF3 = !c.showDebugF3
+		case 0x74: // F5: Toggle Perspective (First-Person, Third-Person Back, Third-Person Front)
+			c.perspectiveMode = (c.perspectiveMode + 1) % 3
 		case 0x51: // Q: Quit immediately if in pause menu
 			if c.showPauseMenu {
 				wnd.Close()

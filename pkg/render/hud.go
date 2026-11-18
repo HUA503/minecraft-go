@@ -758,3 +758,65 @@ func (fb *Framebuffer) DrawChatOverlay(messages []ChatMessage, isTyping bool, in
 		fb.DrawText5x7(8, boxY+4, displayText, 0xFFFFFFFF, 1)
 	}
 }
+
+// BlendPixel alpha-blends an ARGB color over the existing pixel in the framebuffer.
+func (fb *Framebuffer) BlendPixel(x, y int, argb uint32) {
+	if x < 0 || x >= fb.Width || y < 0 || y >= fb.Height {
+		return
+	}
+	idx := y*fb.Width + x
+	a := (argb >> 24) & 0xFF
+	if a == 0 {
+		return
+	}
+	if a == 255 {
+		fb.Color[idx] = argb | 0xFF000000
+		return
+	}
+	invA := 255 - a
+	sr := (argb >> 16) & 0xFF
+	sg := (argb >> 8) & 0xFF
+	sb := argb & 0xFF
+
+	dc := fb.Color[idx]
+	dr := (dc >> 16) & 0xFF
+	dg := (dc >> 8) & 0xFF
+	db := dc & 0xFF
+
+	rr := (sr*a + dr*invA) / 255
+	rg := (sg*a + dg*invA) / 255
+	rb := (sb*a + db*invA) / 255
+
+	fb.Color[idx] = 0xFF000000 | (rr << 16) | (rg << 8) | rb
+}
+
+// DrawHurtVignette renders the authentic Minecraft red flash vignette along screen borders when damaged.
+func (fb *Framebuffer) DrawHurtVignette(intensity float32) {
+	if intensity <= 0 {
+		return
+	}
+	if intensity > 1.0 {
+		intensity = 1.0
+	}
+	vignetteThickness := 28
+	alphaMax := uint32(float32(180) * intensity)
+
+	// Top & Bottom gradient strips
+	for y := 0; y < vignetteThickness; y++ {
+		curAlpha := uint32(float32(alphaMax) * float32(vignetteThickness-y) / float32(vignetteThickness))
+		redCol := (curAlpha << 24) | 0x00FF0000
+		for x := 0; x < fb.Width; x++ {
+			fb.BlendPixel(x, y, redCol)
+			fb.BlendPixel(x, fb.Height-1-y, redCol)
+		}
+	}
+	// Left & Right gradient strips
+	for x := 0; x < vignetteThickness; x++ {
+		curAlpha := uint32(float32(alphaMax) * float32(vignetteThickness-x) / float32(vignetteThickness))
+		redCol := (curAlpha << 24) | 0x00FF0000
+		for y := 0; y < fb.Height; y++ {
+			fb.BlendPixel(x, y, redCol)
+			fb.BlendPixel(fb.Width-1-x, y, redCol)
+		}
+	}
+}
