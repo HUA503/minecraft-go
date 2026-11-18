@@ -48,6 +48,7 @@ const (
 	WM_DESTROY          = 0x0002
 	WM_KEYDOWN          = 0x0100
 	WM_KEYUP            = 0x0101
+	WM_CHAR             = 0x0102
 	WM_LBUTTONDOWN      = 0x0201
 	WM_RBUTTONDOWN      = 0x0204
 	WM_ACTIVATE         = 0x0006
@@ -114,6 +115,7 @@ type Window struct {
 	mu             sync.Mutex
 	OnKeyClick     func(vkCode int)
 	OnMouseClick   func(btn int)
+	OnCharInput    func(ch rune)
 	MouseCaptured  bool
 	centerScreenX  int32
 	centerScreenY  int32
@@ -166,6 +168,11 @@ func wndProc(hwnd, msg, wparam, lparam uintptr) uintptr {
 			globalWnd.mu.Lock()
 			globalWnd.KeyDown[vk] = false
 			globalWnd.mu.Unlock()
+		}
+		return 0
+	case WM_CHAR:
+		if globalWnd != nil && globalWnd.OnCharInput != nil {
+			globalWnd.OnCharInput(rune(wparam))
 		}
 		return 0
 	case WM_LBUTTONDOWN:

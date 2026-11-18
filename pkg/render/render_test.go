@@ -3,6 +3,7 @@ package render
 import (
 	"math"
 	"testing"
+	"time"
 )
 
 func TestMeshFaceCullingIsolatedCube(t *testing.T) {
@@ -369,5 +370,31 @@ func TestDebugScreenOverlay(t *testing.T) {
 
 	if drawnPixels == 0 {
 		t.Fatalf("expected white text pixels in F3 debug overlay")
+	}
+}
+
+func TestChatAndCommandOverlay(t *testing.T) {
+	fb := NewFramebuffer(800, 600)
+	fb.Clear(0xFF000000)
+
+	msgs := []ChatMessage{
+		{Text: "<Player> Hello Minecraft!", Timestamp: time.Now()},
+		{Text: "[GameMode] Set game mode to Creative", Timestamp: time.Now()},
+	}
+
+	fb.DrawChatOverlay(msgs, true, "/gamemode survival")
+
+	// Verify that chat text was rendered in the bottom area
+	drawnPixels := 0
+	for y := fb.Height - 60; y < fb.Height-10; y++ {
+		for x := 4; x < 300; x++ {
+			if fb.Color[y*fb.Width+x] == 0xFFFFFFFF {
+				drawnPixels++
+			}
+		}
+	}
+
+	if drawnPixels == 0 {
+		t.Fatalf("expected white text pixels in chat overlay")
 	}
 }

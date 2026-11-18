@@ -71,6 +71,11 @@ type Client struct {
 	currentFPS       int
 	fpsTimer         time.Time
 	lastFrameDuration float64
+	isChatOpen       bool
+	chatInput        string
+	chatMessages     []render.ChatMessage
+	isCreative       bool
+	isFlying         bool
 }
 
 func NewClient(serverAddr, username string, isSingleplayer bool, width, height int) *Client {
@@ -272,6 +277,36 @@ func (c *Client) Connect() error {
 // PhysicsStep executes one delta-time scaled physics step with authentic Minecraft Java Edition physics.
 func (c *Client) PhysicsStep(fwdInput, strafeInput float64, jumpRequested bool, dt float64) {
 	if c.player == nil {
+		return
+	}
+
+	// 0. Creative Flight Handling
+	if c.isFlying {
+		speed := 9.0
+		var fwd, strafe float64
+		lenInput := math.Hypot(fwdInput, strafeInput)
+		if lenInput > 0 {
+			fwd = (fwdInput / lenInput) * speed * dt
+			strafe = (strafeInput / lenInput) * speed * dt
+		}
+		radYaw := c.camera.Yaw * math.Pi / 180.0
+		dx := math.Sin(radYaw)*fwd + math.Cos(radYaw)*strafe
+		dz := math.Cos(radYaw)*fwd - math.Sin(radYaw)*strafe
+		dy := 0.0
+		if jumpRequested {
+			dy = speed * dt // Fly upward
+		} else if c.isSneaking {
+			dy = -speed * dt // Fly downward
+		}
+		c.player.Position.X += dx
+		c.player.Position.Y += dy
+		c.player.Position.Z += dz
+		c.player.Velocity = sim.Vec3{X: 0, Y: 0, Z: 0}
+		c.player.OnGround = false
+		c.camera.X = c.player.Position.X
+		c.camera.Y = c.player.Position.Y + 1.62
+		c.camera.Z = c.player.Position.Z
+		c.EnsureChunksAroundPlayer(c.player.Position.X, c.player.Position.Z, 2)
 		return
 	}
 
@@ -505,7 +540,11 @@ func (c *Client) UpdateMining(isLeftMouseDown bool, dt float64) {
 	}
 
 	dps := inventory.CalculateBlockDamagePerSecond(heldToolID, blockID)
-	c.breakProgress += dps * dt
+	if c.isCreative {
+		c.breakProgress = 1.0 // Instant block destruction in Creative Mode
+	} else {
+		c.breakProgress += dps * dt
+	}
 
 	// Periodically emit hitting sounds and small debris particles
 	if time.Since(c.lastHitSoundTime) > 220*time.Millisecond {
@@ -556,6 +595,189 @@ func randFloat() float64 {
 	var b [1]byte
 	rand.Read(b[:])
 	return float64(b[0]) / 255.0
+}
+
+// AddChatMessage appends a new message to the client's in-game chat history.
+func (c *Client) AddChatMessage(text string) {
+	c.chatMessages = append(c.chatMessages, render.ChatMessage{
+		Text:      text,
+		Timestamp: time.Now(),
+	})
+	if len(c.chatMessages) > 50 {
+		c.chatMessages = c.chatMessages[len(c.chatMessages)-50:]
+	}
+}
+
+// ExecuteCommand parses and executes in-game commands or sends player chat.
+func (c *Client) ExecuteCommand(input string) {
+	input = strings.TrimSpace(input)
+	if input == "" {
+		return
+	}
+
+	if !strings.HasPrefix(input, "/") {
+		// Normal player chat
+		c.AddChatMessage("<" + c.username + "> " + input)
+		return
+	}
+
+	parts := strings.Fields(input)
+	cmd := strings.ToLower(parts[0])
+
+	switch cmd {
+	case "/help":
+		c.AddChatMessage("Commands: /gamemode <c|s>, /fly, /time set <day|noon|night|midnight>, /give <item> [n], /tp <x> <y> <z>, /clear")
+
+	case "/gamemode":
+		if len(parts) < 2 {
+			c.AddChatMessage("Usage: /gamemode <creative|survival|c|s|1|0>")
+			return
+		}
+		mode := strings.ToLower(parts[1])
+		if mode == "creative" || mode == "c" || mode == "1" {
+			c.isCreative = true
+			c.AddChatMessage("[GameMode] Set own game mode to Creative Mode")
+		} else if mode == "survival" || mode == "s" || mode == "0" {
+			c.isCreative = false
+			c.isFlying = false
+			c.AddChatMessage("[GameMode] Set own game mode to Survival Mode")
+		} else {
+			c.AddChatMessage("Unknown game mode: " + parts[1])
+		}
+
+	case "/fly":
+		if !c.isCreative {
+			c.isCreative = true
+		}
+		c.isFlying = !c.isFlying
+		if c.isFlying {
+			c.AddChatMessage("[Flight] Creative flight enabled (Space=Up, Shift=Down)")
+		} else {
+			c.AddChatMessage("[Flight] Creative flight disabled")
+		}
+
+	case "/time":
+		if len(parts) >= 3 && strings.ToLower(parts[1]) == "set" {
+			val := strings.ToLower(parts[2])
+			if c.engine != nil {
+				switch val {
+				case "day":
+					c.engine.TickCount = 100
+					c.AddChatMessage("[Time] Set the time to 1000")
+				case "noon":
+					c.engine.TickCount = 600
+					c.AddChatMessage("[Time] Set the time to 6000")
+				case "night":
+					c.engine.TickCount = 1300
+					c.AddChatMessage("[Time] Set the time to 13000")
+				case "midnight":
+					c.engine.TickCount = 1800
+					c.AddChatMessage("[Time] Set the time to 18000")
+				default:
+					if t, err := strconv.ParseInt(val, 10, 64); err == nil {
+						c.engine.TickCount = t / 10
+						c.AddChatMessage(fmt.Sprintf("[Time] Set the time to %d", t))
+					}
+				}
+			}
+		} else {
+			c.AddChatMessage("Usage: /time set <day|noon|night|midnight|ticks>")
+		}
+
+	case "/give":
+		if len(parts) < 2 {
+			c.AddChatMessage("Usage: /give <item> [count]")
+			return
+		}
+		itemStr := strings.ToLower(parts[1])
+		count := 1
+		if len(parts) >= 3 {
+			if n, err := strconv.Atoi(parts[2]); err == nil && n > 0 {
+				count = n
+			}
+		}
+
+		var itemID int32
+		switch itemStr {
+		case "stone":
+			itemID = 1
+		case "grass", "grass_block":
+			itemID = 2
+		case "dirt":
+			itemID = 3
+		case "cobblestone", "cobble":
+			itemID = 4
+		case "planks", "wood_planks", "oak_planks":
+			itemID = 5
+		case "log", "oak_log", "wood":
+			itemID = 17
+		case "leaves", "oak_leaves":
+			itemID = 18
+		case "diamond":
+			itemID = 264
+		case "iron", "iron_ingot":
+			itemID = 265
+		case "gold", "gold_ingot":
+			itemID = 266
+		case "apple":
+			itemID = inventory.ItemApple
+		case "bread":
+			itemID = inventory.ItemBread
+		case "porkchop", "cooked_porkchop":
+			itemID = inventory.ItemCookedPorkchop
+		case "beef", "cooked_beef", "steak":
+			itemID = inventory.ItemSteak
+		case "pickaxe", "diamond_pickaxe":
+			itemID = inventory.ItemDiamondPickaxe
+		case "sword", "diamond_sword":
+			itemID = 276
+		case "crafting_table", "workbench":
+			itemID = 58
+		case "furnace":
+			itemID = 61
+		default:
+			if id, err := strconv.Atoi(itemStr); err == nil && id > 0 {
+				itemID = int32(id)
+			} else {
+				c.AddChatMessage("Unknown item: " + itemStr)
+				return
+			}
+		}
+
+		if c.player != nil && c.player.Inventory != nil {
+			c.player.Inventory.AddItem(itemID, count)
+			c.AddChatMessage(fmt.Sprintf("[Give] Gave %d [%s] to %s", count, itemStr, c.username))
+			sound.PlayHardwareFeedback("minecraft:item.pickup")
+		}
+
+	case "/tp":
+		if len(parts) < 4 {
+			c.AddChatMessage("Usage: /tp <x> <y> <z>")
+			return
+		}
+		x, err1 := strconv.ParseFloat(parts[1], 64)
+		y, err2 := strconv.ParseFloat(parts[2], 64)
+		z, err3 := strconv.ParseFloat(parts[3], 64)
+		if err1 == nil && err2 == nil && err3 == nil && c.player != nil {
+			c.player.Position = sim.Vec3{X: x, Y: y, Z: z}
+			c.camera.X = x
+			c.camera.Y = y + 1.62
+			c.camera.Z = z
+			c.EnsureChunksAroundPlayer(x, z, 2)
+			c.AddChatMessage(fmt.Sprintf("[Teleport] Teleported %s to (%.1f, %.1f, %.1f)", c.username, x, y, z))
+		}
+
+	case "/clear":
+		if c.player != nil && c.player.Inventory != nil {
+			for i := range c.player.Inventory.Slots {
+				c.player.Inventory.Slots[i] = inventory.ItemStack{}
+			}
+			c.AddChatMessage("[Inventory] Cleared player inventory")
+		}
+
+	default:
+		c.AddChatMessage("Unknown command. Type /help for help.")
+	}
 }
 
 func (c *Client) MineTargetedBlock() (int32, bool) {
@@ -917,6 +1139,9 @@ func (c *Client) RenderFrame() {
 		}
 		c.framebuf.DrawDebugScreen(dInfo)
 	}
+
+	// 8. Draw in-game chat log & command input bar
+	c.framebuf.DrawChatOverlay(c.chatMessages, c.isChatOpen, c.chatInput)
 }
 
 func (c *Client) drawMob(m *sim.MobEntity) {
@@ -1366,6 +1591,14 @@ func runGraphicalWindow(c *Client, w, h int) {
 
 	// Single key-press actions
 	wnd.OnKeyClick = func(vkCode int) {
+		if c.isChatOpen {
+			if vkCode == 0x1B { // Escape: cancel chat
+				c.isChatOpen = false
+				c.chatInput = ""
+				wnd.SetMouseCaptured(true)
+			}
+			return
+		}
 		switch vkCode {
 		case 0x46: // F: Mine
 			c.MineTargetedBlock()
@@ -1375,6 +1608,18 @@ func runGraphicalWindow(c *Client, w, h int) {
 			if !c.showPauseMenu {
 				c.showInventoryGUI = !c.showInventoryGUI
 				wnd.SetMouseCaptured(!c.showInventoryGUI)
+			}
+		case 0x54: // T: Open Chat
+			if !c.showPauseMenu && !c.showInventoryGUI {
+				c.isChatOpen = true
+				c.chatInput = ""
+				wnd.SetMouseCaptured(false)
+			}
+		case 0xBF: // / (Slash): Open Command Line
+			if !c.showPauseMenu && !c.showInventoryGUI {
+				c.isChatOpen = true
+				c.chatInput = "/"
+				wnd.SetMouseCaptured(false)
 			}
 		case 0x1B: // Escape: Close GUI or toggle Pause Menu
 			if c.showInventoryGUI {
@@ -1400,8 +1645,42 @@ func runGraphicalWindow(c *Client, w, h int) {
 		}
 	}
 
+	// Character input for in-game chat and slash commands
+	wnd.OnCharInput = func(ch rune) {
+		if !c.isChatOpen {
+			return
+		}
+		if ch == '\r' || ch == '\n' { // Enter: execute
+			cmdToRun := c.chatInput
+			c.chatInput = ""
+			c.isChatOpen = false
+			wnd.SetMouseCaptured(true)
+			c.ExecuteCommand(cmdToRun)
+			return
+		}
+		if ch == '\b' { // Backspace
+			if len(c.chatInput) > 0 {
+				runes := []rune(c.chatInput)
+				c.chatInput = string(runes[:len(runes)-1])
+			}
+			return
+		}
+		if ch == 27 { // Escape: cancel
+			c.isChatOpen = false
+			c.chatInput = ""
+			wnd.SetMouseCaptured(true)
+			return
+		}
+		if ch >= 32 { // Printable characters
+			c.chatInput += string(ch)
+		}
+	}
+
 	// Mouse button clicks (instant single-tap actions)
 	wnd.OnMouseClick = func(btn int) {
+		if c.isChatOpen {
+			return
+		}
 		if c.showPauseMenu {
 			if btn == 1 {
 				mx, my := wnd.GetCursorClientPos()
@@ -1473,6 +1752,14 @@ func runGraphicalWindow(c *Client, w, h int) {
 
 		// If Inventory & Crafting GUI is open, freeze world controls and display GUI
 		if c.showInventoryGUI {
+			time.Sleep(16 * time.Millisecond)
+			c.RenderFrame()
+			wnd.Present(c.framebuf)
+			continue
+		}
+
+		// If Chat / Command input is open, freeze world controls and display chat overlay
+		if c.isChatOpen {
 			time.Sleep(16 * time.Millisecond)
 			c.RenderFrame()
 			wnd.Present(c.framebuf)

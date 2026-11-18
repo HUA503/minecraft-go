@@ -2,6 +2,7 @@ package render
 
 import (
 	"strconv"
+	"time"
 
 	"github.com/HUA503/minecraft-go/pkg/inventory"
 )
@@ -707,5 +708,53 @@ func (fb *Framebuffer) DrawDebugScreen(info DebugInfo) {
 			fb.DrawText5x7(startX, curY+1, line, 0xFFFFFFFF, 1)
 			curY += 10
 		}
+	}
+}
+
+// ChatMessage represents an in-game chat log message with creation timestamp.
+type ChatMessage struct {
+	Text      string
+	Timestamp time.Time
+}
+
+// DrawChatOverlay renders the authentic Minecraft Java Edition chat history and command input bar.
+func (fb *Framebuffer) DrawChatOverlay(messages []ChatMessage, isTyping bool, inputBuffer string) {
+	now := time.Now()
+	// Render recent chat log entries from bottom up
+	startY := fb.Height - 56
+	if isTyping {
+		startY = fb.Height - 44
+	}
+
+	linesDrawn := 0
+	for i := len(messages) - 1; i >= 0 && linesDrawn < 10; i-- {
+		msg := messages[i]
+		age := now.Sub(msg.Timestamp).Seconds()
+		if !isTyping && age > 8.0 {
+			continue // Faded out in normal play
+		}
+
+		lineY := startY - linesDrawn*12
+		if lineY < 20 {
+			break
+		}
+
+		textWidth := MeasureText5x7(msg.Text, 1)
+		fb.DrawRect(4, lineY-1, textWidth+6, 11, 0x90000000)
+		fb.DrawText5x7(6, lineY+1, msg.Text, 0xFFFFFFFF, 1)
+		linesDrawn++
+	}
+
+	// Render interactive command/chat text entry box when user is typing (toggled with T or /)
+	if isTyping {
+		boxY := fb.Height - 26
+		fb.DrawRect(4, boxY, fb.Width-8, 16, 0xCC000000)
+		fb.DrawRect(4, boxY, fb.Width-8, 1, 0xFF555555)
+
+		displayText := "> " + inputBuffer
+		if (now.UnixMilli()/500)%2 == 0 {
+			displayText += "_"
+		}
+		fb.DrawText5x7(8, boxY+4, displayText, 0xFFFFFFFF, 1)
 	}
 }
