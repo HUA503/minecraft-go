@@ -70,7 +70,7 @@ func BuildSectionMesh(getBlock func(x, y, z int32) int32, originX, originY, orig
 					neighborID := getBlock(originX+x+off[0], originY+y+off[1], originZ+z+off[2])
 					// If neighbor is air (0), this face is exposed
 					if neighborID == 0 {
-						addFaceQuad(mesh, originX+x, originY+y, originZ+z, face, blockID)
+						addFaceQuad(mesh, originX+x, originY+y, originZ+z, face, blockID, getBlock)
 					}
 				}
 			}
@@ -80,27 +80,70 @@ func BuildSectionMesh(getBlock func(x, y, z int32) int32, originX, originY, orig
 	return mesh
 }
 
-func addFaceQuad(mesh *Mesh, x, y, z int32, face int, blockID int32) {
+// calcAO returns an authentic Minecraft ambient occlusion factor (0.5 to 1.0) for a corner vertex based on adjacent blocks.
+func calcAO(s1, s2, c bool) float32 {
+	if s1 && s2 {
+		return 0.5
+	}
+	count := 0
+	if s1 {
+		count++
+	}
+	if s2 {
+		count++
+	}
+	if c {
+		count++
+	}
+	switch count {
+	case 1:
+		return 0.8
+	case 2:
+		return 0.65
+	case 3:
+		return 0.5
+	default:
+		return 1.0
+	}
+}
+
+func addFaceQuad(mesh *Mesh, x, y, z int32, face int, blockID int32, getBlock func(x, y, z int32) int32) {
 	fx, fy, fz := float32(x), float32(y), float32(z)
 	norm := FaceNormals[face]
 	baseIdx := uint32(len(mesh.Vertices))
 
+	isSolid := func(bx, by, bz int32) bool {
+		return getBlock(bx, by, bz) != 0
+	}
+
 	var corners [4][3]float32
+	var ao [4]float32
+
 	switch face {
-	case 0: // +X
+	case 0: // +X (East)
 		corners = [4][3]float32{
 			{fx + 1, fy, fz},
 			{fx + 1, fy + 1, fz},
 			{fx + 1, fy + 1, fz + 1},
 			{fx + 1, fy, fz + 1},
 		}
-	case 1: // -X
+		ao[0] = calcAO(isSolid(x+1, y-1, z), isSolid(x+1, y, z-1), isSolid(x+1, y-1, z-1))
+		ao[1] = calcAO(isSolid(x+1, y+1, z), isSolid(x+1, y, z-1), isSolid(x+1, y+1, z-1))
+		ao[2] = calcAO(isSolid(x+1, y+1, z), isSolid(x+1, y, z+1), isSolid(x+1, y+1, z+1))
+		ao[3] = calcAO(isSolid(x+1, y-1, z), isSolid(x+1, y, z+1), isSolid(x+1, y-1, z+1))
+
+	case 1: // -X (West)
 		corners = [4][3]float32{
 			{fx, fy, fz + 1},
 			{fx, fy + 1, fz + 1},
 			{fx, fy + 1, fz},
 			{fx, fy, fz},
 		}
+		ao[0] = calcAO(isSolid(x-1, y-1, z), isSolid(x-1, y, z+1), isSolid(x-1, y-1, z+1))
+		ao[1] = calcAO(isSolid(x-1, y+1, z), isSolid(x-1, y, z+1), isSolid(x-1, y+1, z+1))
+		ao[2] = calcAO(isSolid(x-1, y+1, z), isSolid(x-1, y, z-1), isSolid(x-1, y+1, z-1))
+		ao[3] = calcAO(isSolid(x-1, y-1, z), isSolid(x-1, y, z-1), isSolid(x-1, y-1, z-1))
+
 	case 2: // +Y (Top)
 		corners = [4][3]float32{
 			{fx, fy + 1, fz},
@@ -108,6 +151,11 @@ func addFaceQuad(mesh *Mesh, x, y, z int32, face int, blockID int32) {
 			{fx + 1, fy + 1, fz + 1},
 			{fx + 1, fy + 1, fz},
 		}
+		ao[0] = calcAO(isSolid(x-1, y+1, z), isSolid(x, y+1, z-1), isSolid(x-1, y+1, z-1))
+		ao[1] = calcAO(isSolid(x-1, y+1, z), isSolid(x, y+1, z+1), isSolid(x-1, y+1, z+1))
+		ao[2] = calcAO(isSolid(x+1, y+1, z), isSolid(x, y+1, z+1), isSolid(x+1, y+1, z+1))
+		ao[3] = calcAO(isSolid(x+1, y+1, z), isSolid(x, y+1, z-1), isSolid(x+1, y+1, z-1))
+
 	case 3: // -Y (Bottom)
 		corners = [4][3]float32{
 			{fx, fy, fz + 1},
@@ -115,20 +163,34 @@ func addFaceQuad(mesh *Mesh, x, y, z int32, face int, blockID int32) {
 			{fx + 1, fy, fz},
 			{fx + 1, fy, fz + 1},
 		}
-	case 4: // +Z
+		ao[0] = calcAO(isSolid(x-1, y-1, z), isSolid(x, y-1, z+1), isSolid(x-1, y-1, z+1))
+		ao[1] = calcAO(isSolid(x-1, y-1, z), isSolid(x, y-1, z-1), isSolid(x-1, y-1, z-1))
+		ao[2] = calcAO(isSolid(x+1, y-1, z), isSolid(x, y-1, z-1), isSolid(x+1, y-1, z-1))
+		ao[3] = calcAO(isSolid(x+1, y-1, z), isSolid(x, y-1, z+1), isSolid(x+1, y-1, z+1))
+
+	case 4: // +Z (South)
 		corners = [4][3]float32{
 			{fx + 1, fy, fz + 1},
 			{fx + 1, fy + 1, fz + 1},
 			{fx, fy + 1, fz + 1},
 			{fx, fy, fz + 1},
 		}
-	case 5: // -Z
+		ao[0] = calcAO(isSolid(x+1, y, z+1), isSolid(x, y-1, z+1), isSolid(x+1, y-1, z+1))
+		ao[1] = calcAO(isSolid(x+1, y, z+1), isSolid(x, y+1, z+1), isSolid(x+1, y+1, z+1))
+		ao[2] = calcAO(isSolid(x-1, y, z+1), isSolid(x, y+1, z+1), isSolid(x-1, y+1, z+1))
+		ao[3] = calcAO(isSolid(x-1, y, z+1), isSolid(x, y-1, z+1), isSolid(x-1, y-1, z+1))
+
+	case 5: // -Z (North)
 		corners = [4][3]float32{
 			{fx, fy, fz},
 			{fx, fy + 1, fz},
 			{fx + 1, fy + 1, fz},
 			{fx + 1, fy, fz},
 		}
+		ao[0] = calcAO(isSolid(x-1, y, z-1), isSolid(x, y-1, z-1), isSolid(x-1, y-1, z-1))
+		ao[1] = calcAO(isSolid(x-1, y, z-1), isSolid(x, y+1, z-1), isSolid(x-1, y+1, z-1))
+		ao[2] = calcAO(isSolid(x+1, y, z-1), isSolid(x, y+1, z-1), isSolid(x+1, y+1, z-1))
+		ao[3] = calcAO(isSolid(x+1, y, z-1), isSolid(x, y-1, z-1), isSolid(x+1, y-1, z-1))
 	}
 
 	uvs := [4][2]float32{
@@ -150,13 +212,21 @@ func addFaceQuad(mesh *Mesh, x, y, z int32, face int, blockID int32) {
 			NormalZ:      norm[2],
 			BlockID:      blockID,
 			FaceIndex:    face,
-			LightingMult: FaceLighting[face],
+			LightingMult: FaceLighting[face] * ao[i],
 		})
 	}
 
-	// Two triangles: (0, 1, 2) and (0, 2, 3)
-	mesh.Indices = append(mesh.Indices,
-		baseIdx, baseIdx+1, baseIdx+2,
-		baseIdx, baseIdx+2, baseIdx+3,
-	)
+	// Minecraft Java Edition classic diagonal flip to prevent anisotropic shading creases:
+	if ao[0]+ao[2] < ao[1]+ao[3] {
+		mesh.Indices = append(mesh.Indices,
+			baseIdx+1, baseIdx+2, baseIdx+3,
+			baseIdx+1, baseIdx+3, baseIdx,
+		)
+	} else {
+		// Two triangles: (0, 1, 2) and (0, 2, 3)
+		mesh.Indices = append(mesh.Indices,
+			baseIdx, baseIdx+1, baseIdx+2,
+			baseIdx, baseIdx+2, baseIdx+3,
+		)
+	}
 }

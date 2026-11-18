@@ -65,6 +65,12 @@ type Client struct {
 	isEating         bool
 	eatTimer         float64
 	lastMunchSound   time.Time
+	showDebugF3      bool
+	lastStepTime     time.Time
+	fpsCounter       int
+	currentFPS       int
+	fpsTimer         time.Time
+	lastFrameDuration float64
 }
 
 func NewClient(serverAddr, username string, isSingleplayer bool, width, height int) *Client {
@@ -318,6 +324,29 @@ func (c *Client) PhysicsStep(fwdInput, strafeInput float64, jumpRequested bool, 
 	c.isMoving = (lenInput > 0)
 	if c.isMoving && onGround {
 		c.walkCycle += 10.0 * dt // Authentic Minecraft walk cycle speed
+
+		// Authentic Minecraft Footstep Sound Feedback
+		stepInterval := 380 * time.Millisecond
+		if c.isSprinting {
+			stepInterval = 270 * time.Millisecond
+		} else if c.isSneaking {
+			stepInterval = 550 * time.Millisecond
+		}
+		if time.Since(c.lastStepTime) > stepInterval {
+			c.lastStepTime = time.Now()
+			bx := int32(math.Floor(resolvedPos.X))
+			by := int32(math.Floor(resolvedPos.Y - 0.2))
+			bz := int32(math.Floor(resolvedPos.Z))
+			underBlock := c.engine.GetBlock(bx, by, bz)
+			switch underBlock {
+			case 1, 4: // Stone, Cobblestone
+				sound.PlayHardwareFeedback(sound.SoundBlockStoneStep)
+			case 5, 17: // Planks, Log
+				sound.PlayHardwareFeedback(sound.SoundBlockWoodStep)
+			default: // Grass, Dirt, etc.
+				sound.PlayHardwareFeedback(sound.SoundBlockGrassStep)
+			}
+		}
 	} else if onGround {
 		c.walkCycle = 0
 	}
@@ -791,6 +820,103 @@ func (c *Client) RenderFrame() {
 	if c.showInventoryGUI && c.player != nil && c.player.Inventory != nil {
 		c.framebuf.DrawInventoryGUI(c.player.Inventory)
 	}
+
+	// 7. Draw F3 Debug Screen overlay if toggled (F3 key)
+	if c.showDebugF3 && c.player != nil {
+		c.fpsCounter++
+		if time.Since(c.fpsTimer) >= 1*time.Second {
+			c.currentFPS = c.fpsCounter
+			c.fpsCounter = 0
+			c.fpsTimer = time.Now()
+		}
+
+		yawNorm := math.Mod(c.camera.Yaw, 360.0)
+		if yawNorm < 0 {
+			yawNorm += 360.0
+		}
+		facing := "south (towards +Z)"
+		if yawNorm >= 45.0 && yawNorm < 135.0 {
+			facing = "west (towards -X)"
+		} else if yawNorm >= 135.0 && yawNorm < 225.0 {
+			facing = "north (towards -Z)"
+		} else if yawNorm >= 225.0 && yawNorm < 315.0 {
+			facing = "east (towards +X)"
+		}
+
+		bx := int32(math.Floor(c.player.Position.X))
+		by := int32(math.Floor(c.player.Position.Y))
+		bz := int32(math.Floor(c.player.Position.Z))
+		cx := int32(math.Floor(float64(bx) / 16.0))
+		cz := int32(math.Floor(float64(bz) / 16.0))
+
+		targetName := "minecraft:air"
+		if c.hasTarget && c.engine != nil {
+			tID := c.engine.GetBlock(c.targetedPos.X, c.targetedPos.Y, c.targetedPos.Z)
+			switch tID {
+			case 1:
+				targetName = "minecraft:stone"
+			case 2:
+				targetName = "minecraft:grass_block"
+			case 3:
+				targetName = "minecraft:dirt"
+			case 4:
+				targetName = "minecraft:cobblestone"
+			case 5:
+				targetName = "minecraft:oak_planks"
+			case 7:
+				targetName = "minecraft:bedrock"
+			case 12:
+				targetName = "minecraft:sand"
+			case 13:
+				targetName = "minecraft:gravel"
+			case 14:
+				targetName = "minecraft:gold_ore"
+			case 15:
+				targetName = "minecraft:iron_ore"
+			case 16:
+				targetName = "minecraft:coal_ore"
+			case 17:
+				targetName = "minecraft:oak_log"
+			case 18:
+				targetName = "minecraft:oak_leaves"
+			case 56:
+				targetName = "minecraft:diamond_ore"
+			case 58:
+				targetName = "minecraft:crafting_table"
+			case 61:
+				targetName = "minecraft:furnace"
+			default:
+				targetName = "minecraft:block"
+			}
+		}
+
+		fpsDisp := c.currentFPS
+		if fpsDisp <= 0 {
+			fpsDisp = 60
+		}
+		ftMs := 1000.0 / float64(fpsDisp)
+
+		dInfo := render.DebugInfo{
+			FPS:           fpsDisp,
+			FrameTimeMs:   ftMs,
+			X:             c.player.Position.X,
+			Y:             c.player.Position.Y,
+			Z:             c.player.Position.Z,
+			BlockX:        bx,
+			BlockY:        by,
+			BlockZ:        bz,
+			ChunkX:        cx,
+			ChunkZ:        cz,
+			Facing:        facing,
+			Yaw:           c.camera.Yaw,
+			Pitch:         c.camera.Pitch,
+			TimeOfDay:     worldTime,
+			TargetedBlock: targetName,
+			HasTarget:     c.hasTarget,
+			TargetPos:     [3]int32{c.targetedPos.X, c.targetedPos.Y, c.targetedPos.Z},
+		}
+		c.framebuf.DrawDebugScreen(dInfo)
+	}
 }
 
 func (c *Client) drawMob(m *sim.MobEntity) {
@@ -1258,6 +1384,8 @@ func runGraphicalWindow(c *Client, w, h int) {
 				c.showPauseMenu = !c.showPauseMenu
 				wnd.SetMouseCaptured(!c.showPauseMenu)
 			}
+		case 0x72: // F3: Toggle Debug Screen
+			c.showDebugF3 = !c.showDebugF3
 		case 0x51: // Q: Quit immediately if in pause menu
 			if c.showPauseMenu {
 				wnd.Close()

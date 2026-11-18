@@ -35,6 +35,12 @@ func PlayHardwareFeedback(name string) {
 		case "minecraft:player.burp":
 			procBeep.Call(260, 45)
 			procBeep.Call(320, 30)
+		case SoundBlockGrassStep:
+			procBeep.Call(240, 15)
+		case SoundBlockStoneStep:
+			procBeep.Call(480, 15)
+		case SoundBlockWoodStep:
+			procBeep.Call(360, 20)
 		default:
 			procBeep.Call(400, 20)
 		}

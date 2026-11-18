@@ -44,6 +44,36 @@ func TestMeshFaceCullingAdjacentCubes(t *testing.T) {
 	}
 }
 
+func TestAmbientOcclusionSmoothLighting(t *testing.T) {
+	// A floor block at (0, 0, 0) and an elevated adjacent wall block at (1, 1, 0)
+	world := map[[3]int32]int32{
+		{0, 0, 0}: 1, // Floor
+		{1, 1, 0}: 1, // Wall next to floor
+	}
+
+	getBlock := func(x, y, z int32) int32 {
+		return world[[3]int32{x, y, z}]
+	}
+
+	mesh := BuildSectionMesh(getBlock, 0, 0, 0)
+
+	// Check top face of floor block (x=0, y=0, z=0, face=2)
+	// Vertices near x=1 should have reduced lighting due to AO wall shadow
+	foundShadedVertex := false
+	for _, v := range mesh.Vertices {
+		if v.BlockID == 1 && v.FaceIndex == 2 && v.Y == 1.0 {
+			if v.LightingMult < FaceLighting[2] {
+				foundShadedVertex = true
+				break
+			}
+		}
+	}
+
+	if !foundShadedVertex {
+		t.Fatalf("expected ambient occlusion to shade vertex near adjacent wall block")
+	}
+}
+
 func TestCameraLookVectorAndProjection(t *testing.T) {
 	cam := NewCamera(0, 0, 0)
 	cam.Yaw = 0
@@ -298,5 +328,46 @@ func TestPauseMenuAndFont(t *testing.T) {
 	// Verify back button is above quit button
 	if backRect[1] >= quitRect[1] {
 		t.Fatalf("expected back button Y (%d) < quit button Y (%d)", backRect[1], quitRect[1])
+	}
+}
+
+func TestDebugScreenOverlay(t *testing.T) {
+	fb := NewFramebuffer(800, 600)
+	fb.Clear(0xFF000000)
+
+	info := DebugInfo{
+		FPS:           128,
+		FrameTimeMs:   7.81,
+		X:             8.5,
+		Y:             65.0,
+		Z:             8.5,
+		BlockX:        8,
+		BlockY:        65,
+		BlockZ:        8,
+		ChunkX:        0,
+		ChunkZ:        0,
+		Facing:        "south (towards +Z)",
+		Yaw:           0,
+		Pitch:         0,
+		TimeOfDay:     6000,
+		TargetedBlock: "minecraft:grass_block",
+		HasTarget:     true,
+		TargetPos:     [3]int32{8, 64, 8},
+	}
+
+	fb.DrawDebugScreen(info)
+
+	// Verify that text was drawn to top-left area
+	drawnPixels := 0
+	for y := 4; y < 80; y++ {
+		for x := 4; x < 200; x++ {
+			if fb.Color[y*fb.Width+x] == 0xFFFFFFFF {
+				drawnPixels++
+			}
+		}
+	}
+
+	if drawnPixels == 0 {
+		t.Fatalf("expected white text pixels in F3 debug overlay")
 	}
 }

@@ -658,3 +658,54 @@ func (fb *Framebuffer) DrawPauseMenu(mouseX, mouseY int) (backBtnRect [4]int, qu
 
 	return backBtnRect, quitBtnRect
 }
+
+// DebugInfo holds data shown on the Minecraft F3 debug screen.
+type DebugInfo struct {
+	FPS           int
+	FrameTimeMs   float64
+	X, Y, Z       float64
+	BlockX, BlockY, BlockZ int32
+	ChunkX, ChunkZ int32
+	Facing        string
+	Yaw, Pitch    float64
+	TimeOfDay     int64
+	TargetedBlock string
+	HasTarget     bool
+	TargetPos     [3]int32
+}
+
+// DrawDebugScreen renders the authentic Minecraft Java Edition F3 debug overlay.
+func (fb *Framebuffer) DrawDebugScreen(info DebugInfo) {
+	leftLines := []string{
+		"Minecraft Go 1.0.0 (Windows pure Go)",
+		"FPS: " + strconv.Itoa(info.FPS) + " (" + strconv.FormatFloat(info.FrameTimeMs, 'f', 2, 64) + " ms)",
+		"XYZ: " + strconv.FormatFloat(info.X, 'f', 3, 64) + " / " + strconv.FormatFloat(info.Y, 'f', 3, 64) + " / " + strconv.FormatFloat(info.Z, 'f', 3, 64),
+		"Block: " + strconv.Itoa(int(info.BlockX)) + " " + strconv.Itoa(int(info.BlockY)) + " " + strconv.Itoa(int(info.BlockZ)),
+		"Chunk: " + strconv.Itoa(int(info.ChunkX)) + " " + strconv.Itoa(int(info.ChunkZ)),
+		"Facing: " + info.Facing + " (Yaw: " + strconv.FormatFloat(info.Yaw, 'f', 1, 64) + ", Pitch: " + strconv.FormatFloat(info.Pitch, 'f', 1, 64) + ")",
+		"Time: " + strconv.FormatInt(info.TimeOfDay, 10),
+	}
+
+	curY := 4
+	for _, line := range leftLines {
+		lineWidth := MeasureText5x7(line, 1)
+		fb.DrawRect(4, curY, lineWidth+4, 9, 0xA0151515)
+		fb.DrawText5x7(6, curY+1, line, 0xFFFFFFFF, 1)
+		curY += 10
+	}
+
+	if info.HasTarget {
+		rightLines := []string{
+			"Targeted Block: " + info.TargetedBlock,
+			"Target Pos: " + strconv.Itoa(int(info.TargetPos[0])) + " " + strconv.Itoa(int(info.TargetPos[1])) + " " + strconv.Itoa(int(info.TargetPos[2])),
+		}
+		curY = 4
+		for _, line := range rightLines {
+			lineWidth := MeasureText5x7(line, 1)
+			startX := fb.Width - lineWidth - 8
+			fb.DrawRect(startX-2, curY, lineWidth+4, 9, 0xA0151515)
+			fb.DrawText5x7(startX, curY+1, line, 0xFFFFFFFF, 1)
+			curY += 10
+		}
+	}
+}
