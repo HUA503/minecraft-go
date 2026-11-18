@@ -5,6 +5,7 @@ package render
 import (
 	"fmt"
 	"math"
+	"runtime"
 	"sync"
 	"syscall"
 	"unsafe"
@@ -15,27 +16,30 @@ var (
 	gdi32    = syscall.NewLazyDLL("gdi32.dll")
 	kernel32 = syscall.NewLazyDLL("kernel32.dll")
 
-	procGetModuleHandleW    = kernel32.NewProc("GetModuleHandleW")
-	procRegisterClassExW    = user32.NewProc("RegisterClassExW")
-	procCreateWindowExW     = user32.NewProc("CreateWindowExW")
-	procShowWindow          = user32.NewProc("ShowWindow")
-	procUpdateWindow        = user32.NewProc("UpdateWindow")
-	procDefWindowProcW      = user32.NewProc("DefWindowProcW")
-	procPeekMessageW        = user32.NewProc("PeekMessageW")
-	procTranslateMessage    = user32.NewProc("TranslateMessage")
-	procDispatchMessageW    = user32.NewProc("DispatchMessageW")
-	procGetDC               = user32.NewProc("GetDC")
-	procReleaseDC           = user32.NewProc("ReleaseDC")
-	procPostQuitMessage     = user32.NewProc("PostQuitMessage")
-	procSetCursorPos        = user32.NewProc("SetCursorPos")
-	procGetCursorPos        = user32.NewProc("GetCursorPos")
-	procShowCursor          = user32.NewProc("ShowCursor")
-	procClientToScreen      = user32.NewProc("ClientToScreen")
-	procScreenToClient      = user32.NewProc("ScreenToClient")
-	procStretchDIBits        = gdi32.NewProc("StretchDIBits")
-	procGetAsyncKeyState    = user32.NewProc("GetAsyncKeyState")
-	procGetForegroundWindow = user32.NewProc("GetForegroundWindow")
-	procSetProcessDPIAware  = user32.NewProc("SetProcessDPIAware")
+	procGetModuleHandleW              = kernel32.NewProc("GetModuleHandleW")
+	procRegisterClassExW              = user32.NewProc("RegisterClassExW")
+	procCreateWindowExW               = user32.NewProc("CreateWindowExW")
+	procShowWindow                    = user32.NewProc("ShowWindow")
+	procUpdateWindow                  = user32.NewProc("UpdateWindow")
+	procDefWindowProcW                = user32.NewProc("DefWindowProcW")
+	procPeekMessageW                  = user32.NewProc("PeekMessageW")
+	procTranslateMessage              = user32.NewProc("TranslateMessage")
+	procDispatchMessageW              = user32.NewProc("DispatchMessageW")
+	procGetDC                         = user32.NewProc("GetDC")
+	procReleaseDC                     = user32.NewProc("ReleaseDC")
+	procPostQuitMessage               = user32.NewProc("PostQuitMessage")
+	procSetCursorPos                  = user32.NewProc("SetCursorPos")
+	procGetCursorPos                  = user32.NewProc("GetCursorPos")
+	procShowCursor                    = user32.NewProc("ShowCursor")
+	procClientToScreen                = user32.NewProc("ClientToScreen")
+	procScreenToClient                = user32.NewProc("ScreenToClient")
+	procStretchDIBits                  = gdi32.NewProc("StretchDIBits")
+	procGetAsyncKeyState              = user32.NewProc("GetAsyncKeyState")
+	procGetForegroundWindow           = user32.NewProc("GetForegroundWindow")
+	procSetProcessDPIAware            = user32.NewProc("SetProcessDPIAware")
+	procDisableProcessWindowsGhosting = user32.NewProc("DisableProcessWindowsGhosting")
+	procBeginPaint                    = user32.NewProc("BeginPaint")
+	procEndPaint                      = user32.NewProc("EndPaint")
 )
 
 const (
@@ -43,8 +47,10 @@ const (
 	WS_VISIBLE          = 0x10000000
 	SW_SHOW             = 5
 	PM_REMOVE           = 0x0001
+	WM_PAINT            = 0x000F
 	WM_CLOSE            = 0x0010
 	WM_QUIT             = 0x0012
+	WM_ERASEBKGND       = 0x0014
 	WM_DESTROY          = 0x0002
 	WM_KEYDOWN          = 0x0100
 	WM_KEYUP            = 0x0101
@@ -185,6 +191,15 @@ func wndProc(hwnd, msg, wparam, lparam uintptr) uintptr {
 			globalWnd.OnMouseClick(2)
 		}
 		return 0
+	case WM_ERASEBKGND:
+		return 1 // Prevent Win32 background erasing flicker and repaint floods
+	case WM_PAINT:
+		var ps [72]byte
+		hdc, _, _ := procBeginPaint.Call(hwnd, uintptr(unsafe.Pointer(&ps[0])))
+		if hdc != 0 {
+			procEndPaint.Call(hwnd, uintptr(unsafe.Pointer(&ps[0])))
+		}
+		return 0
 	}
 	ret, _, _ := procDefWindowProcW.Call(hwnd, msg, wparam, lparam)
 	return ret
@@ -192,7 +207,9 @@ func wndProc(hwnd, msg, wparam, lparam uintptr) uintptr {
 
 // NewNativeWindow creates a real graphical desktop window.
 func NewNativeWindow(title string, width, height int) (*Window, error) {
-	procSetProcessDPIAware.Call() // Enable 1:1 hardware pixel scaling
+	runtime.LockOSThread()                  // Pin goroutine to native OS thread for reliable Win32 message pumping
+	procSetProcessDPIAware.Call()           // Enable 1:1 hardware pixel scaling
+	procDisableProcessWindowsGhosting.Call() // Prevent Windows from falsely marking application as "Not Responding"
 
 	className, _ := syscall.UTF16PtrFromString("MinecraftGoClass")
 	windowTitle, _ := syscall.UTF16PtrFromString(title)

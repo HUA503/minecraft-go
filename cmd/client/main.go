@@ -9,6 +9,7 @@ import (
 	"math"
 	"net"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -120,13 +121,16 @@ func NewClient(serverAddr, username string, isSingleplayer bool, width, height i
 		cli.engine.SpawnMob(sim.MobZombie, sim.Vec3{X: 32.0, Y: 66.0, Z: 32.0})
 		cli.engine.SpawnMob(sim.MobCreeper, sim.Vec3{X: 38.0, Y: 66.0, Z: 38.0})
 
-		cli.EnsureChunksAroundPlayer(8.0, 8.0, 2)
+		// Pre-mesh immediate spawn sections synchronously so terrain is immediately visible
+		for i := 0; i < 25; i++ {
+			cli.EnsureChunksAroundPlayer(8.0, 8.0, 1)
+		}
 	}
 
 	return cli
 }
 
-// EnsureChunksAroundPlayer streams procedural world chunks and builds section meshes around the player.
+// EnsureChunksAroundPlayer streams procedural world chunks and progressively meshes sections around the player.
 func (c *Client) EnsureChunksAroundPlayer(playerX, playerZ float64, radius int32) {
 	if c.genOverworld == nil || c.engine == nil {
 		return
@@ -134,36 +138,8 @@ func (c *Client) EnsureChunksAroundPlayer(playerX, playerZ float64, radius int32
 	pcx := int32(math.Floor(playerX / 16.0))
 	pcz := int32(math.Floor(playerZ / 16.0))
 
-	c.meshMu.Lock()
-	defer c.meshMu.Unlock()
-
-	// Check if all needed sections are already meshed (sy: 0 to 7 covering Y=0..127)
-	allCached := true
-	for dx := -radius; dx <= radius; dx++ {
-		for dz := -radius; dz <= radius; dz++ {
-			for sy := int32(0); sy <= 7; sy++ {
-				if c.meshCache[[3]int32{pcx + dx, sy, pcz + dz}] == nil {
-					allCached = false
-					break
-				}
-			}
-			if !allCached {
-				break
-			}
-		}
-	}
-
-	if pcx == c.lastChunkX && pcz == c.lastChunkZ && allCached {
-		return
-	}
-	c.lastChunkX = pcx
-	c.lastChunkZ = pcz
-
-	getBlock := func(x, y, z int32) int32 {
-		return c.engine.GetBlock(x, y, z)
-	}
-
-	// Pass 1: Pre-generate all chunks in expanded radius (radius + 1) to eliminate chunk border air gaps
+	// Pass 1: Progressively generate missing chunks in radius+1 (up to 2 chunks per frame to eliminate main-thread stutter)
+	generatedCount := 0
 	for dx := -radius - 1; dx <= radius + 1; dx++ {
 		for dz := -radius - 1; dz <= radius + 1; dz++ {
 			cp := world.ChunkPos{X: pcx + dx, Z: pcz + dz}
@@ -171,22 +147,53 @@ func (c *Client) EnsureChunksAroundPlayer(playerX, playerZ float64, radius int32
 				chunk := c.genOverworld.GenerateChunk(cp)
 				c.engine.LoadChunk(cp, chunk)
 				c.loadedChunks[cp] = true
-			}
-		}
-	}
-
-	// Pass 2: Build section meshes for chunks within radius
-	for dx := -radius; dx <= radius; dx++ {
-		for dz := -radius; dz <= radius; dz++ {
-			cp := world.ChunkPos{X: pcx + dx, Z: pcz + dz}
-			for sy := int32(0); sy <= 7; sy++ {
-				key := [3]int32{cp.X, sy, cp.Z}
-				if c.meshCache[key] == nil {
-					mesh := render.BuildSectionMesh(getBlock, cp.X*16, sy*16, cp.Z*16)
-					c.meshCache[key] = mesh
+				generatedCount++
+				if generatedCount >= 2 {
+					break
 				}
 			}
 		}
+		if generatedCount >= 2 {
+			break
+		}
+	}
+
+	getBlock := func(x, y, z int32) int32 {
+		return c.engine.GetBlock(x, y, z)
+	}
+
+	// Pass 2: Progressive section meshing (build at most 2 sections per frame, prioritizing surface sections sy=4,3,5 first)
+	c.meshMu.RLock()
+	var unmeshed [][3]int32
+	preferredSY := []int32{4, 3, 5, 2, 6, 1, 7, 0}
+	for dx := -radius; dx <= radius; dx++ {
+		for dz := -radius; dz <= radius; dz++ {
+			cp := world.ChunkPos{X: pcx + dx, Z: pcz + dz}
+			for _, sy := range preferredSY {
+				key := [3]int32{cp.X, sy, cp.Z}
+				if c.meshCache[key] == nil {
+					unmeshed = append(unmeshed, key)
+				}
+			}
+		}
+	}
+	c.meshMu.RUnlock()
+
+	if len(unmeshed) == 0 {
+		return
+	}
+
+	maxBuild := 2
+	if len(unmeshed) < maxBuild {
+		maxBuild = len(unmeshed)
+	}
+
+	for i := 0; i < maxBuild; i++ {
+		key := unmeshed[i]
+		mesh := render.BuildSectionMesh(getBlock, key[0]*16, key[1]*16, key[2]*16)
+		c.meshMu.Lock()
+		c.meshCache[key] = mesh
+		c.meshMu.Unlock()
 	}
 }
 
@@ -1578,6 +1585,9 @@ func main() {
 }
 
 func runGraphicalWindow(c *Client, w, h int) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
 	title := fmt.Sprintf("Minecraft-Go [Java 26.3 Parity] - %s", c.username)
 	wnd, err := render.NewNativeWindow(title, w, h)
 	if err != nil {
