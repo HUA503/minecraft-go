@@ -28,7 +28,7 @@ func NewFramebuffer(w, h int) *Framebuffer {
 func (fb *Framebuffer) Clear(clearColor uint32) {
 	for i := range fb.Color {
 		fb.Color[i] = clearColor
-		fb.Depth[i] = 1.0 // Far plane
+		fb.Depth[i] = 1e9 // Far plane in linear view meters
 	}
 }
 
@@ -58,7 +58,7 @@ func (fb *Framebuffer) ClearSkyWithTime(worldTime int64) {
 		rowOffset := y * fb.Width
 		for x := 0; x < fb.Width; x++ {
 			fb.Color[rowOffset+x] = col
-			fb.Depth[rowOffset+x] = 1.0
+			fb.Depth[rowOffset+x] = 1e9
 		}
 	}
 
@@ -124,8 +124,8 @@ type ScreenVertex struct {
 
 func NewScreenVertex(p ScreenPoint, u, v float32, blockID int32, faceIndex int, lightMult float32) ScreenVertex {
 	depth := p.Depth
-	if depth < 0.1 {
-		depth = 0.1
+	if depth < 0.01 {
+		depth = 0.01
 	}
 	invZ := 1.0 / depth
 	return ScreenVertex{
@@ -228,8 +228,8 @@ func (fb *Framebuffer) DrawVoxelTrianglePerspective(v0, v1, v2 ScreenVertex) {
 	}
 	invArea := 1.0 / area
 
-	const fogStart = 0.35 // Normalized depth start
-	const fogEnd = 0.85   // Normalized depth end (full fog)
+	const fogStart = 35.0 // Distance fog start (in meters)
+	const fogEnd = 70.0   // Distance fog end (full horizon haze)
 	skyHazeR := float32(195)
 	skyHazeG := float32(222)
 	skyHazeB := float32(255)

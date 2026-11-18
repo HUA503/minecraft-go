@@ -79,7 +79,7 @@ func (c *Camera) ProjectViewToScreen(vx, vy, vz float64, screenW, screenH int) S
 	return ScreenPoint{
 		X:     float32(screenX),
 		Y:     float32(screenY),
-		Depth: float32(vz / 100.0), // normalized depth for Z-buffer
+		Depth: float32(vz), // Linear view depth in meters
 	}
 }
 

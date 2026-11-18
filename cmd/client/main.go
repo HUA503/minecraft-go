@@ -86,9 +86,13 @@ func NewClient(serverAddr, username string, isSingleplayer bool, width, height i
 		cli.player = cli.engine.AddPlayer(username, u, sim.Vec3{X: 8.0, Y: 65.0, Z: 8.0})
 
 		// Classic starter items in hotbar
-		cli.player.Inventory.AddItem(inventory.ItemOakLog, 32)
-		cli.player.Inventory.AddItem(inventory.ItemCobblestone, 64)
-		cli.player.Inventory.AddItem(inventory.ItemDirt, 64)
+		cli.player.Inventory.Slots[0] = inventory.ItemStack{ItemID: inventory.ItemWoodenPickaxe, Count: 1}
+		cli.player.Inventory.Slots[1] = inventory.ItemStack{ItemID: inventory.ItemOakPlanks, Count: 16}
+		cli.player.Inventory.Slots[2] = inventory.ItemStack{ItemID: inventory.ItemCobblestone, Count: 8}
+		cli.player.Inventory.Slots[3] = inventory.ItemStack{ItemID: inventory.ItemDirt, Count: 8}
+		cli.player.Inventory.Slots[4] = inventory.ItemStack{ItemID: 268, Count: 1} // Wooden Sword
+		cli.player.Inventory.Slots[5] = inventory.ItemStack{ItemID: 271, Count: 1} // Wooden Axe
+		cli.player.Inventory.Slots[6] = inventory.ItemStack{ItemID: 269, Count: 1} // Wooden Shovel
 
 		cli.EnsureChunksAroundPlayer(8.0, 8.0, 2)
 	}
@@ -104,29 +108,51 @@ func (c *Client) EnsureChunksAroundPlayer(playerX, playerZ float64, radius int32
 	pcx := int32(math.Floor(playerX / 16.0))
 	pcz := int32(math.Floor(playerZ / 16.0))
 
-	if pcx == c.lastChunkX && pcz == c.lastChunkZ && len(c.meshCache) > 0 {
+	c.meshMu.Lock()
+	defer c.meshMu.Unlock()
+
+	// Check if all needed sections are already meshed
+	allCached := true
+	for dx := -radius; dx <= radius; dx++ {
+		for dz := -radius; dz <= radius; dz++ {
+			for sy := int32(1); sy <= 7; sy++ {
+				if c.meshCache[[3]int32{pcx + dx, sy, pcz + dz}] == nil {
+					allCached = false
+					break
+				}
+			}
+			if !allCached {
+				break
+			}
+		}
+	}
+
+	if pcx == c.lastChunkX && pcz == c.lastChunkZ && allCached {
 		return
 	}
 	c.lastChunkX = pcx
 	c.lastChunkZ = pcz
 
-	c.meshMu.Lock()
-	defer c.meshMu.Unlock()
-
 	getBlock := func(x, y, z int32) int32 {
 		return c.engine.GetBlock(x, y, z)
 	}
 
-	for dx := -radius; dx <= radius; dx++ {
-		for dz := -radius; dz <= radius; dz++ {
+	// Pass 1: Pre-generate all chunks in expanded radius (radius + 1) to eliminate chunk border air gaps
+	for dx := -radius - 1; dx <= radius + 1; dx++ {
+		for dz := -radius - 1; dz <= radius + 1; dz++ {
 			cp := world.ChunkPos{X: pcx + dx, Z: pcz + dz}
 			if !c.loadedChunks[cp] {
 				chunk := c.genOverworld.GenerateChunk(cp)
 				c.engine.LoadChunk(cp, chunk)
 				c.loadedChunks[cp] = true
 			}
+		}
+	}
 
-			// Build mesh for sections Y=16 to Y=128
+	// Pass 2: Build section meshes for chunks within radius
+	for dx := -radius; dx <= radius; dx++ {
+		for dz := -radius; dz <= radius; dz++ {
+			cp := world.ChunkPos{X: pcx + dx, Z: pcz + dz}
 			for sy := int32(1); sy <= 7; sy++ {
 				key := [3]int32{cp.X, sy, cp.Z}
 				if c.meshCache[key] == nil {
@@ -138,8 +164,44 @@ func (c *Client) EnsureChunksAroundPlayer(playerX, playerZ float64, radius int32
 	}
 }
 
+// InvalidateBlockMesh purges cached section mesh containing pos and affected neighbor boundary sections.
+func (c *Client) InvalidateBlockMesh(pos world.BlockPos) {
+	c.meshMu.Lock()
+	defer c.meshMu.Unlock()
+
+	secX := int32(math.Floor(float64(pos.X) / 16.0))
+	secY := pos.Y / 16
+	secZ := int32(math.Floor(float64(pos.Z) / 16.0))
+
+	delete(c.meshCache, [3]int32{secX, secY, secZ})
+
+	remX := ((pos.X % 16) + 16) % 16
+	remY := pos.Y % 16
+	remZ := ((pos.Z % 16) + 16) % 16
+
+	if remX == 0 {
+		delete(c.meshCache, [3]int32{secX - 1, secY, secZ})
+	} else if remX == 15 {
+		delete(c.meshCache, [3]int32{secX + 1, secY, secZ})
+	}
+	if remY == 0 && secY > 0 {
+		delete(c.meshCache, [3]int32{secX, secY - 1, secZ})
+	} else if remY == 15 && secY < 15 {
+		delete(c.meshCache, [3]int32{secX, secY + 1, secZ})
+	}
+	if remZ == 0 {
+		delete(c.meshCache, [3]int32{secX, secY, secZ - 1})
+	} else if remZ == 15 {
+		delete(c.meshCache, [3]int32{secX, secY, secZ + 1})
+	}
+}
+
 func (c *Client) RebuildMeshes() {
 	if c.player != nil {
+		c.meshMu.Lock()
+		c.meshCache = make(map[[3]int32]*render.Mesh)
+		c.meshMu.Unlock()
+
 		c.lastChunkX = -999
 		c.EnsureChunksAroundPlayer(c.player.Position.X, c.player.Position.Z, 2)
 	}
@@ -391,14 +453,16 @@ func (c *Client) UpdateMining(isLeftMouseDown bool, dt float64) {
 
 	// Block breaking completion threshold (100% progress)
 	if c.breakProgress >= 1.0 {
-		c.engine.BreakBlockWithTool(c.player.ID, c.miningPos, heldToolID)
-		c.spawnBlockDebris(c.miningPos, blockID, 20) // Explosion of particles
+		minedPos := c.miningPos
+		c.engine.BreakBlockWithTool(c.player.ID, minedPos, heldToolID)
+		c.spawnBlockDebris(minedPos, blockID, 24) // Explosion of particles
 		sound.PlayHardwareFeedback(sound.GetBlockBreakSound(blockID))
 
 		c.breakProgress = 0.0
 		c.hasMiningBlock = false
 		c.isMining = false
-		c.RebuildMeshes()
+		c.InvalidateBlockMesh(minedPos)
+		c.EnsureChunksAroundPlayer(c.camera.X, c.camera.Z, 2)
 	}
 }
 
@@ -439,9 +503,13 @@ func (c *Client) MineTargetedBlock() (int32, bool) {
 	if sel := c.player.Inventory.GetSelectedItem(); !sel.IsEmpty() {
 		heldToolID = sel.ItemID
 	}
-	drop, ok := c.engine.BreakBlockWithTool(c.player.ID, c.targetedPos, heldToolID)
-	c.spawnBlockDebris(c.targetedPos, drop, 16)
-	c.RebuildMeshes()
+	targetPos := c.targetedPos
+	blockID := c.engine.GetBlock(targetPos.X, targetPos.Y, targetPos.Z)
+	drop, ok := c.engine.BreakBlockWithTool(c.player.ID, targetPos, heldToolID)
+	c.spawnBlockDebris(targetPos, blockID, 20)
+	sound.PlayHardwareFeedback(sound.GetBlockBreakSound(blockID))
+	c.InvalidateBlockMesh(targetPos)
+	c.EnsureChunksAroundPlayer(c.camera.X, c.camera.Z, 2)
 	return drop, ok
 }
 
@@ -474,7 +542,9 @@ func (c *Client) PlaceBlockInFront() bool {
 
 	ok := c.engine.PlaceBlock(c.player.ID, targetPos, selected.ItemID)
 	if ok {
-		c.RebuildMeshes()
+		sound.PlayHardwareFeedback(sound.GetBlockPlaceSound(selected.ItemID))
+		c.InvalidateBlockMesh(targetPos)
+		c.EnsureChunksAroundPlayer(c.camera.X, c.camera.Z, 2)
 	}
 	return ok
 }
@@ -585,19 +655,68 @@ func (c *Client) RenderFrame() {
 		c.framebuf.DrawParticles(c.camera, c.particles)
 	}
 
+	// 3.6 Render floating 3D item drops in the world
+	if c.engine != nil {
+		drops := c.engine.GetItemDrops()
+		for _, drop := range drops {
+			c.drawItemDrop(drop)
+		}
+	}
+
 	// 4. Draw first-person held item with walking sway and authentic arm swing
 	c.drawHeldItem()
 
-	// 5. Draw 2D HUD (Centered crosshair, 20 HP hearts, 20 hunger drumsticks, 9 hotbar slots)
+	// 5. Draw 2D HUD (Centered crosshair, 20 HP hearts, 20 hunger drumsticks, 9 hotbar slots with item icons & counts)
 	health := float32(20.0)
 	hunger := 20
 	selectedSlot := 0
-	if c.player != nil {
+	var hotbarSlots [9]inventory.ItemStack
+	if c.player != nil && c.player.Inventory != nil {
 		health = c.player.Health
 		hunger = c.player.Hunger
 		selectedSlot = c.player.Inventory.SelectedHotbar
+		for i := 0; i < 9; i++ {
+			hotbarSlots[i] = c.player.Inventory.Slots[i]
+		}
 	}
-	c.framebuf.DrawHUD(health, hunger, selectedSlot)
+	c.framebuf.DrawHUDWithInventory(health, hunger, selectedSlot, hotbarSlots)
+}
+
+func (c *Client) drawItemDrop(drop sim.ItemDrop) {
+	bobY := math.Sin(drop.Age*4.0) * 0.08
+	cx, cy, cz := drop.Position.X, drop.Position.Y+bobY+0.15, drop.Position.Z
+	sp, ok := c.camera.ProjectToScreen(cx, cy, cz, c.framebuf.Width, c.framebuf.Height)
+	if !ok || sp.Depth <= 0.05 {
+		return
+	}
+	// Scale drop on screen based on distance
+	sz := int(24.0 / sp.Depth)
+	if sz < 4 {
+		sz = 4
+	} else if sz > 28 {
+		sz = 28
+	}
+	sx := int(sp.X) - sz/2
+	sy := int(sp.Y) - sz/2
+
+	topCol := render.SampleBlockColor(drop.ItemID, 2, 0.5, 0.5, 1.0)
+	sideCol := render.SampleBlockColor(drop.ItemID, 0, 0.5, 0.5, 0.75)
+	darkCol := render.SampleBlockColor(drop.ItemID, 1, 0.5, 0.5, 0.55)
+
+	halfH := sz / 2
+	for dy := 0; dy < sz; dy++ {
+		py := sy + dy
+		for dx := 0; dx < sz; dx++ {
+			px := sx + dx
+			col := sideCol
+			if dy < halfH/2 {
+				col = topCol
+			} else if dx < sz/2 {
+				col = darkCol
+			}
+			c.framebuf.SetPixel(px, py, sp.Depth, col)
+		}
+	}
 }
 
 func (c *Client) drawHeldItem() {
@@ -622,22 +741,63 @@ func (c *Client) drawHeldItem() {
 	hx := c.framebuf.Width - 95 + swayX - swingOffset
 	hy := c.framebuf.Height - 110 + swayY + swingDrop
 
+	skinTone := uint32(0xFFD6A07E)   // Tan skin
+	skinShade := uint32(0xFFB57C5E)  // Shading
+	sleeveTone := uint32(0xFF2E8690) // Classic Cyan shirt sleeve
+
 	if selected.IsEmpty() {
 		// Steve's authentic first-person player arm / fist
-		skinTone := uint32(0xFFD6A07E)   // Tan skin
-		skinShade := uint32(0xFFB57C5E)  // Shading
-		sleeveTone := uint32(0xFF2E8690) // Classic Cyan shirt sleeve
-
-		// Cyan sleeve
 		c.framebuf.DrawRect(hx+20, hy+40, 45, 60, sleeveTone)
-		// Forearm
 		c.framebuf.DrawRect(hx+25, hy+15, 35, 25, skinTone)
-		// Fist
 		c.framebuf.DrawRect(hx+20, hy, 40, 15, skinShade)
 		return
 	}
 
-	// 3D isometric held block
+	props, isTool := inventory.GetToolProperties(selected.ItemID)
+	if isTool {
+		// Draw Steve's arm holding tool
+		c.framebuf.DrawRect(hx+25, hy+50, 40, 50, sleeveTone)
+		c.framebuf.DrawRect(hx+30, hy+30, 30, 20, skinTone)
+		c.framebuf.DrawRect(hx+25, hy+20, 25, 12, skinShade)
+
+		// Diagonal tool handle (brown wood)
+		handleCol := uint32(0xFF6F4F37)
+		for d := 0; d < 22; d++ {
+			c.framebuf.DrawRect(hx+30-d, hy+20-d, 3, 3, handleCol)
+		}
+
+		// Tool Head
+		headCol := uint32(0xFFB8945F) // Wood
+		switch props.Tier {
+		case inventory.TierStone:
+			headCol = 0xFF888888
+		case inventory.TierIron:
+			headCol = 0xFFEEEEEE
+		case inventory.TierDiamond:
+			headCol = 0xFF4AEDD7
+		}
+
+		tipX := hx + 30 - 22
+		tipY := hy + 20 - 22
+		switch props.Type {
+		case inventory.ToolPickaxe:
+			c.framebuf.DrawRect(tipX-10, tipY-2, 22, 6, headCol)
+			c.framebuf.DrawRect(tipX-12, tipY+3, 6, 6, headCol)
+			c.framebuf.DrawRect(tipX+10, tipY+3, 6, 6, headCol)
+		case inventory.ToolSword:
+			for d := 0; d < 18; d++ {
+				c.framebuf.DrawRect(tipX-d, tipY-d, 5, 5, headCol)
+			}
+			c.framebuf.DrawRect(tipX+4, tipY+4, 10, 5, 0xFF4D3B26) // Crossguard
+		case inventory.ToolAxe:
+			c.framebuf.DrawRect(tipX-10, tipY-8, 14, 16, headCol)
+		default:
+			c.framebuf.DrawRect(tipX-6, tipY-6, 12, 12, headCol)
+		}
+		return
+	}
+
+	// 3D isometric held block held by Steve's hand
 	colorTop := render.SampleBlockColor(selected.ItemID, 2, 0.5, 0.5, 1.0)
 	colorLeft := render.SampleBlockColor(selected.ItemID, 1, 0.5, 0.5, 0.8)
 	colorRight := render.SampleBlockColor(selected.ItemID, 0, 0.5, 0.5, 0.6)
@@ -645,6 +805,9 @@ func (c *Client) drawHeldItem() {
 	c.framebuf.DrawRect(hx+15, hy, 40, 20, colorTop)
 	c.framebuf.DrawRect(hx, hy+20, 35, 45, colorLeft)
 	c.framebuf.DrawRect(hx+35, hy+20, 35, 45, colorRight)
+
+	// Steve's fingers grasping the bottom of the block
+	c.framebuf.DrawRect(hx+15, hy+55, 35, 12, skinTone)
 }
 
 func main() {

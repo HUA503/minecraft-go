@@ -33,6 +33,10 @@ func (v Vec3) Normalize() Vec3 {
 	return Vec3{X: v.X / l, Y: v.Y / l, Z: v.Z / l}
 }
 
+func (v Vec3) DistanceTo(other Vec3) float64 {
+	return v.Sub(other).Length()
+}
+
 // AABB represents an Axis-Aligned Bounding Box.
 type AABB struct {
 	Min Vec3

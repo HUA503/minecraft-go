@@ -160,6 +160,56 @@ func TestClipTriangleNear(t *testing.T) {
 	}
 }
 
+func TestZBufferSubMillimeterPrecision(t *testing.T) {
+	fb := NewFramebuffer(100, 100)
+	fb.Clear(0xFF000000)
+
+	// Far triangle: depth 3.0 meters (Stone, blockID 1)
+	p0 := ScreenPoint{X: 10, Y: 10, Depth: 3.0}
+	p1 := ScreenPoint{X: 90, Y: 10, Depth: 3.0}
+	p2 := ScreenPoint{X: 50, Y: 90, Depth: 3.0}
+	v0 := NewScreenVertex(p0, 0, 0, 1, 0, 1.0)
+	v1 := NewScreenVertex(p1, 1, 0, 1, 0, 1.0)
+	v2 := NewScreenVertex(p2, 0.5, 1, 1, 0, 1.0)
+	fb.DrawVoxelTrianglePerspective(v0, v1, v2)
+
+	centerIdx := 50*100 + 50
+	stoneColor := fb.Color[centerIdx]
+	if fb.Depth[centerIdx] < 2.99 || fb.Depth[centerIdx] > 3.01 {
+		t.Fatalf("expected depth ~3.0, got %f", fb.Depth[centerIdx])
+	}
+
+	// Near triangle: depth 2.8 meters (Grass, blockID 2)
+	np0 := ScreenPoint{X: 10, Y: 10, Depth: 2.8}
+	np1 := ScreenPoint{X: 90, Y: 10, Depth: 2.8}
+	np2 := ScreenPoint{X: 50, Y: 90, Depth: 2.8}
+	nv0 := NewScreenVertex(np0, 0, 0, 2, 2, 1.0)
+	nv1 := NewScreenVertex(np1, 1, 0, 2, 2, 1.0)
+	nv2 := NewScreenVertex(np2, 0.5, 1, 2, 2, 1.0)
+	fb.DrawVoxelTrianglePerspective(nv0, nv1, nv2)
+
+	grassColor := fb.Color[centerIdx]
+	if grassColor == stoneColor {
+		t.Fatalf("near triangle (grass) must overwrite far triangle (stone)")
+	}
+	if fb.Depth[centerIdx] < 2.79 || fb.Depth[centerIdx] > 2.81 {
+		t.Fatalf("expected depth ~2.8, got %f", fb.Depth[centerIdx])
+	}
+
+	// Subsequent far triangle: depth 5.0 meters
+	fp0 := ScreenPoint{X: 10, Y: 10, Depth: 5.0}
+	fp1 := ScreenPoint{X: 90, Y: 10, Depth: 5.0}
+	fp2 := ScreenPoint{X: 50, Y: 90, Depth: 5.0}
+	fv0 := NewScreenVertex(fp0, 0, 0, 1, 0, 1.0)
+	fv1 := NewScreenVertex(fp1, 1, 0, 1, 0, 1.0)
+	fv2 := NewScreenVertex(fp2, 0.5, 1, 1, 0, 1.0)
+	fb.DrawVoxelTrianglePerspective(fv0, fv1, fv2)
+
+	if fb.Color[centerIdx] != grassColor {
+		t.Fatalf("subsequent far triangle must NOT overwrite closer grass triangle")
+	}
+}
+
 func BenchmarkRasterizerTriangle(b *testing.B) {
 	fb := NewFramebuffer(640, 480)
 	p0 := ScreenPoint{X: 100, Y: 100, Depth: 5}

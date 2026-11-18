@@ -1,6 +1,7 @@
 package sim
 
 import (
+	"math"
 	"sync"
 	"time"
 
@@ -25,9 +26,20 @@ type PlayerEntity struct {
 	Inventory    *inventory.PlayerInventory
 }
 
+// ItemDrop represents a 3D physical item entity in the world dropped from mined blocks or mobs.
+type ItemDrop struct {
+	ID          int32
+	ItemID      int32
+	Count       int
+	Position    Vec3
+	Velocity    Vec3
+	Age         float64
+	PickupDelay float64
+}
+
 // WorldEvent represents a simulation event to broadcast to connected clients.
 type WorldEvent struct {
-	Type     string // "block_update", "player_move", "player_join", "player_leave", "player_death", "player_respawn"
+	Type     string // "block_update", "player_move", "player_join", "player_leave", "player_death", "player_respawn", "item_pickup"
 	PlayerID int32
 	BlockPos world.BlockPos
 	BlockID  int32
@@ -39,27 +51,59 @@ type WorldEvent struct {
 
 // Engine manages the authoritative 20 TPS game simulation.
 type Engine struct {
-	mu           sync.RWMutex
-	World        map[world.ChunkPos]*world.Chunk
-	Players      map[int32]*PlayerEntity
-	nextPlayerID int32
-	Mobs         map[int32]*MobEntity
-	nextMobID    int32
-	TickCount    int64
-	Events       chan WorldEvent
-	stopChan     chan struct{}
+	mu             sync.RWMutex
+	World          map[world.ChunkPos]*world.Chunk
+	Players        map[int32]*PlayerEntity
+	nextPlayerID   int32
+	Mobs           map[int32]*MobEntity
+	nextMobID      int32
+	ItemDrops      map[int32]*ItemDrop
+	nextItemDropID int32
+	TickCount      int64
+	Events         chan WorldEvent
+	stopChan       chan struct{}
 }
 
 func NewEngine() *Engine {
 	return &Engine{
-		World:        make(map[world.ChunkPos]*world.Chunk),
-		Players:      make(map[int32]*PlayerEntity),
-		nextPlayerID: 1,
-		Mobs:         make(map[int32]*MobEntity),
-		nextMobID:    100,
-		Events:       make(chan WorldEvent, 1024),
-		stopChan:     make(chan struct{}),
+		World:          make(map[world.ChunkPos]*world.Chunk),
+		Players:        make(map[int32]*PlayerEntity),
+		nextPlayerID:   1,
+		Mobs:           make(map[int32]*MobEntity),
+		nextMobID:      100,
+		ItemDrops:      make(map[int32]*ItemDrop),
+		nextItemDropID: 1,
+		Events:         make(chan WorldEvent, 1024),
+		stopChan:       make(chan struct{}),
 	}
+}
+
+func (e *Engine) SpawnItemDrop(itemID int32, count int, pos Vec3, vel Vec3) *ItemDrop {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	id := e.nextItemDropID
+	e.nextItemDropID++
+	drop := &ItemDrop{
+		ID:          id,
+		ItemID:      itemID,
+		Count:       count,
+		Position:    pos,
+		Velocity:    vel,
+		Age:         0,
+		PickupDelay: 0.3,
+	}
+	e.ItemDrops[id] = drop
+	return drop
+}
+
+func (e *Engine) GetItemDrops() []ItemDrop {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	drops := make([]ItemDrop, 0, len(e.ItemDrops))
+	for _, d := range e.ItemDrops {
+		drops = append(drops, *d)
+	}
+	return drops
 }
 
 func (e *Engine) SpawnMob(mobType MobType, pos Vec3) *MobEntity {
@@ -151,19 +195,47 @@ func (e *Engine) BreakBlockWithTool(playerID int32, pos world.BlockPos, toolID i
 		// Determine drop item
 		dropItem = origBlock
 		switch origBlock {
-		case 1: // Stone -> Cobblestone
+		case 1, 4: // Stone, Cobblestone -> Cobblestone
 			dropItem = inventory.ItemCobblestone
-		case 2: // Grass -> Dirt
+		case 2, 3: // Grass, Dirt -> Dirt
 			dropItem = inventory.ItemDirt
+		case 5: // Oak Planks
+			dropItem = inventory.ItemOakPlanks
+		case 17: // Oak Log
+			dropItem = inventory.ItemOakLog
 		case 16: // Coal Ore -> Coal
 			dropItem = inventory.ItemCoal
 		case 56: // Diamond Ore -> Diamond
 			dropItem = inventory.ItemDiamond
+		case 58: // Crafting Table
+			dropItem = inventory.ItemCraftingTable
+		case 61: // Furnace
+			dropItem = inventory.ItemFurnace
 		}
 
+		dropPos := Vec3{X: float64(pos.X) + 0.5, Y: float64(pos.Y) + 0.5, Z: float64(pos.Z) + 0.5}
 		e.mu.Lock()
-		if p, ok := e.Players[playerID]; ok && p.Inventory != nil {
+		p, hasPlayer := e.Players[playerID]
+		if hasPlayer && p.IsAlive && p.Position.DistanceTo(dropPos) < 3.5 {
 			p.Inventory.AddItem(dropItem, 1)
+			select {
+			case e.Events <- WorldEvent{
+				Type:     "item_pickup",
+				PlayerID: playerID,
+				BlockID:  dropItem,
+			}:
+			default:
+			}
+		} else {
+			e.nextItemDropID++
+			e.ItemDrops[e.nextItemDropID] = &ItemDrop{
+				ID:          e.nextItemDropID,
+				ItemID:      dropItem,
+				Count:       1,
+				Position:    dropPos,
+				Velocity:    Vec3{X: 0, Y: 0.15, Z: 0},
+				PickupDelay: 0.4,
+			}
 		}
 		e.mu.Unlock()
 	}
@@ -477,6 +549,52 @@ func (e *Engine) Tick() {
 		}
 		p.Position = resPos
 		p.OnGround = ground
+	}
+
+	// Update physical floating item drops
+	for id, drop := range e.ItemDrops {
+		drop.Age += 0.05
+		if drop.PickupDelay > 0 {
+			drop.PickupDelay -= 0.05
+		}
+		// Item physics: gravity & gentle air resistance
+		drop.Velocity.Y -= 0.04
+		drop.Position.X += drop.Velocity.X
+		drop.Position.Y += drop.Velocity.Y
+		drop.Position.Z += drop.Velocity.Z
+
+		// Ground rest collision
+		bx := int32(math.Floor(drop.Position.X))
+		by := int32(math.Floor(drop.Position.Y))
+		bz := int32(math.Floor(drop.Position.Z))
+		if isSolid(bx, by, bz) {
+			drop.Position.Y = float64(by + 1)
+			drop.Velocity = Vec3{}
+		}
+
+		// Proximity pickup by any player within reach (1.8 blocks)
+		if drop.PickupDelay <= 0 {
+			for _, p := range e.Players {
+				if p.IsAlive && p.Position.DistanceTo(drop.Position) < 1.8 {
+					p.Inventory.AddItem(drop.ItemID, drop.Count)
+					delete(e.ItemDrops, id)
+					select {
+					case e.Events <- WorldEvent{
+						Type:     "item_pickup",
+						PlayerID: p.ID,
+						BlockID:  drop.ItemID,
+					}:
+					default:
+					}
+					break
+				}
+			}
+		}
+
+		// Despawn ancient item drops after 5 minutes
+		if drop.Age > 300.0 {
+			delete(e.ItemDrops, id)
+		}
 	}
 
 	var activeMobs []*MobEntity
