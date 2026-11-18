@@ -4,6 +4,7 @@ package render
 
 import (
 	"fmt"
+	"math"
 	"sync"
 	"syscall"
 	"unsafe"
@@ -14,25 +15,27 @@ var (
 	gdi32    = syscall.NewLazyDLL("gdi32.dll")
 	kernel32 = syscall.NewLazyDLL("kernel32.dll")
 
-	procGetModuleHandleW = kernel32.NewProc("GetModuleHandleW")
-	procRegisterClassExW = user32.NewProc("RegisterClassExW")
-	procCreateWindowExW  = user32.NewProc("CreateWindowExW")
-	procShowWindow       = user32.NewProc("ShowWindow")
-	procUpdateWindow     = user32.NewProc("UpdateWindow")
-	procDefWindowProcW   = user32.NewProc("DefWindowProcW")
-	procPeekMessageW     = user32.NewProc("PeekMessageW")
-	procTranslateMessage = user32.NewProc("TranslateMessage")
-	procDispatchMessageW = user32.NewProc("DispatchMessageW")
-	procGetDC            = user32.NewProc("GetDC")
-	procReleaseDC        = user32.NewProc("ReleaseDC")
-	procPostQuitMessage  = user32.NewProc("PostQuitMessage")
-	procSetCursorPos     = user32.NewProc("SetCursorPos")
-	procGetCursorPos     = user32.NewProc("GetCursorPos")
-	procShowCursor       = user32.NewProc("ShowCursor")
-	procClientToScreen   = user32.NewProc("ClientToScreen")
-	procScreenToClient   = user32.NewProc("ScreenToClient")
-	procStretchDIBits     = gdi32.NewProc("StretchDIBits")
-	procGetAsyncKeyState = user32.NewProc("GetAsyncKeyState")
+	procGetModuleHandleW    = kernel32.NewProc("GetModuleHandleW")
+	procRegisterClassExW    = user32.NewProc("RegisterClassExW")
+	procCreateWindowExW     = user32.NewProc("CreateWindowExW")
+	procShowWindow          = user32.NewProc("ShowWindow")
+	procUpdateWindow        = user32.NewProc("UpdateWindow")
+	procDefWindowProcW      = user32.NewProc("DefWindowProcW")
+	procPeekMessageW        = user32.NewProc("PeekMessageW")
+	procTranslateMessage    = user32.NewProc("TranslateMessage")
+	procDispatchMessageW    = user32.NewProc("DispatchMessageW")
+	procGetDC               = user32.NewProc("GetDC")
+	procReleaseDC           = user32.NewProc("ReleaseDC")
+	procPostQuitMessage     = user32.NewProc("PostQuitMessage")
+	procSetCursorPos        = user32.NewProc("SetCursorPos")
+	procGetCursorPos        = user32.NewProc("GetCursorPos")
+	procShowCursor          = user32.NewProc("ShowCursor")
+	procClientToScreen      = user32.NewProc("ClientToScreen")
+	procScreenToClient      = user32.NewProc("ScreenToClient")
+	procStretchDIBits        = gdi32.NewProc("StretchDIBits")
+	procGetAsyncKeyState    = user32.NewProc("GetAsyncKeyState")
+	procGetForegroundWindow = user32.NewProc("GetForegroundWindow")
+	procSetProcessDPIAware  = user32.NewProc("SetProcessDPIAware")
 )
 
 const (
@@ -40,6 +43,7 @@ const (
 	WS_VISIBLE          = 0x10000000
 	SW_SHOW             = 5
 	PM_REMOVE           = 0x0001
+	WM_CLOSE            = 0x0010
 	WM_QUIT             = 0x0012
 	WM_DESTROY          = 0x0002
 	WM_KEYDOWN          = 0x0100
@@ -120,6 +124,12 @@ var globalWnd *Window
 
 func wndProc(hwnd, msg, wparam, lparam uintptr) uintptr {
 	switch msg {
+	case WM_CLOSE:
+		if globalWnd != nil {
+			globalWnd.Closed = true
+		}
+		procPostQuitMessage.Call(0)
+		return 0
 	case WM_DESTROY:
 		if globalWnd != nil {
 			globalWnd.Closed = true
@@ -159,21 +169,13 @@ func wndProc(hwnd, msg, wparam, lparam uintptr) uintptr {
 		}
 		return 0
 	case WM_LBUTTONDOWN:
-		if globalWnd != nil {
-			if !globalWnd.MouseCaptured {
-				globalWnd.SetMouseCaptured(true)
-			} else if globalWnd.OnMouseClick != nil {
-				globalWnd.OnMouseClick(1) // Left Click (Mine)
-			}
+		if globalWnd != nil && globalWnd.OnMouseClick != nil {
+			globalWnd.OnMouseClick(1)
 		}
 		return 0
 	case WM_RBUTTONDOWN:
-		if globalWnd != nil {
-			if !globalWnd.MouseCaptured {
-				globalWnd.SetMouseCaptured(true)
-			} else if globalWnd.OnMouseClick != nil {
-				globalWnd.OnMouseClick(2) // Right Click (Place)
-			}
+		if globalWnd != nil && globalWnd.OnMouseClick != nil {
+			globalWnd.OnMouseClick(2)
 		}
 		return 0
 	}
@@ -183,6 +185,8 @@ func wndProc(hwnd, msg, wparam, lparam uintptr) uintptr {
 
 // NewNativeWindow creates a real graphical desktop window.
 func NewNativeWindow(title string, width, height int) (*Window, error) {
+	procSetProcessDPIAware.Call() // Enable 1:1 hardware pixel scaling
+
 	className, _ := syscall.UTF16PtrFromString("MinecraftGoClass")
 	windowTitle, _ := syscall.UTF16PtrFromString(title)
 
@@ -270,23 +274,53 @@ func (w *Window) PollMouseDelta() (float64, float64) {
 	if !w.MouseCaptured || w.Closed {
 		return 0, 0
 	}
+	// Only track mouse delta if this window is currently in the active foreground!
+	fg, _, _ := procGetForegroundWindow.Call()
+	if fg != w.Hwnd {
+		return 0, 0
+	}
+
+	var center POINT
+	center.X = int32(w.Width / 2)
+	center.Y = int32(w.Height / 2)
+	procClientToScreen.Call(w.Hwnd, uintptr(unsafe.Pointer(&center)))
 
 	var pt POINT
 	procGetCursorPos.Call(uintptr(unsafe.Pointer(&pt)))
 
-	dx := float64(pt.X - w.centerScreenX)
-	dy := float64(pt.Y - w.centerScreenY)
+	dx := float64(pt.X - center.X)
+	dy := float64(pt.Y - center.Y)
+
+	// Sub-pixel jitter filter (prevents residual auto-drift when stationary)
+	if math.Abs(dx) < 1.0 {
+		dx = 0
+	}
+	if math.Abs(dy) < 1.0 {
+		dy = 0
+	}
 
 	if dx != 0 || dy != 0 {
-		procSetCursorPos.Call(uintptr(w.centerScreenX), uintptr(w.centerScreenY))
+		procSetCursorPos.Call(uintptr(center.X), uintptr(center.Y))
 	}
 
 	return dx, dy
 }
 
+// GetCursorClientPos queries current cursor position mapped to client window coordinates.
+func (w *Window) GetCursorClientPos() (int, int) {
+	var pt POINT
+	procGetCursorPos.Call(uintptr(unsafe.Pointer(&pt)))
+	procScreenToClient.Call(w.Hwnd, uintptr(unsafe.Pointer(&pt)))
+	return int(pt.X), int(pt.Y)
+}
+
 // IsMouseDown queries whether the given mouse button (1=Left, 2=Right) is currently physically pressed down.
 func (w *Window) IsMouseDown(btn int) bool {
 	if !w.MouseCaptured || w.Closed {
+		return false
+	}
+	fg, _, _ := procGetForegroundWindow.Call()
+	if fg != w.Hwnd {
 		return false
 	}
 	var vk int
@@ -302,17 +336,17 @@ func (w *Window) IsMouseDown(btn int) bool {
 }
 
 func (w *Window) IsKeyDown(vkCode int) bool {
-	if vkCode < 0 || vkCode >= 256 {
+	if vkCode < 0 || vkCode >= 256 || w.Closed {
 		return false
 	}
-	// Query direct hardware key status (high bit set = key is currently physically pressed down)
-	ret, _, _ := procGetAsyncKeyState.Call(uintptr(vkCode))
-	if (ret & 0x8000) != 0 {
-		return true
+	// Only respond to key press if window is currently in the active foreground!
+	fg, _, _ := procGetForegroundWindow.Call()
+	if fg != w.Hwnd {
+		return false
 	}
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	return w.KeyDown[vkCode]
+	// Real-time physical key press state (high bit set = key physically pressed down right now)
+	ret, _, _ := procGetAsyncKeyState.Call(uintptr(vkCode))
+	return (ret & 0x8000) != 0
 }
 
 func (w *Window) PollEvents() bool {
@@ -360,5 +394,6 @@ func (w *Window) Close() {
 			procReleaseDC.Call(w.Hwnd, w.Hdc)
 			w.Hdc = 0
 		}
+		procPostQuitMessage.Call(0)
 	}
 }

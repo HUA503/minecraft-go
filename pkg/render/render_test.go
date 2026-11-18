@@ -275,3 +275,28 @@ func BenchmarkRasterizerTriangle(b *testing.B) {
 		fb.DrawVoxelTrianglePerspective(v0, v1, v2)
 	}
 }
+
+func TestPauseMenuAndFont(t *testing.T) {
+	fb := NewFramebuffer(800, 600)
+	fb.Clear(0xFF102030)
+
+	// Test 5x7 Font text rendering
+	w := fb.DrawText5x7(10, 10, "HELLO MINECRAFT", 0xFFFFFFFF, 1)
+	if w <= 0 {
+		t.Fatalf("expected positive text width, got %d", w)
+	}
+
+	// Test Pause Menu rendering and button hit boxes
+	backRect, quitRect := fb.DrawPauseMenu(400, 300)
+	if backRect[2] <= 0 || backRect[3] <= 0 {
+		t.Fatalf("invalid back button rect: %v", backRect)
+	}
+	if quitRect[2] <= 0 || quitRect[3] <= 0 {
+		t.Fatalf("invalid quit button rect: %v", quitRect)
+	}
+
+	// Verify back button is above quit button
+	if backRect[1] >= quitRect[1] {
+		t.Fatalf("expected back button Y (%d) < quit button Y (%d)", backRect[1], quitRect[1])
+	}
+}

@@ -476,3 +476,185 @@ func (fb *Framebuffer) DrawInventoryGUI(inv *inventory.PlayerInventory) {
 		}
 	}
 }
+
+// 5x7 ASCII bitmap font for authentic Minecraft GUI text & menus
+var font5x7 = map[rune][7]uint8{
+	'A': {0b01110, 0b10001, 0b10001, 0b11111, 0b10001, 0b10001, 0b10001},
+	'B': {0b11110, 0b10001, 0b10001, 0b11110, 0b10001, 0b10001, 0b11110},
+	'C': {0b01111, 0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b01111},
+	'D': {0b11110, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b11110},
+	'E': {0b11111, 0b10000, 0b10000, 0b11110, 0b10000, 0b10000, 0b11111},
+	'F': {0b11111, 0b10000, 0b10000, 0b11110, 0b10000, 0b10000, 0b10000},
+	'G': {0b01111, 0b10000, 0b10000, 0b10111, 0b10001, 0b10001, 0b01111},
+	'H': {0b10001, 0b10001, 0b10001, 0b11111, 0b10001, 0b10001, 0b10001},
+	'I': {0b01110, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0b01110},
+	'J': {0b00001, 0b00001, 0b00001, 0b00001, 0b10001, 0b10001, 0b01110},
+	'K': {0b10001, 0b10010, 0b10100, 0b11000, 0b10100, 0b10010, 0b10001},
+	'L': {0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b11111},
+	'M': {0b10001, 0b11011, 0b10101, 0b10101, 0b10001, 0b10001, 0b10001},
+	'N': {0b10001, 0b11001, 0b10101, 0b10011, 0b10001, 0b10001, 0b10001},
+	'O': {0b01110, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b01110},
+	'P': {0b11110, 0b10001, 0b10001, 0b11110, 0b10000, 0b10000, 0b10000},
+	'Q': {0b01110, 0b10001, 0b10001, 0b10001, 0b10101, 0b10010, 0b01101},
+	'R': {0b11110, 0b10001, 0b10001, 0b11110, 0b10100, 0b10010, 0b10001},
+	'S': {0b01111, 0b10000, 0b10000, 0b01110, 0b00001, 0b00001, 0b11110},
+	'T': {0b11111, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100},
+	'U': {0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b01110},
+	'V': {0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b01010, 0b00100},
+	'W': {0b10001, 0b10001, 0b10001, 0b10101, 0b10101, 0b11011, 0b10001},
+	'X': {0b10001, 0b10001, 0b01010, 0b00100, 0b01010, 0b10001, 0b10001},
+	'Y': {0b10001, 0b10001, 0b01010, 0b00100, 0b00100, 0b00100, 0b00100},
+	'Z': {0b11111, 0b00010, 0b00100, 0b01000, 0b10000, 0b10000, 0b11111},
+	'0': {0b01110, 0b10011, 0b10101, 0b10101, 0b11001, 0b10001, 0b01110},
+	'1': {0b00100, 0b01100, 0b00100, 0b00100, 0b00100, 0b00100, 0b01110},
+	'2': {0b01110, 0b10001, 0b00001, 0b00110, 0b01000, 0b10000, 0b11111},
+	'3': {0b11110, 0b00001, 0b00001, 0b01110, 0b00001, 0b00001, 0b11110},
+	'4': {0b00010, 0b00110, 0b01010, 0b10010, 0b11111, 0b00010, 0b00010},
+	'5': {0b11111, 0b10000, 0b11110, 0b00001, 0b00001, 0b10001, 0b01110},
+	'6': {0b01110, 0b10000, 0b11110, 0b10001, 0b10001, 0b10001, 0b01110},
+	'7': {0b11111, 0b00001, 0b00010, 0b00100, 0b01000, 0b01000, 0b01000},
+	'8': {0b01110, 0b10001, 0b10001, 0b01110, 0b10001, 0b10001, 0b01110},
+	'9': {0b01110, 0b10001, 0b10001, 0b01111, 0b00001, 0b00001, 0b01110},
+	' ': {0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000},
+	'-': {0b00000, 0b00000, 0b00000, 0b11111, 0b00000, 0b00000, 0b00000},
+	':': {0b00000, 0b01100, 0b01100, 0b00000, 0b01100, 0b01100, 0b00000},
+	'(': {0b00010, 0b00100, 0b01000, 0b01000, 0b01000, 0b00100, 0b00010},
+	')': {0b01000, 0b00100, 0b00010, 0b00010, 0b00010, 0b00100, 0b01000},
+	'!': {0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0b00000, 0b00100},
+	'.': {0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b01100, 0b01100},
+	'/': {0b00001, 0b00010, 0b00100, 0b00100, 0b01000, 0b10000, 0b00000},
+	'?': {0b01110, 0b10001, 0b00010, 0b00100, 0b00100, 0b00000, 0b00100},
+}
+
+// DrawChar5x7 renders a single 5x7 character scaled with optional drop shadow.
+func (fb *Framebuffer) DrawChar5x7(x, y int, ch rune, col uint32, scale int) int {
+	if ch >= 'a' && ch <= 'z' {
+		ch = ch - 'a' + 'A'
+	}
+	glyph, ok := font5x7[ch]
+	if !ok {
+		glyph = font5x7['?']
+	}
+
+	for row := 0; row < 7; row++ {
+		bits := glyph[row]
+		for cIdx := 0; cIdx < 5; cIdx++ {
+			if (bits & (1 << (4 - cIdx))) != 0 {
+				if scale == 1 {
+					px := x + cIdx
+					py := y + row
+					if px >= 0 && px < fb.Width && py >= 0 && py < fb.Height {
+						fb.Color[py*fb.Width+px] = col
+					}
+				} else {
+					fb.DrawRect(x+cIdx*scale, y+row*scale, scale, scale, col)
+				}
+			}
+		}
+	}
+	return (5 + 1) * scale
+}
+
+// DrawText5x7 renders an entire string with Minecraft-style drop shadow.
+func (fb *Framebuffer) DrawText5x7(x, y int, text string, col uint32, scale int) int {
+	shadowCol := uint32(0xFF222222)
+	// Render drop shadow first (offset by scale)
+	curX := x + scale
+	curY := y + scale
+	for _, ch := range text {
+		curX += fb.DrawChar5x7(curX, curY, ch, shadowCol, scale)
+	}
+
+	// Render crisp foreground text
+	curX = x
+	curY = y
+	for _, ch := range text {
+		curX += fb.DrawChar5x7(curX, curY, ch, col, scale)
+	}
+	return curX - x
+}
+
+// MeasureText5x7 returns the pixel width of the text when rendered at the specified scale.
+func MeasureText5x7(text string, scale int) int {
+	return len(text) * 6 * scale
+}
+
+// DrawButton renders an authentic Minecraft beveled button with hover styling.
+func (fb *Framebuffer) DrawButton(x, y, w, h int, text string, hovered bool) {
+	// Outer border
+	fb.DrawRect(x, y, w, h, 0xFF000000)
+
+	// Inner bevel highlight / shadow
+	topHighlight := uint32(0xFF8B8B8B)
+	bottomShadow := uint32(0xFF373737)
+	bodyColor := uint32(0xFF5A5A5A)
+	textColor := uint32(0xFFE0E0E0)
+
+	if hovered {
+		topHighlight = 0xFFFFFFFF
+		bottomShadow = 0xFF4A4A4A
+		bodyColor = 0xFF7A8EAE // Minecraft hover blue-gray tint
+		textColor = 0xFFFFFFA0 // Classic yellow hover text
+	}
+
+	// Fill body
+	fb.DrawRect(x+2, y+2, w-4, h-4, bodyColor)
+
+	// Highlights: top and left inner edge
+	fb.DrawRect(x+1, y+1, w-2, 1, topHighlight)
+	fb.DrawRect(x+1, y+1, 1, h-2, topHighlight)
+
+	// Shadows: bottom and right inner edge
+	fb.DrawRect(x+1, y+h-2, w-2, 1, bottomShadow)
+	fb.DrawRect(x+w-2, y+1, 1, h-2, bottomShadow)
+
+	// Center text
+	textWidth := MeasureText5x7(text, 1)
+	textX := x + (w-textWidth)/2
+	textY := y + (h-7)/2
+	fb.DrawText5x7(textX, textY, text, textColor, 1)
+}
+
+// DrawPauseMenu dims the screen and renders the Minecraft Java Edition Game Menu (Pause).
+// Returns the clickable bounding rectangles [4]int{x, y, w, h} for "Back to Game" and "Quit Game".
+func (fb *Framebuffer) DrawPauseMenu(mouseX, mouseY int) (backBtnRect [4]int, quitBtnRect [4]int) {
+	// 1. Dim background by 60% with authentic translucent overlay
+	for i := 0; i < len(fb.Color); i++ {
+		c := fb.Color[i]
+		r := ((c >> 16) & 0xFF) * 4 / 10
+		g := ((c >> 8) & 0xFF) * 4 / 10
+		b := (c & 0xFF) * 4 / 10
+		fb.Color[i] = 0xFF000000 | (r << 16) | (g << 8) | b
+	}
+
+	// 2. Title: "GAME PAUSED" (large scale 2)
+	title := "GAME PAUSED"
+	titleWidth := MeasureText5x7(title, 2)
+	titleX := (fb.Width - titleWidth) / 2
+	titleY := fb.Height/4 - 20
+	fb.DrawText5x7(titleX, titleY, title, 0xFFFFFFFF, 2)
+
+	// 3. Button 1: "BACK TO GAME"
+	btnW := 220
+	btnH := 28
+	btnX := (fb.Width - btnW) / 2
+	btn1Y := fb.Height/2 - 30
+	hover1 := mouseX >= btnX && mouseX <= btnX+btnW && mouseY >= btn1Y && mouseY <= btn1Y+btnH
+	fb.DrawButton(btnX, btn1Y, btnW, btnH, "BACK TO GAME", hover1)
+	backBtnRect = [4]int{btnX, btn1Y, btnW, btnH}
+
+	// 4. Button 2: "QUIT GAME (PRESS Q)"
+	btn2Y := fb.Height/2 + 10
+	hover2 := mouseX >= btnX && mouseX <= btnX+btnW && mouseY >= btn2Y && mouseY <= btn2Y+btnH
+	fb.DrawButton(btnX, btn2Y, btnW, btnH, "QUIT GAME (PRESS Q)", hover2)
+	quitBtnRect = [4]int{btnX, btn2Y, btnW, btnH}
+
+	// 5. Bottom Instructions hint
+	hint := "PRESS ESC TO RESUME - PRESS Q TO QUIT"
+	hintWidth := MeasureText5x7(hint, 1)
+	hintX := (fb.Width - hintWidth) / 2
+	hintY := fb.Height - 32
+	fb.DrawText5x7(hintX, hintY, hint, 0xFFAAAAAA, 1)
+
+	return backBtnRect, quitBtnRect
+}

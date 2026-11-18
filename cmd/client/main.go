@@ -59,6 +59,9 @@ type Client struct {
 	placeCooldown    float64
 	particles        []render.Particle
 	showInventoryGUI bool
+	showPauseMenu    bool
+	backBtnRect      [4]int
+	quitBtnRect      [4]int
 	isEating         bool
 	eatTimer         float64
 	lastMunchSound   time.Time
@@ -1243,20 +1246,27 @@ func runGraphicalWindow(c *Client, w, h int) {
 		case 0x52: // R: Place
 			c.PlaceBlockInFront()
 		case 0x45: // E: Toggle Inventory & Crafting GUI
-			c.showInventoryGUI = !c.showInventoryGUI
-			wnd.SetMouseCaptured(!c.showInventoryGUI)
-		case 0x1B: // Escape: Close GUI or toggle mouse lock
+			if !c.showPauseMenu {
+				c.showInventoryGUI = !c.showInventoryGUI
+				wnd.SetMouseCaptured(!c.showInventoryGUI)
+			}
+		case 0x1B: // Escape: Close GUI or toggle Pause Menu
 			if c.showInventoryGUI {
 				c.showInventoryGUI = false
 				wnd.SetMouseCaptured(true)
 			} else {
-				wnd.SetMouseCaptured(!wnd.MouseCaptured)
+				c.showPauseMenu = !c.showPauseMenu
+				wnd.SetMouseCaptured(!c.showPauseMenu)
+			}
+		case 0x51: // Q: Quit immediately if in pause menu
+			if c.showPauseMenu {
+				wnd.Close()
 			}
 		case 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39: // 1-9
 			idx := vkCode - 0x31 + 1
 			if c.showInventoryGUI {
 				c.TryQuickCraft(idx)
-			} else if c.player != nil {
+			} else if c.player != nil && !c.showPauseMenu {
 				c.player.Inventory.SelectedHotbar = idx - 1
 			}
 		}
@@ -1264,6 +1274,25 @@ func runGraphicalWindow(c *Client, w, h int) {
 
 	// Mouse button clicks (instant single-tap actions)
 	wnd.OnMouseClick = func(btn int) {
+		if c.showPauseMenu {
+			if btn == 1 {
+				mx, my := wnd.GetCursorClientPos()
+				// Check "Back to Game" button
+				b := c.backBtnRect
+				if mx >= b[0] && mx <= b[0]+b[2] && my >= b[1] && my <= b[1]+b[3] {
+					c.showPauseMenu = false
+					wnd.SetMouseCaptured(true)
+					return
+				}
+				// Check "Quit Game" button
+				q := c.quitBtnRect
+				if mx >= q[0] && mx <= q[0]+q[2] && my >= q[1] && my <= q[1]+q[3] {
+					wnd.Close()
+					return
+				}
+			}
+			return
+		}
 		if c.showInventoryGUI {
 			return
 		}
@@ -1303,6 +1332,16 @@ func runGraphicalWindow(c *Client, w, h int) {
 			dt = 0.05 // Cap max dt to avoid physics skipping
 		}
 		lastTime = now
+
+		// If Pause Menu is open, freeze world controls and display interactive Pause Menu
+		if c.showPauseMenu {
+			time.Sleep(16 * time.Millisecond)
+			c.RenderFrame()
+			mx, my := wnd.GetCursorClientPos()
+			c.backBtnRect, c.quitBtnRect = c.framebuf.DrawPauseMenu(mx, my)
+			wnd.Present(c.framebuf)
+			continue
+		}
 
 		// If Inventory & Crafting GUI is open, freeze world controls and display GUI
 		if c.showInventoryGUI {
