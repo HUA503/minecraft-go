@@ -59,6 +59,9 @@ type Client struct {
 	placeCooldown    float64
 	particles        []render.Particle
 	showInventoryGUI bool
+	isEating         bool
+	eatTimer         float64
+	lastMunchSound   time.Time
 }
 
 func NewClient(serverAddr, username string, isSingleplayer bool, width, height int) *Client {
@@ -94,6 +97,8 @@ func NewClient(serverAddr, username string, isSingleplayer bool, width, height i
 		cli.player.Inventory.Slots[4] = inventory.ItemStack{ItemID: 268, Count: 1} // Wooden Sword
 		cli.player.Inventory.Slots[5] = inventory.ItemStack{ItemID: 271, Count: 1} // Wooden Axe
 		cli.player.Inventory.Slots[6] = inventory.ItemStack{ItemID: 269, Count: 1} // Wooden Shovel
+		cli.player.Inventory.Slots[7] = inventory.ItemStack{ItemID: inventory.ItemCookedPorkchop, Count: 4}
+		cli.player.Inventory.Slots[8] = inventory.ItemStack{ItemID: inventory.ItemApple, Count: 4}
 
 		// Spawn living mobs in meadow around player (safe distance from spawn point)
 		cli.engine.SpawnMob(sim.MobPig, sim.Vec3{X: 12.0, Y: 66.0, Z: 11.0})
@@ -275,9 +280,9 @@ func (c *Client) PhysicsStep(fwdInput, strafeInput float64, jumpRequested bool, 
 		}
 	}
 
-	// 3. Horizontal Speeds: Walk 4.317 m/s, Sprint 5.612 m/s, Sneak 1.295 m/s
+	// 3. Horizontal Speeds: Walk 4.317 m/s, Sprint 5.612 m/s, Sneak/Eat 1.295 m/s
 	speed := 4.317
-	if c.isSneaking {
+	if c.isSneaking || c.isEating {
 		speed = 1.295
 	} else if c.isSprinting {
 		speed = 5.612
@@ -573,6 +578,69 @@ func (c *Client) PlaceBlockInFront() bool {
 		c.EnsureChunksAroundPlayer(c.camera.X, c.camera.Z, 2)
 	}
 	return ok
+}
+
+// UpdateRightClick handles eating food and placing blocks/interacting with blocks.
+func (c *Client) UpdateRightClick(isRightDown bool, dt float64) {
+	if c.player == nil || c.engine == nil {
+		return
+	}
+
+	sel := c.player.Inventory.GetSelectedItem()
+
+	// 1. Food Consumption
+	if !sel.IsEmpty() && inventory.IsFood(sel.ItemID) && c.player.Hunger < 20 {
+		if isRightDown {
+			c.isEating = true
+			c.eatTimer += dt
+
+			// Periodic munching crunch sound (every 0.22s)
+			if time.Since(c.lastMunchSound) > 220*time.Millisecond {
+				c.lastMunchSound = time.Now()
+				sound.PlayHardwareFeedback("minecraft:player.eat")
+				c.spawnBlockDebris(world.BlockPos{
+					X: int32(math.Floor(c.camera.X)),
+					Y: int32(math.Floor(c.camera.Y)),
+					Z: int32(math.Floor(c.camera.Z)),
+				}, sel.ItemID, 2)
+			}
+
+			// Eat complete (1.6s canonical Minecraft duration)
+			if c.eatTimer >= 1.6 {
+				c.engine.ConsumeFood(c.player.ID, c.player.Inventory.SelectedHotbar)
+				sound.PlayHardwareFeedback("minecraft:player.burp")
+				c.isEating = false
+				c.eatTimer = 0.0
+			}
+			return
+		} else {
+			c.isEating = false
+			c.eatTimer = 0.0
+		}
+	} else {
+		c.isEating = false
+		c.eatTimer = 0.0
+	}
+
+	// 2. Block Placement or Interactive Block Clicking (when Right Click is held)
+	if isRightDown {
+		if c.placeCooldown <= 0 {
+			// Check if clicking on Crafting Table
+			if c.hasTarget {
+				targetID := c.engine.GetBlock(c.targetedPos.X, c.targetedPos.Y, c.targetedPos.Z)
+				if targetID == 58 { // Crafting Table
+					c.showInventoryGUI = !c.showInventoryGUI
+					c.placeCooldown = 0.3
+					return
+				}
+			}
+
+			if c.PlaceBlockInFront() {
+				c.placeCooldown = 0.25
+				sound.PlayHardwareFeedback(sound.GetBlockPlaceSound(sel.ItemID))
+			}
+		}
+	}
 }
 
 // RenderFrame renders Minecraft sky, perspective-correct textured voxels, block outline, animated hand, and HUD.
@@ -1277,16 +1345,9 @@ func runGraphicalWindow(c *Client, w, h int) {
 		isLeftDown := wnd.IsMouseDown(1)
 		c.UpdateMining(isLeftDown, dt)
 
-		// 5. Placing Blocks: Hold Right Mouse Button (with 0.25s authentic cooldown)
-		if wnd.IsMouseDown(2) {
-			if c.placeCooldown <= 0 {
-				if c.PlaceBlockInFront() {
-					c.placeCooldown = 0.25
-					sel := c.player.Inventory.GetSelectedItem()
-					sound.PlayHardwareFeedback(sound.GetBlockPlaceSound(sel.ItemID))
-				}
-			}
-		}
+		// 5. Placing Blocks or Consuming Food: Hold Right Mouse Button
+		isRightDown := wnd.IsMouseDown(2)
+		c.UpdateRightClick(isRightDown, dt)
 
 		// Keyboard arrow view look fallback (smooth dt scaled)
 		if wnd.IsKeyDown(0x25) { // Left (turn left)

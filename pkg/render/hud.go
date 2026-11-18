@@ -220,6 +220,43 @@ func (fb *Framebuffer) DrawItemIcon(x, y int, itemID int32) {
 		fb.DrawRect(x, y, 12, 12, 0xFF606060)
 		fb.DrawRect(x+4, y+5, 4, 4, 0xFF151515)
 
+	case inventory.ItemApple:
+		// Apple: bright red fruit with leaf stem
+		fb.DrawRect(x+3, y+3, 6, 7, 0xFFFF2222)
+		fb.DrawRect(x+4, y+2, 4, 8, 0xFFCC1111)
+		fb.DrawRect(x+5, y+1, 2, 2, 0xFF4D3B26) // Stem
+		fb.DrawRect(x+7, y+1, 2, 1, 0xFF46862E) // Leaf
+
+	case inventory.ItemBread:
+		// Bread: golden brown loaf
+		fb.DrawRect(x+2, y+4, 8, 5, 0xFFC99742)
+		fb.DrawRect(x+3, y+3, 6, 6, 0xFFDFAB56)
+		fb.DrawRect(x+4, y+4, 1, 3, 0xFF8F6322)
+		fb.DrawRect(x+7, y+4, 1, 3, 0xFF8F6322)
+
+	case inventory.ItemRawPorkchop:
+		// Raw porkchop: pink flesh with bone
+		fb.DrawRect(x+3, y+3, 7, 6, 0xFFFFAAAA)
+		fb.DrawRect(x+2, y+4, 8, 4, 0xFFFF8888)
+		fb.DrawRect(x+7, y+2, 2, 2, 0xFFEEEEEE) // Bone
+
+	case inventory.ItemCookedPorkchop, inventory.ItemSteak:
+		// Cooked meat / steak: rich savory brown with sear marks
+		meatCol := uint32(0xFF864A2B)
+		if itemID == inventory.ItemCookedPorkchop {
+			meatCol = 0xFFB0683B
+		}
+		fb.DrawRect(x+2, y+3, 8, 6, meatCol)
+		fb.DrawRect(x+3, y+4, 6, 4, meatCol+0x00111111)
+		fb.DrawRect(x+4, y+4, 1, 4, 0xFF4A2513) // Grill mark
+		fb.DrawRect(x+7, y+4, 1, 4, 0xFF4A2513)
+
+	case inventory.ItemRawBeef:
+		// Raw beef: deep crimson red with marbling
+		fb.DrawRect(x+2, y+3, 8, 6, 0xFFC02222)
+		fb.DrawRect(x+3, y+4, 6, 4, 0xFF991818)
+		fb.DrawRect(x+4, y+4, 2, 1, 0xFFEEEEEE) // Fat marbling
+
 	default:
 		// Generic item square
 		fb.DrawRect(x+1, y+1, 10, 10, 0xFF888888)

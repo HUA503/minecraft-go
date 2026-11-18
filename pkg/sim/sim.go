@@ -678,6 +678,25 @@ func (e *Engine) Tick() {
 		}
 	}
 
+	// Natural Health Regeneration & Starvation check every 4 seconds (80 ticks)
+	if e.TickCount%80 == 0 {
+		for _, p := range e.Players {
+			if !p.IsAlive {
+				continue
+			}
+			if p.Hunger >= 18 && p.Health < 20.0 {
+				p.Health += 1.0
+				if p.Health > 20.0 {
+					p.Health = 20.0
+				}
+			} else if p.Hunger == 0 {
+				if p.Health > 1.0 {
+					p.Health -= 1.0
+				}
+			}
+		}
+	}
+
 	var activeMobs []*MobEntity
 	for _, m := range e.Mobs {
 		if m.IsAlive {
@@ -710,4 +729,50 @@ func (e *Engine) StartTickLoop() {
 
 func (e *Engine) Stop() {
 	close(e.stopChan)
+}
+
+// ConsumeFood eats one unit of food from player's inventory, restoring hunger points.
+func (e *Engine) ConsumeFood(playerID int32, slotIdx int) (bool, int) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	p, ok := e.Players[playerID]
+	if !ok || !p.IsAlive || p.Inventory == nil {
+		return false, 0
+	}
+	if slotIdx < 0 || slotIdx >= len(p.Inventory.Slots) {
+		return false, 0
+	}
+	slot := &p.Inventory.Slots[slotIdx]
+	if slot.IsEmpty() {
+		return false, 0
+	}
+	food, isFood := inventory.FoodRegistry[slot.ItemID]
+	if !isFood {
+		return false, 0
+	}
+	if p.Hunger >= 20 {
+		return false, 0 // Full stomach
+	}
+
+	p.Hunger += food.HungerRestored
+	if p.Hunger > 20 {
+		p.Hunger = 20
+	}
+
+	slot.Count--
+	if slot.Count <= 0 {
+		*slot = inventory.ItemStack{}
+	}
+
+	select {
+	case e.Events <- WorldEvent{
+		Type:     "player_eat",
+		PlayerID: playerID,
+		BlockID:  slot.ItemID,
+	}:
+	default:
+	}
+
+	return true, p.Hunger
 }

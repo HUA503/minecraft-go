@@ -34,7 +34,37 @@ const (
 	ItemIronIngot     int32 = 265
 	ItemDiamond       int32 = 264
 	ItemCoal          int32 = 263
+	ItemApple         int32 = 260
+	ItemBread         int32 = 297
+	ItemRawPorkchop   int32 = 319
+	ItemCookedPorkchop int32 = 320
+	ItemRawBeef       int32 = 363
+	ItemSteak         int32 = 364
+	ItemRottenFlesh   int32 = 367
 )
+
+// FoodProperties defines nutrition restored by edible items.
+type FoodProperties struct {
+	HungerRestored int
+	Saturation     float32
+}
+
+// FoodRegistry defines vanilla Minecraft Java food nutrition and saturation parameters.
+var FoodRegistry = map[int32]FoodProperties{
+	ItemApple:          {HungerRestored: 4, Saturation: 2.4},
+	ItemBread:          {HungerRestored: 5, Saturation: 6.0},
+	ItemRawPorkchop:    {HungerRestored: 3, Saturation: 1.8},
+	ItemCookedPorkchop: {HungerRestored: 8, Saturation: 12.8},
+	ItemRawBeef:        {HungerRestored: 3, Saturation: 1.8},
+	ItemSteak:          {HungerRestored: 8, Saturation: 12.8},
+	ItemRottenFlesh:    {HungerRestored: 4, Saturation: 0.8},
+}
+
+// IsFood checks if given item ID is edible.
+func IsFood(itemID int32) bool {
+	_, ok := FoodRegistry[itemID]
+	return ok
+}
 
 // ItemStack represents a stack of items in an inventory slot.
 type ItemStack struct {

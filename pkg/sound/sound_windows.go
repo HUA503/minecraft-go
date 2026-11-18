@@ -29,6 +29,12 @@ func PlayHardwareFeedback(name string) {
 			procBeep.Call(220, 90)
 		case "minecraft:block.hit":
 			procBeep.Call(700, 15)
+		case "minecraft:player.eat":
+			procBeep.Call(580, 20)
+			procBeep.Call(420, 25)
+		case "minecraft:player.burp":
+			procBeep.Call(260, 45)
+			procBeep.Call(320, 30)
 		default:
 			procBeep.Call(400, 20)
 		}

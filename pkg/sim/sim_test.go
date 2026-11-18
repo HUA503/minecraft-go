@@ -326,3 +326,44 @@ func TestDropSpawningAndAutoRespawn(t *testing.T) {
 		t.Fatalf("player should be fully respawned with 20 HP")
 	}
 }
+
+func TestFoodConsumptionAndRegeneration(t *testing.T) {
+	eng := NewEngine()
+	player := eng.AddPlayer("HungrySteve", [16]byte{9}, Vec3{X: 8, Y: 64, Z: 8})
+	player.Hunger = 10
+	player.Health = 15.0
+
+	// Give Cooked Porkchop (320)
+	player.Inventory.Slots[0] = inventory.ItemStack{ItemID: inventory.ItemCookedPorkchop, Count: 2}
+
+	// Consume one porkchop (+8 hunger -> 10 + 8 = 18)
+	ok, newHunger := eng.ConsumeFood(player.ID, 0)
+	if !ok || newHunger != 18 {
+		t.Fatalf("expected food to be consumed and hunger restored to 18, got %v, %d", ok, newHunger)
+	}
+	if player.Inventory.Slots[0].Count != 1 {
+		t.Fatalf("expected remaining count 1, got %d", player.Inventory.Slots[0].Count)
+	}
+
+	// Run 80 ticks: natural health regeneration should trigger when hunger >= 18 (+1.0 HP)
+	for i := 0; i < 80; i++ {
+		eng.Tick()
+	}
+
+	if player.Health != 16.0 {
+		t.Fatalf("expected health to regenerate from 15.0 to 16.0 at tick 80, got %f", player.Health)
+	}
+
+	// Eat second porkchop (+8 hunger -> capped at 20)
+	ok, newHunger = eng.ConsumeFood(player.ID, 0)
+	if !ok || newHunger != 20 {
+		t.Fatalf("expected hunger to cap at 20, got %v, %d", ok, newHunger)
+	}
+
+	// Stomach is full: further food consumption should be rejected
+	player.Inventory.Slots[1] = inventory.ItemStack{ItemID: inventory.ItemApple, Count: 1}
+	ok, _ = eng.ConsumeFood(player.ID, 1)
+	if ok {
+		t.Fatalf("should not be able to eat when hunger is already full at 20")
+	}
+}
