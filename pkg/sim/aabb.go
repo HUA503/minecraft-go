@@ -384,7 +384,7 @@ func ResolveMovementCollision(pos Vec3, delta Vec3, isSolid func(x, y, z int32) 
 			if minPushY < minPushX && minPushY < minPushZ && minPushY < 0.8 {
 				pos.Y += signY * (minPushY + 1e-3)
 				pBox = NewPlayerAABB(pos)
-				if signY > 0 {
+				if signY > 0 && delta.Y <= 0 {
 					onGround = true
 				}
 			} else if minPushX < minPushZ && minPushX < 0.8 {

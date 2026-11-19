@@ -15,6 +15,7 @@ type PlayerEntity struct {
 	Username     string
 	UUID         [16]byte
 	Position     Vec3
+	SpawnPos     Vec3
 	Velocity     Vec3
 	Yaw          float32
 	Pitch        float32
@@ -440,6 +441,7 @@ func (e *Engine) AddPlayer(username string, uuid [16]byte, spawnPos Vec3) *Playe
 		Username:  username,
 		UUID:      uuid,
 		Position:  spawnPos,
+		SpawnPos:  spawnPos,
 		OnGround:  true,
 		Health:    20.0,
 		Hunger:    20,
@@ -508,6 +510,7 @@ func (e *Engine) RespawnPlayer(id int32, spawnPos Vec3) {
 		p.Hunger = 20
 		p.IsAlive = true
 		p.Position = spawnPos
+		p.SpawnPos = spawnPos
 		p.Velocity = Vec3{}
 		p.FallDistance = 0
 		p.OnGround = true
@@ -576,7 +579,11 @@ func (e *Engine) MovePlayerRelative(id int32, delta Vec3, yaw, pitch float32) (V
 			p.Health = 20.0
 			p.Hunger = 20
 			p.IsAlive = true
-			p.Position = Vec3{X: 8.0, Y: 66.0, Z: 8.0}
+			respawnPos := p.SpawnPos
+			if respawnPos.X == 0 && respawnPos.Y == 0 && respawnPos.Z == 0 {
+				respawnPos = Vec3{X: 8.0, Y: 66.0, Z: 8.0}
+			}
+			p.Position = respawnPos
 			p.Velocity = Vec3{}
 			p.FallDistance = 0
 			p.OnGround = true

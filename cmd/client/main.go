@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	mrand "math/rand"
 	"net"
 	"os"
 	"runtime"
@@ -87,6 +88,50 @@ type Client struct {
 	lastSelectedSlot int
 }
 
+// findSafeSpawnPoint discovers an authentic, randomized safe surface spawn location in the procedural world.
+// Evaluates terrain elevation across random coordinates within the spawn region, ensuring the player
+// is placed firmly on a solid walkable surface (grass, dirt, sand, stone) strictly above sea level (>= 62),
+// completely clear of water or lava hazards, and with unobstructed headroom.
+func findSafeSpawnPoint(generator *gen.Generator, engine *sim.Engine) sim.Vec3 {
+	rng := mrand.New(mrand.NewSource(time.Now().UnixNano()))
+	for attempt := 0; attempt < 100; attempt++ {
+		// Randomize coordinates within [-96, 96]
+		wx := int32(rng.Intn(192) - 96)
+		wz := int32(rng.Intn(192) - 96)
+
+		cp := world.BlockPos{X: wx, Y: 0, Z: wz}.ToChunkPos()
+		chunk := engine.GetChunk(cp)
+		if chunk == nil {
+			chunk = generator.GenerateChunk(cp)
+			engine.LoadChunk(cp, chunk)
+		}
+
+		for y := int32(90); y >= 62; y-- {
+			b := chunk.GetBlock(wx, y, wz)
+			if b == gen.BlockGrass || b == gen.BlockSand || b == gen.BlockDirt || b == gen.BlockStone {
+				above1 := chunk.GetBlock(wx, y+1, wz)
+				above2 := chunk.GetBlock(wx, y+2, wz)
+				// Must not be solid blocks (air or foliage) and never water or lava
+				if !sim.IsSolidBlock(above1) && !sim.IsSolidBlock(above2) &&
+					above1 != 8 && above1 != 9 && above1 != 10 && above1 != 11 &&
+					above2 != 8 && above2 != 9 && above2 != 10 && above2 != 11 {
+					return sim.Vec3{
+						X: float64(wx) + 0.5,
+						Y: float64(y + 1),
+						Z: float64(wz) + 0.5,
+					}
+				}
+				break
+			}
+			if b == gen.BlockWater || b == gen.BlockFlowingWater {
+				// Surface here is water, cannot spawn here
+				break
+			}
+		}
+	}
+	return sim.Vec3{X: 8.5, Y: 66.0, Z: 8.5}
+}
+
 func NewClient(serverAddr, username string, isSingleplayer bool, width, height int) *Client {
 	var u [16]byte
 	rand.Read(u[:])
@@ -114,7 +159,12 @@ func NewClient(serverAddr, username string, isSingleplayer bool, width, height i
 		cli.engine = sim.NewEngine()
 		cli.genOverworld = gen.NewGenerator(12345, gen.DimensionOverworld)
 		cli.engine.StartTickLoop()
-		cli.player = cli.engine.AddPlayer(username, u, sim.Vec3{X: 8.5, Y: 65.0, Z: 8.5})
+
+		spawnPos := findSafeSpawnPoint(cli.genOverworld, cli.engine)
+		cli.player = cli.engine.AddPlayer(username, u, spawnPos)
+		cli.camera.X = spawnPos.X
+		cli.camera.Y = spawnPos.Y + 1.62
+		cli.camera.Z = spawnPos.Z
 
 		// Classic starter items in hotbar
 		cli.player.Inventory.Slots[0] = inventory.ItemStack{ItemID: inventory.ItemWoodenPickaxe, Count: 1}
@@ -129,14 +179,14 @@ func NewClient(serverAddr, username string, isSingleplayer bool, width, height i
 		cli.player.Inventory.SelectedHotbar = 1 // Start on placeable Oak Planks by default
 
 		// Spawn living mobs in meadow around player (safe distance from spawn point)
-		cli.engine.SpawnMob(sim.MobPig, sim.Vec3{X: 12.0, Y: 66.0, Z: 11.0})
-		cli.engine.SpawnMob(sim.MobCow, sim.Vec3{X: 5.0, Y: 66.0, Z: 13.0})
-		cli.engine.SpawnMob(sim.MobZombie, sim.Vec3{X: 32.0, Y: 66.0, Z: 32.0})
-		cli.engine.SpawnMob(sim.MobCreeper, sim.Vec3{X: 38.0, Y: 66.0, Z: 38.0})
+		cli.engine.SpawnMob(sim.MobPig, sim.Vec3{X: spawnPos.X + 3.5, Y: spawnPos.Y, Z: spawnPos.Z + 2.5})
+		cli.engine.SpawnMob(sim.MobCow, sim.Vec3{X: spawnPos.X - 3.5, Y: spawnPos.Y, Z: spawnPos.Z + 4.5})
+		cli.engine.SpawnMob(sim.MobZombie, sim.Vec3{X: spawnPos.X + 24.0, Y: spawnPos.Y, Z: spawnPos.Z + 24.0})
+		cli.engine.SpawnMob(sim.MobCreeper, sim.Vec3{X: spawnPos.X + 30.0, Y: spawnPos.Y, Z: spawnPos.Z + 30.0})
 
 		// Pre-mesh immediate spawn sections synchronously so terrain is immediately visible
 		for i := 0; i < 25; i++ {
-			cli.EnsureChunksAroundPlayer(8.5, 8.5, 1)
+			cli.EnsureChunksAroundPlayer(spawnPos.X, spawnPos.Z, 1)
 		}
 	}
 
@@ -364,6 +414,57 @@ func (c *Client) Connect() error {
 	return nil
 }
 
+// checkWaterState examines the player's bounding volume to determine if they are in water,
+// and whether they are positioned near the water surface.
+func (c *Client) checkWaterState() (inWater bool, atSurface bool) {
+	if c.player == nil || c.engine == nil {
+		return false, false
+	}
+	px := c.player.Position.X
+	py := c.player.Position.Y
+	pz := c.player.Position.Z
+
+	isWater := func(b int32) bool {
+		return b == 8 || b == 9
+	}
+
+	bx := int32(math.Floor(px))
+	bz := int32(math.Floor(pz))
+
+	feetY := int32(math.Floor(py + 0.1))
+	torsoY := int32(math.Floor(py + 0.8))
+	belowY := int32(math.Floor(py - 0.2))
+	headY := int32(math.Floor(py + 1.6))
+
+	bFeet := c.engine.GetBlock(bx, feetY, bz)
+	bTorso := c.engine.GetBlock(bx, torsoY, bz)
+	bBelow := c.engine.GetBlock(bx, belowY, bz)
+	bHead := c.engine.GetBlock(bx, headY, bz)
+
+	waterFeet := isWater(bFeet)
+	waterTorso := isWater(bTorso)
+	waterBelow := isWater(bBelow) && (py-math.Floor(py)) < 0.35
+
+	// Check 4 horizontal corners at feet level
+	cornerWater := false
+	for _, dx := range []float64{-0.25, 0.25} {
+		for _, dz := range []float64{-0.25, 0.25} {
+			cb := c.engine.GetBlock(int32(math.Floor(px+dx)), feetY, int32(math.Floor(pz+dz)))
+			if isWater(cb) {
+				cornerWater = true
+				break
+			}
+		}
+		if cornerWater {
+			break
+		}
+	}
+
+	inWater = waterFeet || waterTorso || cornerWater || waterBelow
+	atSurface = inWater && !isWater(bHead)
+	return inWater, atSurface
+}
+
 // PhysicsStep executes one delta-time scaled physics step with authentic Minecraft Java Edition physics.
 func (c *Client) PhysicsStep(fwdInput, strafeInput float64, jumpRequested bool, dt float64) {
 	if c.player == nil {
@@ -384,7 +485,7 @@ func (c *Client) PhysicsStep(fwdInput, strafeInput float64, jumpRequested bool, 
 		dz := math.Cos(radYaw)*fwd - math.Sin(radYaw)*strafe
 		dy := 0.0
 		if jumpRequested {
-			dy = speed * dt // Fly upward
+			dy = speed * dt // Fly upward smoothly while holding space
 		} else if c.isSneaking {
 			dy = -speed * dt // Fly downward
 		}
@@ -400,41 +501,62 @@ func (c *Client) PhysicsStep(fwdInput, strafeInput float64, jumpRequested bool, 
 		return
 	}
 
-	// 1. Jumping: Authentic Minecraft initial upward impulse of 8.4 m/s (0.42 blocks/tick * 20)
-	if jumpRequested && c.player.OnGround {
-		c.player.Velocity.Y = 8.4
-		c.player.OnGround = false
-	}
-
-	// 2. Water Buoyancy vs Air Gravity
-	bx := int32(math.Floor(c.player.Position.X))
-	by := int32(math.Floor(c.player.Position.Y))
-	bz := int32(math.Floor(c.player.Position.Z))
-	blockUnder := c.engine.GetBlock(bx, by, bz)
-	inWater := (blockUnder == 8 || blockUnder == 9)
+	// 1. Water Detection & Aquatic Physics vs Air Gravity
+	inWater, atSurface := c.checkWaterState()
 
 	if inWater {
-		// Water buoyant physics: gentle downward drift, swimming upward on jump/space
-		c.player.Velocity.Y -= 6.0 * dt
-		if c.player.Velocity.Y < -3.5 {
-			c.player.Velocity.Y = -3.5
-		}
-		if jumpRequested {
-			c.player.Velocity.Y = 4.0 // Swim upward
-		}
 		c.player.FallDistance = 0 // No fall damage in water
-	} else if !c.player.OnGround {
-		// Air Gravity: Authentic Minecraft 32.0 m/s^2 (0.08 blocks/tick^2 * 400), terminal velocity -78.4 m/s
-		c.player.Velocity.Y -= 32.0 * dt
-		if c.player.Velocity.Y < -78.4 {
-			c.player.Velocity.Y = -78.4
+		if jumpRequested {
+			// Swimming upward in water: continuous upward propulsion while holding Space
+			if atSurface {
+				// Surface breach: authentic Minecraft leap out of water onto riverbanks / land
+				if c.player.Velocity.Y < 4.5 {
+					c.player.Velocity.Y = 6.2
+				}
+			} else {
+				// Submerged: steady continuous swim ascent (~4.2 m/s vanilla equilibrium)
+				c.player.Velocity.Y += 24.0 * dt
+				if c.player.Velocity.Y > 4.2 {
+					c.player.Velocity.Y = 4.2
+				}
+				if c.player.Velocity.Y < 1.5 {
+					c.player.Velocity.Y = 1.5
+				}
+			}
+			c.player.OnGround = false
+		} else if c.isSneaking {
+			// Fast dive downward in water (Sneak / Shift)
+			c.player.Velocity.Y = -4.0
+		} else {
+			// Gentle sinking drift in water (vanilla water buoyancy)
+			c.player.Velocity.Y -= 6.0 * dt
+			if c.player.Velocity.Y < -3.0 {
+				c.player.Velocity.Y = -3.0
+			}
+		}
+	} else {
+		// 2. Air / Land Physics
+		// Jumping: Authentic Minecraft initial upward impulse of 8.4 m/s (0.42 blocks/tick * 20)
+		if jumpRequested && c.player.OnGround {
+			c.player.Velocity.Y = 8.4
+			c.player.OnGround = false
+		} else if !c.player.OnGround {
+			// Air Gravity: Authentic Minecraft 32.0 m/s^2 (0.08 blocks/tick^2 * 400), terminal velocity -78.4 m/s
+			c.player.Velocity.Y -= 32.0 * dt
+			if c.player.Velocity.Y < -78.4 {
+				c.player.Velocity.Y = -78.4
+			}
 		}
 	}
 
-	// 3. Horizontal Speeds: Walk 4.317 m/s, Sprint 5.612 m/s, Sneak/Eat 1.295 m/s, Swimming 2.2 m/s
+	// 3. Horizontal Speeds: Walk 4.317 m/s, Sprint 5.612 m/s, Sneak/Eat 1.295 m/s, Swimming 2.2 m/s, Sprint-Swimming 3.6 m/s
 	speed := 4.317
 	if inWater {
-		speed = 2.2
+		if c.isSprinting {
+			speed = 3.6
+		} else {
+			speed = 2.2
+		}
 	} else if c.isSneaking || c.isEating {
 		speed = 1.295
 	} else if c.isSprinting {
@@ -486,7 +608,9 @@ func (c *Client) PhysicsStep(fwdInput, strafeInput float64, jumpRequested bool, 
 
 	c.player.OnGround = onGround
 	if onGround {
-		c.player.Velocity.Y = 0
+		if !inWater || !jumpRequested {
+			c.player.Velocity.Y = 0
+		}
 	} else if delta.Y > 0 && resolvedPos.Y < c.player.Position.Y+delta.Y-1e-4 {
 		// Hit ceiling! Stop upward vertical momentum immediately
 		c.player.Velocity.Y = 0
@@ -600,7 +724,18 @@ func (c *Client) MoveRelative(forward, strafe float64) {
 }
 
 func (c *Client) Jump() {
-	if c.player != nil && c.player.OnGround {
+	if c.player == nil {
+		return
+	}
+	inWater, atSurface := c.checkWaterState()
+	if inWater {
+		if atSurface {
+			c.player.Velocity.Y = 6.2
+		} else {
+			c.player.Velocity.Y = 4.2
+		}
+		c.player.OnGround = false
+	} else if c.player.OnGround {
 		c.player.Velocity.Y = 8.4
 		c.player.OnGround = false
 	}
@@ -2590,12 +2725,8 @@ func runGraphicalWindow(c *Client, w, h int) {
 			continue
 		}
 
-		// 1. Edge-triggered Spacebar Jump (prevents continuous hopping)
+		// 1. Spacebar Jump & Swim input (Authentic Minecraft: continuous hold for water swimming, flight ascent & bunny hop)
 		spaceDown := wnd.IsKeyDown(0x20)
-		jumpNow := false
-		if spaceDown && !c.wasSpaceDown {
-			jumpNow = true
-		}
 		c.wasSpaceDown = spaceDown
 
 		// 2. Sprint & Sneak modifiers
@@ -2617,7 +2748,7 @@ func runGraphicalWindow(c *Client, w, h int) {
 			strafeInput += 1.0
 		}
 
-		c.PhysicsStep(fwdInput, strafeInput, jumpNow, dt)
+		c.PhysicsStep(fwdInput, strafeInput, spaceDown, dt)
 
 		// Synchronize crosshair raycast target with current position & orientation
 		c.UpdateRaycastTarget()
