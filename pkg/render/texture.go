@@ -17,78 +17,66 @@ func init() {
 	initDefaultTextures()
 }
 
+// texHash produces a fast, deterministic pseudo-random hash for organic texture dithering.
+func texHash(x, y, seed int) int {
+	h := (x*374761393 + y*668265263 + seed*374761393) ^ 0x5DEECE66D
+	h = (h ^ (h >> 13)) * 1274126177
+	return (h ^ (h >> 16)) & 0x7FFFFFFF
+}
+
 func initDefaultTextures() {
-	// Authentic Minecraft Java color palette (0xAARRGGBB for standard 32-bit native display)
-	// Dirt: rich warm earth brown
-	dirtDark := uint32(0xFF6F4F37)  // R=111, G=79, B=55
-	dirtMid := uint32(0xFF866043)   // R=134, G=96, B=67
-	dirtLight := uint32(0xFF9B6F4E) // R=155, G=111, B=78
-
-	// Grass: vibrant Minecraft meadow green
-	grassGreenDark := uint32(0xFF46862E)  // R=70, G=134, B=46
-	grassGreenMid := uint32(0xFF5AA53C)   // R=90, G=165, B=60
-	grassGreenLight := uint32(0xFF6FBF4C) // R=111, G=191, B=76
-
-	// Stone: natural mottled gray
-	stoneDark := uint32(0xFF636363)
-	stoneMid := uint32(0xFF7D7D7D)
-	stoneLight := uint32(0xFF969696)
-
-	// Wood Bark: oak tree trunk
-	woodBarkDark := uint32(0xFF4D3B26)
-	woodBarkLight := uint32(0xFF6B5336)
-	woodRingsDark := uint32(0xFF9E7C4D)
-	woodRingsLight := uint32(0xFFB8945F)
-
-	// Oak Planks: crafted wooden building boards
-	plankLine := uint32(0xFF8F6E3E)
-	plankBody := uint32(0xFFB8945F)
-	plankLight := uint32(0xFFC9A66F)
-
-	// Oak Leaves: lush foliage
-	leafDark := uint32(0xFF2E631E)
-	leafLight := uint32(0xFF3D8228)
-
-	// Diamond: dazzling cyan gemstone
-	diamondCyan := uint32(0xFF4AEDD7) // R=74, G=237, B=215
-	coalBlack := uint32(0xFF242424)
-	ironTan := uint32(0xFFD8AF93)
-	goldYellow := uint32(0xFFFCEE4B)
-
-	// 1. Dirt Texture
+	// 1. Dirt Texture (rich warm organic earth brown)
+	dirtPalette := [4]uint32{0xFF866043, 0xFF775438, 0xFF966C4D, 0xFF65472E}
 	var dirtTex BlockTexture
 	for y := 0; y < 16; y++ {
 		for x := 0; x < 16; x++ {
-			c := dirtMid
-			if (x*3+y*7)%5 == 0 {
-				c = dirtDark
-			} else if (x*7+y*3)%7 == 0 {
-				c = dirtLight
+			h := texHash(x, y, 101) % 100
+			c := dirtPalette[0]
+			if h < 48 {
+				c = dirtPalette[0]
+			} else if h < 78 {
+				c = dirtPalette[1]
+			} else if h < 92 {
+				c = dirtPalette[2]
+			} else {
+				c = dirtPalette[3]
 			}
 			dirtTex[y][x] = c
 		}
 	}
 
-	// 2. Grass Top Texture
+	// 2. Grass Top Texture (authentic Minecraft meadow green with natural pixel clustering)
+	grassPalette := [4]uint32{0xFF5AA53C, 0xFF4E9333, 0xFF69BD46, 0xFF43812A}
 	var grassTopTex BlockTexture
 	for y := 0; y < 16; y++ {
 		for x := 0; x < 16; x++ {
-			c := grassGreenMid
-			if (x+y*3)%4 == 0 {
-				c = grassGreenDark
-			} else if (x*2+y)%5 == 0 {
-				c = grassGreenLight
+			h := texHash(x, y, 202) % 100
+			c := grassPalette[0]
+			if h < 52 {
+				c = grassPalette[0]
+			} else if h < 80 {
+				c = grassPalette[1]
+			} else if h < 93 {
+				c = grassPalette[2]
+			} else {
+				c = grassPalette[3]
 			}
 			grassTopTex[y][x] = c
 		}
 	}
 
-	// 3. Grass Side Texture (Top 3-4 pixels grass fringe at y>=12, bottom dirt)
+	// 3. Grass Side Texture (Top 3-4 pixels irregular grass fringe, bottom dirt)
 	var grassSideTex BlockTexture
 	for y := 0; y < 16; y++ {
 		for x := 0; x < 16; x++ {
-			if y >= 13 || (y == 12 && (x%3 == 0 || x%4 == 0)) {
-				grassSideTex[y][x] = grassGreenMid
+			fringeStart := 13 - (texHash(x, 0, 303) % 3)
+			if y >= fringeStart {
+				h := texHash(x, y, 202) % 100
+				if h < 65 {
+					grassSideTex[y][x] = grassPalette[0]
+				} else {
+					grassSideTex[y][x] = grassPalette[1]
+				}
 			} else {
 				grassSideTex[y][x] = dirtTex[y][x]
 			}
@@ -110,14 +98,20 @@ func initDefaultTextures() {
 	}
 
 	// 4. Stone Texture (ID 1)
+	stonePalette := [4]uint32{0xFF7D7D7D, 0xFF696969, 0xFF8D8D8D, 0xFF5C5C5C}
 	var stoneTex BlockTexture
 	for y := 0; y < 16; y++ {
 		for x := 0; x < 16; x++ {
-			c := stoneMid
-			if (x*5+y*11)%7 == 0 {
-				c = stoneDark
-			} else if (x*11+y*5)%9 == 0 {
-				c = stoneLight
+			h := texHash(x, y, 404) % 100
+			c := stonePalette[0]
+			if h < 48 {
+				c = stonePalette[0]
+			} else if h < 78 {
+				c = stonePalette[1]
+			} else if h < 92 {
+				c = stonePalette[2]
+			} else {
+				c = stonePalette[3]
 			}
 			stoneTex[y][x] = c
 		}
@@ -132,13 +126,19 @@ func initDefaultTextures() {
 	var cobbleTex BlockTexture
 	for y := 0; y < 16; y++ {
 		for x := 0; x < 16; x++ {
-			c := stoneMid
-			if x%4 == 0 || y%4 == 0 || (x+y)%5 == 0 {
-				c = stoneDark
-			} else if (x*3+y*2)%6 == 0 {
-				c = stoneLight
+			isBorder := (x%4 == 0 && (y+x/4)%4 != 2) || (y%4 == 0 && (x+y/4)%4 != 2)
+			if isBorder {
+				cobbleTex[y][x] = 0xFF444444
+			} else {
+				h := texHash(x, y, 505) % 100
+				if h < 55 {
+					cobbleTex[y][x] = 0xFF7D7D7D
+				} else if h < 85 {
+					cobbleTex[y][x] = 0xFF666666
+				} else {
+					cobbleTex[y][x] = 0xFF929292
+				}
 			}
-			cobbleTex[y][x] = c
 		}
 	}
 	Textures[4] = &BlockFaceTextures{
@@ -151,11 +151,14 @@ func initDefaultTextures() {
 	var barkSideTex BlockTexture
 	for y := 0; y < 16; y++ {
 		for x := 0; x < 16; x++ {
-			c := woodBarkLight
-			if x%4 == 0 || (x+y*2)%7 == 0 {
-				c = woodBarkDark
+			h := texHash(x, y/2, 707) % 100
+			if x%4 == 0 || h < 25 {
+				barkSideTex[y][x] = 0xFF4D3B26
+			} else if h < 70 {
+				barkSideTex[y][x] = 0xFF6B5336
+			} else {
+				barkSideTex[y][x] = 0xFF5C472E
 			}
-			barkSideTex[y][x] = c
 		}
 	}
 	var logRingsTex BlockTexture
@@ -164,9 +167,9 @@ func initDefaultTextures() {
 			dx := float64(x - 8)
 			dy := float64(y - 8)
 			dist := int(dx*dx + dy*dy)
-			c := woodRingsLight
+			c := uint32(0xFFB8945F)
 			if dist < 9 || (dist > 25 && dist < 36) || dist > 55 {
-				c = woodRingsDark
+				c = 0xFF9E7C4D
 			}
 			logRingsTex[y][x] = c
 		}
@@ -181,13 +184,22 @@ func initDefaultTextures() {
 	var plankTex BlockTexture
 	for y := 0; y < 16; y++ {
 		for x := 0; x < 16; x++ {
-			c := plankBody
-			if y%4 == 0 {
-				c = plankLine // horizontal wood planks
-			} else if (x+y)%6 == 0 {
-				c = plankLight
+			boardIdx := y / 4
+			isBoardLine := (y % 4) == 0
+			joinX := ((boardIdx * 7) + 3) % 16
+			isJoinLine := (x == joinX)
+			if isBoardLine || isJoinLine {
+				plankTex[y][x] = 0xFF7D582A
+			} else {
+				h := texHash(x, y, 606) % 100
+				if h < 60 {
+					plankTex[y][x] = 0xFFB8945F
+				} else if h < 85 {
+					plankTex[y][x] = 0xFFA5824E
+				} else {
+					plankTex[y][x] = 0xFFC9A66F
+				}
 			}
-			plankTex[y][x] = c
 		}
 	}
 	Textures[5] = &BlockFaceTextures{
@@ -196,15 +208,23 @@ func initDefaultTextures() {
 		Side:   plankTex,
 	}
 
-	// 8. Oak Leaves (ID 18)
+	// 8. Oak Leaves (ID 18) - with authentic fast/fancy alpha cutouts
 	var leavesTex BlockTexture
+	leafDark := uint32(0xFF2E631E)
+	leafMid := uint32(0xFF387B25)
+	leafLight := uint32(0xFF45942E)
 	for y := 0; y < 16; y++ {
 		for x := 0; x < 16; x++ {
-			c := leafDark
-			if (x+y)%2 == 0 {
-				c = leafLight
+			h := texHash(x, y, 808) % 100
+			if h < 25 {
+				leavesTex[y][x] = 0x00000000 // Cutout transparency
+			} else if h < 62 {
+				leavesTex[y][x] = leafDark
+			} else if h < 86 {
+				leavesTex[y][x] = leafMid
+			} else {
+				leavesTex[y][x] = leafLight
 			}
-			leavesTex[y][x] = c
 		}
 	}
 	Textures[18] = &BlockFaceTextures{
@@ -214,11 +234,11 @@ func initDefaultTextures() {
 	}
 
 	// 9. Diamond Ore (ID 56)
+	diamondCyan := uint32(0xFF4AEDD7)
 	var diamondTex BlockTexture
 	for y := 0; y < 16; y++ {
 		for x := 0; x < 16; x++ {
 			c := stoneTex[y][x]
-			// Diamond speckles in stone
 			if (x == 4 && y == 4) || (x == 5 && y == 4) || (x == 4 && y == 5) ||
 				(x == 11 && y == 9) || (x == 12 && y == 9) || (x == 11 && y == 10) ||
 				(x == 8 && y == 13) || (x == 9 && y == 13) {
@@ -227,13 +247,10 @@ func initDefaultTextures() {
 			diamondTex[y][x] = c
 		}
 	}
-	Textures[56] = &BlockFaceTextures{
-		Top:    diamondTex,
-		Bottom: diamondTex,
-		Side:   diamondTex,
-	}
+	Textures[56] = &BlockFaceTextures{Top: diamondTex, Bottom: diamondTex, Side: diamondTex}
 
 	// 10. Coal Ore (ID 16)
+	coalBlack := uint32(0xFF242424)
 	var coalTex BlockTexture
 	for y := 0; y < 16; y++ {
 		for x := 0; x < 16; x++ {
@@ -248,6 +265,7 @@ func initDefaultTextures() {
 	Textures[16] = &BlockFaceTextures{Top: coalTex, Bottom: coalTex, Side: coalTex}
 
 	// 11. Iron Ore (ID 15)
+	ironTan := uint32(0xFFD8AF93)
 	var ironTex BlockTexture
 	for y := 0; y < 16; y++ {
 		for x := 0; x < 16; x++ {
@@ -262,6 +280,7 @@ func initDefaultTextures() {
 	Textures[15] = &BlockFaceTextures{Top: ironTex, Bottom: ironTex, Side: ironTex}
 
 	// 11b. Gold Ore (ID 14)
+	goldYellow := uint32(0xFFFCEE4B)
 	var goldTex BlockTexture
 	for y := 0; y < 16; y++ {
 		for x := 0; x < 16; x++ {
@@ -276,15 +295,16 @@ func initDefaultTextures() {
 
 	// 12. Sand (ID 12)
 	var sandTex BlockTexture
-	sandMid := uint32(0xFFDBCFA3)
-	sandDark := uint32(0xFFCEBF8A)
 	for y := 0; y < 16; y++ {
 		for x := 0; x < 16; x++ {
-			c := sandMid
-			if (x*3+y*7)%4 == 0 {
-				c = sandDark
+			h := texHash(x, y, 1010) % 100
+			if h < 55 {
+				sandTex[y][x] = 0xFFDBCFA3
+			} else if h < 85 {
+				sandTex[y][x] = 0xFFCEBF8A
+			} else {
+				sandTex[y][x] = 0xFFE6DDB5
 			}
-			sandTex[y][x] = c
 		}
 	}
 	Textures[12] = &BlockFaceTextures{Top: sandTex, Bottom: sandTex, Side: sandTex}
@@ -293,54 +313,94 @@ func initDefaultTextures() {
 	var bedrockTex BlockTexture
 	for y := 0; y < 16; y++ {
 		for x := 0; x < 16; x++ {
-			c := uint32(0xFF353535)
-			if (x*7+y*13)%3 == 0 {
-				c = uint32(0xFF1A1A1A)
-			} else if (x*11+y*5)%4 == 0 {
-				c = uint32(0xFF555555)
+			h := texHash(x, y, 1212) % 100
+			if h < 50 {
+				bedrockTex[y][x] = 0xFF1E1E1E
+			} else if h < 80 {
+				bedrockTex[y][x] = 0xFF353535
+			} else {
+				bedrockTex[y][x] = 0xFF4A4A4A
 			}
-			bedrockTex[y][x] = c
 		}
 	}
 	Textures[7] = &BlockFaceTextures{Top: bedrockTex, Bottom: bedrockTex, Side: bedrockTex}
 
-	// 14. Water (ID 9)
+	// 14. Water (ID 9 & ID 8) - semi-transparent blue
 	var waterTex BlockTexture
-	waterBlue := uint32(0xFF3F76E4)
-	waterLight := uint32(0xFF4C85F2)
 	for y := 0; y < 16; y++ {
 		for x := 0; x < 16; x++ {
-			c := waterBlue
-			if (x+y)%3 == 0 {
-				c = waterLight
+			h := texHash(x, y, 909) % 100
+			if h < 70 {
+				waterTex[y][x] = 0xAA3F76E4
+			} else {
+				waterTex[y][x] = 0xBB528BEE
 			}
-			waterTex[y][x] = c
 		}
 	}
+	Textures[8] = &BlockFaceTextures{Top: waterTex, Bottom: waterTex, Side: waterTex}
 	Textures[9] = &BlockFaceTextures{Top: waterTex, Bottom: waterTex, Side: waterTex}
 
-	// 15. Lava (ID 11)
-	var lavaTex BlockTexture
-	lavaOrange := uint32(0xFFFF5500)
-	lavaYellow := uint32(0xFFFF9900)
+	// 14b. Glass (ID 20) - clear glass with thin frame and glint streaks
+	var glassTex BlockTexture
 	for y := 0; y < 16; y++ {
 		for x := 0; x < 16; x++ {
-			c := lavaOrange
-			if (x*5+y*3)%4 == 0 {
-				c = lavaYellow
+			isBorder := x == 0 || x == 15 || y == 0 || y == 15
+			isStreak := (x == y && x >= 3 && x <= 6) || (x == y-7 && x >= 8 && x <= 11)
+			if isBorder {
+				glassTex[y][x] = 0xCCFFFFFF
+			} else if isStreak {
+				glassTex[y][x] = 0x88FFFFFF
+			} else {
+				glassTex[y][x] = 0x00000000
 			}
-			lavaTex[y][x] = c
 		}
 	}
+	Textures[20] = &BlockFaceTextures{Top: glassTex, Bottom: glassTex, Side: glassTex}
+
+	// 14c. Deepslate (ID 150)
+	var deepslateTex BlockTexture
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			h := texHash(x, y, 1111) % 100
+			if (y/2)%2 == 0 {
+				if h < 60 {
+					deepslateTex[y][x] = 0xFF3D3D43
+				} else {
+					deepslateTex[y][x] = 0xFF2F2F35
+				}
+			} else {
+				if h < 60 {
+					deepslateTex[y][x] = 0xFF2B2B30
+				} else {
+					deepslateTex[y][x] = 0xFF35353B
+				}
+			}
+		}
+	}
+	Textures[150] = &BlockFaceTextures{Top: deepslateTex, Bottom: deepslateTex, Side: deepslateTex}
+
+	// 15. Lava (ID 11 & ID 10)
+	var lavaTex BlockTexture
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			h := texHash(x, y, 1313) % 100
+			if h < 65 {
+				lavaTex[y][x] = 0xFFFF5500
+			} else {
+				lavaTex[y][x] = 0xFFFF9900
+			}
+		}
+	}
+	Textures[10] = &BlockFaceTextures{Top: lavaTex, Bottom: lavaTex, Side: lavaTex}
 	Textures[11] = &BlockFaceTextures{Top: lavaTex, Bottom: lavaTex, Side: lavaTex}
 
 	// 16. Crafting Table (ID 58)
 	var craftTopTex BlockTexture
 	for y := 0; y < 16; y++ {
 		for x := 0; x < 16; x++ {
-			c := plankBody
-			if x == 0 || x == 15 || y == 0 || y == 15 || x == 8 || y == 8 {
-				c = plankLine
+			c := uint32(0xFFB8945F)
+			if x == 0 || x == 15 || y == 0 || y == 15 || x == 5 || x == 10 || y == 5 || y == 10 {
+				c = uint32(0xFF7D582A)
 			}
 			craftTopTex[y][x] = c
 		}
@@ -357,9 +417,9 @@ func initDefaultTextures() {
 		for x := 0; x < 16; x++ {
 			c := cobbleTex[y][x]
 			if y >= 6 && y <= 11 && x >= 4 && x <= 11 {
-				c = uint32(0xFF151515) // furnace opening
+				c = 0xFF151515
 				if y >= 9 && (x == 7 || x == 8) {
-					c = lavaOrange // warm coal embers
+					c = 0xFFFF5500
 				}
 			}
 			furnaceFrontTex[y][x] = c
@@ -406,13 +466,16 @@ func SampleBlockColor(blockID int32, faceIndex int, u, v float32, lightMult floa
 
 // ApplyLighting scales color channels by directional light multiplier in 0xAARRGGBB format.
 func ApplyLighting(col uint32, mult float32) uint32 {
+	a := (col >> 24) & 0xFF
+	if a == 0 {
+		return 0 // Preserve full transparent cutouts
+	}
 	if mult >= 1.0 {
 		return col
 	}
 	r := float32((col >> 16) & 0xFF) * mult
 	g := float32((col >> 8) & 0xFF) * mult
 	b := float32(col & 0xFF) * mult
-	a := (col >> 24) & 0xFF
 
 	return (a << 24) | (uint32(r) << 16) | (uint32(g) << 8) | uint32(b)
 }

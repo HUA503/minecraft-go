@@ -282,11 +282,17 @@ func (fb *Framebuffer) DrawHUDWithInventory(health float32, hunger int, selected
 	numHearts := int(health / 2.0)
 	for i := 0; i < 10; i++ {
 		hx := healthStartX + i*10
+		hy := hudBaseY
+		if health <= 4.0 {
+			// Minecraft Java edition authentic heart shaking at low health
+			shake := (i*7 + int(time.Now().UnixMilli()/70)) % 3
+			hy += shake - 1
+		}
 		// Dark background border
-		fb.DrawRect(hx, hudBaseY, 8, 8, 0xFF330000)
+		fb.DrawRect(hx, hy, 8, 8, 0xFF330000)
 		if i < numHearts {
 			// Red heart
-			fb.DrawRect(hx+1, hudBaseY+1, 6, 6, 0xFFFF1111) // Minecraft Authentic Red
+			fb.DrawRect(hx+1, hy+1, 6, 6, 0xFFFF1111) // Minecraft Authentic Red
 		}
 	}
 

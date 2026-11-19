@@ -356,13 +356,18 @@ func (e *Engine) BreakBlock(playerID int32, pos world.BlockPos) int32 {
 
 // PlaceBlock places a block if it does not intersect the player's bounding box.
 func (e *Engine) PlaceBlock(playerID int32, pos world.BlockPos, blockID int32) bool {
+	existing := e.GetBlock(pos.X, pos.Y, pos.Z)
+	if existing != 0 && existing != 8 && existing != 9 && existing != 10 && existing != 11 {
+		return false
+	}
+
 	blockBox := NewBlockAABB(pos.X, pos.Y, pos.Z)
 
 	e.mu.RLock()
 	for _, p := range e.Players {
 		if p.IsAlive {
 			playerBox := NewPlayerAABB(p.Position)
-			if blockBox.Intersects(playerBox) {
+			if PlacementIntersects(playerBox, blockBox) {
 				e.mu.RUnlock()
 				return false // cannot place inside player
 			}
@@ -653,10 +658,23 @@ func (e *Engine) Tick() {
 			drop.Velocity = Vec3{}
 		}
 
-		// Proximity pickup by any player within reach (1.8 blocks)
+		// Proximity magnetic pull & pickup by any player within reach (2.5 blocks)
 		if drop.PickupDelay <= 0 {
 			for _, p := range e.Players {
-				if p.IsAlive && p.Position.DistanceTo(drop.Position) < 1.8 {
+				if !p.IsAlive {
+					continue
+				}
+				dist := p.Position.DistanceTo(drop.Position)
+				if dist < 2.5 {
+					// Magnetic acceleration towards player
+					dx := p.Position.X - drop.Position.X
+					dy := (p.Position.Y + 0.6) - drop.Position.Y
+					dz := p.Position.Z - drop.Position.Z
+					drop.Position.X += dx * 0.2
+					drop.Position.Y += dy * 0.2
+					drop.Position.Z += dz * 0.2
+				}
+				if dist < 1.8 {
 					p.Inventory.AddItem(drop.ItemID, drop.Count)
 					delete(e.ItemDrops, id)
 					select {

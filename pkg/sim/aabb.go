@@ -65,6 +65,16 @@ func (a AABB) Intersects(b AABB) bool {
 		a.Min.Z < b.Max.Z && a.Max.Z > b.Min.Z
 }
 
+// PlacementIntersects checks if a block intersects a player bounding box for block placement.
+// Uses a subtle tolerance margin (0.06) so standing adjacent to a block or jumping to pillar up
+// does not trigger false intersection rejections.
+func PlacementIntersects(playerBox AABB, blockBox AABB) bool {
+	const eps = 0.06
+	return (playerBox.Min.X+eps) < blockBox.Max.X && (playerBox.Max.X-eps) > blockBox.Min.X &&
+		(playerBox.Min.Y+eps) < blockBox.Max.Y && (playerBox.Max.Y-eps) > blockBox.Min.Y &&
+		(playerBox.Min.Z+eps) < blockBox.Max.Z && (playerBox.Max.Z-eps) > blockBox.Min.Z
+}
+
 // RaycastResult contains intersection details.
 type RaycastResult struct {
 	Hit    bool

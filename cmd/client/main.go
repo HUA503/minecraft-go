@@ -39,6 +39,7 @@ type Client struct {
 	meshCache    map[[3]int32]*render.Mesh
 	meshMu       sync.RWMutex
 	targetedPos  world.BlockPos
+	targetedFace world.BlockPos
 	hasTarget    bool
 	walkCycle    float64
 	isMoving     bool
@@ -105,18 +106,19 @@ func NewClient(serverAddr, username string, isSingleplayer bool, width, height i
 		cli.engine = sim.NewEngine()
 		cli.genOverworld = gen.NewGenerator(12345, gen.DimensionOverworld)
 		cli.engine.StartTickLoop()
-		cli.player = cli.engine.AddPlayer(username, u, sim.Vec3{X: 8.0, Y: 65.0, Z: 8.0})
+		cli.player = cli.engine.AddPlayer(username, u, sim.Vec3{X: 8.5, Y: 65.0, Z: 8.5})
 
 		// Classic starter items in hotbar
 		cli.player.Inventory.Slots[0] = inventory.ItemStack{ItemID: inventory.ItemWoodenPickaxe, Count: 1}
-		cli.player.Inventory.Slots[1] = inventory.ItemStack{ItemID: inventory.ItemOakPlanks, Count: 16}
-		cli.player.Inventory.Slots[2] = inventory.ItemStack{ItemID: inventory.ItemCobblestone, Count: 8}
-		cli.player.Inventory.Slots[3] = inventory.ItemStack{ItemID: inventory.ItemDirt, Count: 8}
+		cli.player.Inventory.Slots[1] = inventory.ItemStack{ItemID: inventory.ItemOakPlanks, Count: 64}
+		cli.player.Inventory.Slots[2] = inventory.ItemStack{ItemID: inventory.ItemCobblestone, Count: 64}
+		cli.player.Inventory.Slots[3] = inventory.ItemStack{ItemID: inventory.ItemDirt, Count: 64}
 		cli.player.Inventory.Slots[4] = inventory.ItemStack{ItemID: 268, Count: 1} // Wooden Sword
 		cli.player.Inventory.Slots[5] = inventory.ItemStack{ItemID: 271, Count: 1} // Wooden Axe
 		cli.player.Inventory.Slots[6] = inventory.ItemStack{ItemID: 269, Count: 1} // Wooden Shovel
-		cli.player.Inventory.Slots[7] = inventory.ItemStack{ItemID: inventory.ItemCookedPorkchop, Count: 4}
-		cli.player.Inventory.Slots[8] = inventory.ItemStack{ItemID: inventory.ItemApple, Count: 4}
+		cli.player.Inventory.Slots[7] = inventory.ItemStack{ItemID: inventory.ItemCookedPorkchop, Count: 16}
+		cli.player.Inventory.Slots[8] = inventory.ItemStack{ItemID: inventory.ItemApple, Count: 16}
+		cli.player.Inventory.SelectedHotbar = 1 // Start on placeable Oak Planks by default
 
 		// Spawn living mobs in meadow around player (safe distance from spawn point)
 		cli.engine.SpawnMob(sim.MobPig, sim.Vec3{X: 12.0, Y: 66.0, Z: 11.0})
@@ -126,7 +128,7 @@ func NewClient(serverAddr, username string, isSingleplayer bool, width, height i
 
 		// Pre-mesh immediate spawn sections synchronously so terrain is immediately visible
 		for i := 0; i < 25; i++ {
-			cli.EnsureChunksAroundPlayer(8.0, 8.0, 1)
+			cli.EnsureChunksAroundPlayer(8.5, 8.5, 1)
 		}
 	}
 
@@ -230,6 +232,44 @@ func (c *Client) InvalidateBlockMesh(pos world.BlockPos) {
 	} else if remZ == 15 {
 		delete(c.meshCache, [3]int32{secX, secY, secZ + 1})
 	}
+}
+
+// RebuildAffectedMeshes synchronously remeshes the section containing pos and any boundary neighbor sections.
+// Guarantees zero frame delay, no flickering, and no disappearing void holes when placing or breaking blocks.
+func (c *Client) RebuildAffectedMeshes(pos world.BlockPos) {
+	secX := int32(math.Floor(float64(pos.X) / 16.0))
+	secY := int32(math.Floor(float64(pos.Y) / 16.0))
+	secZ := int32(math.Floor(float64(pos.Z) / 16.0))
+
+	getBlock := func(x, y, z int32) int32 {
+		return c.engine.GetBlock(x, y, z)
+	}
+
+	m0 := render.BuildSectionMesh(getBlock, secX*16, secY*16, secZ*16)
+
+	c.meshMu.Lock()
+	c.meshCache[[3]int32{secX, secY, secZ}] = m0
+
+	remX := ((pos.X % 16) + 16) % 16
+	remY := ((pos.Y % 16) + 16) % 16
+	remZ := ((pos.Z % 16) + 16) % 16
+
+	if remX == 0 {
+		c.meshCache[[3]int32{secX - 1, secY, secZ}] = render.BuildSectionMesh(getBlock, (secX-1)*16, secY*16, secZ*16)
+	} else if remX == 15 {
+		c.meshCache[[3]int32{secX + 1, secY, secZ}] = render.BuildSectionMesh(getBlock, (secX+1)*16, secY*16, secZ*16)
+	}
+	if remY == 0 {
+		c.meshCache[[3]int32{secX, secY - 1, secZ}] = render.BuildSectionMesh(getBlock, secX*16, (secY-1)*16, secZ*16)
+	} else if remY == 15 {
+		c.meshCache[[3]int32{secX, secY + 1, secZ}] = render.BuildSectionMesh(getBlock, secX*16, (secY+1)*16, secZ*16)
+	}
+	if remZ == 0 {
+		c.meshCache[[3]int32{secX, secY, secZ - 1}] = render.BuildSectionMesh(getBlock, secX*16, secY*16, (secZ-1)*16)
+	} else if remZ == 15 {
+		c.meshCache[[3]int32{secX, secY, secZ + 1}] = render.BuildSectionMesh(getBlock, secX*16, secY*16, (secZ+1)*16)
+	}
+	c.meshMu.Unlock()
 }
 
 func (c *Client) RebuildMeshes() {
@@ -476,6 +516,7 @@ func (c *Client) UpdateRaycastTarget() {
 	if res.Hit {
 		c.hasTarget = true
 		c.targetedPos = world.BlockPos{X: res.BlockX, Y: res.BlockY, Z: res.BlockZ}
+		c.targetedFace = world.BlockPos{X: res.FaceX, Y: res.FaceY, Z: res.FaceZ}
 	} else {
 		c.hasTarget = false
 	}
@@ -600,8 +641,7 @@ func (c *Client) UpdateMining(isLeftMouseDown bool, dt float64) {
 		c.breakProgress = 0.0
 		c.hasMiningBlock = false
 		c.isMining = false
-		c.InvalidateBlockMesh(minedPos)
-		c.EnsureChunksAroundPlayer(c.camera.X, c.camera.Z, 2)
+		c.RebuildAffectedMeshes(minedPos)
 	}
 }
 
@@ -830,17 +870,19 @@ func (c *Client) MineTargetedBlock() (int32, bool) {
 	drop, ok := c.engine.BreakBlockWithTool(c.player.ID, targetPos, heldToolID)
 	c.spawnBlockDebris(targetPos, blockID, 20)
 	sound.PlayHardwareFeedback(sound.GetBlockBreakSound(blockID))
-	c.InvalidateBlockMesh(targetPos)
-	c.EnsureChunksAroundPlayer(c.camera.X, c.camera.Z, 2)
+	c.RebuildAffectedMeshes(targetPos)
 	return drop, ok
 }
 
 func (c *Client) PlaceBlockInFront() bool {
-	if !c.hasTarget || c.player == nil {
+	if !c.hasTarget || c.player == nil || c.engine == nil {
 		return false
 	}
 	selected := c.player.Inventory.GetSelectedItem()
 	if selected.IsEmpty() {
+		return false
+	}
+	if !inventory.IsPlaceableBlock(selected.ItemID) {
 		return false
 	}
 
@@ -865,8 +907,9 @@ func (c *Client) PlaceBlockInFront() bool {
 	ok := c.engine.PlaceBlock(c.player.ID, targetPos, selected.ItemID)
 	if ok {
 		sound.PlayHardwareFeedback(sound.GetBlockPlaceSound(selected.ItemID))
-		c.InvalidateBlockMesh(targetPos)
-		c.EnsureChunksAroundPlayer(c.camera.X, c.camera.Z, 2)
+		c.RebuildAffectedMeshes(targetPos)
+		c.isSwinging = true
+		c.swingProgress = 0.0
 	}
 	return ok
 }
@@ -1033,6 +1076,19 @@ func (c *Client) RenderFrame() {
 				stage = 9
 			}
 			c.framebuf.DrawBlockDamage(c.camera, c.miningPos.X, c.miningPos.Y, c.miningPos.Z, stage)
+		}
+
+		// Draw subtle placement ghost wireframe when player holds a placeable block
+		if c.player != nil && c.player.Inventory != nil {
+			sel := c.player.Inventory.GetSelectedItem()
+			if inventory.IsPlaceableBlock(sel.ItemID) {
+				placePos := world.BlockPos{
+					X: c.targetedPos.X + c.targetedFace.X,
+					Y: c.targetedPos.Y + c.targetedFace.Y,
+					Z: c.targetedPos.Z + c.targetedFace.Z,
+				}
+				c.framebuf.DrawPlacementGhostOutline(c.camera, placePos.X, placePos.Y, placePos.Z)
+			}
 		}
 	}
 
@@ -1299,106 +1355,138 @@ func (c *Client) drawMob(m *sim.MobEntity) {
 	}
 }
 
-// drawPlayerModel renders the 3D Steve character in third-person view with limb swing animations.
+// render3DBox renders a volumetric 3D cuboid transformed by position, yaw, and pitch with depth testing.
+func (c *Client) render3DBox(cx, cy, cz, hx, hy, hz, yawDeg, pitchDeg float64, colTop, colBottom, colSide uint32) {
+	radY := yawDeg * math.Pi / 180.0
+	radP := pitchDeg * math.Pi / 180.0
+	cosY, sinY := math.Cos(radY), math.Sin(radY)
+	cosP, sinP := math.Cos(radP), math.Sin(radP)
+
+	rot := func(lx, ly, lz float64) (float64, float64, float64) {
+		// Pitch around local X axis
+		ry := ly*cosP - lz*sinP
+		rz := ly*sinP + lz*cosP
+		// Yaw around world Y axis
+		rx := lx*cosY + rz*sinY
+		rz2 := -lx*sinY + rz*cosY
+		return cx + rx, cy + ry, cz + rz2
+	}
+
+	corners := [8][3]float64{
+		{-hx, -hy, -hz},
+		{hx, -hy, -hz},
+		{hx, hy, -hz},
+		{-hx, hy, -hz},
+		{-hx, -hy, hz},
+		{hx, -hy, hz},
+		{hx, hy, hz},
+		{-hx, hy, hz},
+	}
+
+	var screenPts [8]render.ScreenPoint
+	var valid [8]bool
+	for i := 0; i < 8; i++ {
+		wx, wy, wz := rot(corners[i][0], corners[i][1], corners[i][2])
+		screenPts[i], valid[i] = c.camera.ProjectToScreen(wx, wy, wz, c.framebuf.Width, c.framebuf.Height)
+	}
+
+	faces := [6][4]int{
+		{2, 3, 7, 6}, // Top (+Y)
+		{4, 5, 1, 0}, // Bottom (-Y)
+		{3, 2, 1, 0}, // North (-Z)
+		{6, 7, 4, 5}, // South (+Z)
+		{7, 3, 0, 4}, // West (-X)
+		{2, 6, 5, 1}, // East (+X)
+	}
+
+	for fIdx, f := range faces {
+		if !valid[f[0]] || !valid[f[1]] || !valid[f[2]] || !valid[f[3]] {
+			continue
+		}
+		p0, p1, p2, p3 := screenPts[f[0]], screenPts[f[1]], screenPts[f[2]], screenPts[f[3]]
+		// Screen-space 2D normal check for back-face culling
+		area := (p1.X-p0.X)*(p2.Y-p0.Y) - (p1.Y-p0.Y)*(p2.X-p0.X)
+		if area <= 0 {
+			continue
+		}
+
+		col := colSide
+		if fIdx == 0 {
+			col = colTop
+		} else if fIdx == 1 {
+			col = colBottom
+		} else if fIdx >= 2 && fIdx <= 3 {
+			col = render.ApplyLighting(colSide, 0.85)
+		} else {
+			col = render.ApplyLighting(colSide, 0.70)
+		}
+
+		c.framebuf.DrawTriangle(p0, p1, p2, col)
+		c.framebuf.DrawTriangle(p0, p2, p3, col)
+	}
+}
+
+// drawPlayerModel renders the authentic volumetric 3D Steve character in third-person view.
 func (c *Client) drawPlayerModel() {
 	if c.player == nil {
 		return
 	}
-	// Project Steve body center to screen (Y+0.9m)
-	sp, ok := c.camera.ProjectToScreen(c.player.Position.X, c.player.Position.Y+0.9, c.player.Position.Z, c.framebuf.Width, c.framebuf.Height)
-	if !ok || sp.Depth <= 0.2 || sp.Depth > 32.0 {
-		return
-	}
-
-	baseScale := 42.0 / sp.Depth
-	bw := int(baseScale * 0.5)
-	bh := int(baseScale * 1.05)
-	if bw < 4 {
-		bw = 4
-	}
-	if bh < 8 {
-		bh = 8
-	}
-
-	sx := int(sp.X) - bw/2
-	sy := int(sp.Y) - bh/2
+	pos := c.player.Position
 
 	// Steve color palette
-	headCol := uint32(0xFFD6A07E) // Skin
-	hairCol := uint32(0xFF4D3B26) // Brown hair
-	bodyCol := uint32(0xFF2E8690) // Classic Cyan shirt
-	legCol := uint32(0xFF2A3663)  // Indigo blue pants
-	handCol := uint32(0xFFD6A07E)
+	headSkin := uint32(0xFFD6A07E)
+	headHair := uint32(0xFF4D3B26)
+	torsoCol := uint32(0xFF2E8690) // Classic Cyan shirt
+	pantsCol := uint32(0xFF2A3663) // Indigo pants
+	shoesCol := uint32(0xFF555555) // Gray shoes
 
 	if c.hurtFlashTimer > 0 {
-		headCol = 0xFFFF4444
-		hairCol = 0xFFFF2222
-		bodyCol = 0xFFFF3333
-		legCol = 0xFFFF2222
-		handCol = 0xFFFF4444
+		headSkin = 0xFFFF4444
+		headHair = 0xFFFF2222
+		torsoCol = 0xFFFF3333
+		pantsCol = 0xFFFF2222
 	}
 
-	headH := bh * 2 / 7
-	bodyH := bh * 3 / 7
+	yaw := c.camera.Yaw
+	pitch := c.camera.Pitch
 
-	limbSwing := 0
-	if c.isMoving {
-		limbSwing = int(math.Sin(c.walkCycle) * float64(bw) * 0.25)
+	walkSwing := 0.0
+	if c.isMoving && c.player.OnGround {
+		walkSwing = math.Sin(c.walkCycle) * 28.0
 	}
 
-	for dy := 0; dy < bh; dy++ {
-		py := sy + dy
-		if py < 0 || py >= c.framebuf.Height {
-			continue
-		}
-		for dx := 0; dx < bw; dx++ {
-			col := bodyCol
-			if dy < headH {
-				col = headCol
-				if dy < headH/3 {
-					col = hairCol // Hair on top
-				}
-			} else if dy >= headH+bodyH {
-				col = legCol
-				if dx == bw/2 {
-					col = 0xFF1A2244 // Center seam shadow
-				}
-			} else {
-				// Torso & Arms
-				if dx < bw/5 { // Left arm
-					if dy > headH+bodyH/2 {
-						col = handCol
-					}
-				} else if dx > bw*4/5 { // Right arm
-					if dy > headH+bodyH/2 {
-						col = handCol
-					}
-				}
-			}
-
-			drawX := sx + dx
-			// Animate swinging arms in walk cycle
-			if dy >= headH && dy < headH+bodyH {
-				if dx < bw/5 {
-					drawX += limbSwing
-				} else if dx > bw*4/5 {
-					drawX -= limbSwing
-				}
-			}
-			// Animate swinging legs in walk cycle
-			if dy >= headH+bodyH {
-				if dx < bw/2 {
-					drawX -= limbSwing / 2
-				} else {
-					drawX += limbSwing / 2
-				}
-			}
-
-			if drawX >= 0 && drawX < c.framebuf.Width {
-				c.framebuf.SetPixel(drawX, py, sp.Depth, col)
-			}
-		}
+	armSwing := 0.0
+	if c.isSwinging {
+		armSwing = math.Sin(math.Sqrt(c.swingProgress)*math.Pi) * 65.0
 	}
+
+	// 1. Head (rotates with camera yaw & pitch)
+	c.render3DBox(pos.X, pos.Y+1.45, pos.Z, 0.22, 0.22, 0.22, yaw, pitch, headHair, headSkin, headSkin)
+
+	// 2. Torso (rotates with body yaw)
+	c.render3DBox(pos.X, pos.Y+0.88, pos.Z, 0.24, 0.35, 0.12, yaw, 0, torsoCol, torsoCol, torsoCol)
+
+	// Compute shoulder offsets relative to body yaw
+	radY := yaw * math.Pi / 180.0
+	cosY, sinY := math.Cos(radY), math.Sin(radY)
+	armOffX := 0.35 * cosY
+	armOffZ := -0.35 * sinY
+
+	// 3. Left Arm (swings opposite)
+	c.render3DBox(pos.X-armOffX, pos.Y+0.88, pos.Z-armOffZ, 0.11, 0.35, 0.12, yaw, walkSwing, torsoCol, headSkin, torsoCol)
+
+	// 4. Right Arm (swings with walk cycle + chopping attack arc)
+	c.render3DBox(pos.X+armOffX, pos.Y+0.88, pos.Z+armOffZ, 0.11, 0.35, 0.12, yaw, -walkSwing+armSwing, torsoCol, headSkin, torsoCol)
+
+	// Hip offsets relative to body yaw
+	legOffX := 0.12 * cosY
+	legOffZ := -0.12 * sinY
+
+	// 5. Left Leg (swings forward/backward)
+	c.render3DBox(pos.X-legOffX, pos.Y+0.36, pos.Z-legOffZ, 0.11, 0.35, 0.12, yaw, -walkSwing, pantsCol, shoesCol, pantsCol)
+
+	// 6. Right Leg (swings opposite)
+	c.render3DBox(pos.X+legOffX, pos.Y+0.36, pos.Z+legOffZ, 0.11, 0.35, 0.12, yaw, walkSwing, pantsCol, shoesCol, pantsCol)
 }
 
 func (c *Client) AttackMob() bool {
@@ -1595,13 +1683,14 @@ func (c *Client) drawHeldItem() {
 	swayX := int(math.Cos(c.walkCycle*0.5) * 6.0)
 	swayY := int(math.Abs(math.Sin(c.walkCycle)) * 5.0)
 
-	// Arm / Tool swing animation trajectory
+	// Arm / Tool swing animation trajectory using authentic Minecraft Java curve
 	swingOffset := 0
 	swingDrop := 0
 	if c.isSwinging {
-		arc := math.Sin(c.swingProgress * math.Pi)
-		swingOffset = int(arc * 40.0)
-		swingDrop = int(arc * 25.0)
+		f1 := math.Sin(math.Sqrt(c.swingProgress) * math.Pi)
+		f2 := math.Sin(c.swingProgress * math.Pi)
+		swingOffset = int(f1 * 50.0)
+		swingDrop = int(f2 * 30.0)
 	}
 
 	hx := c.framebuf.Width - 95 + swayX - swingOffset
@@ -1619,6 +1708,29 @@ func (c *Client) drawHeldItem() {
 		return
 	}
 
+	// 1. Food Eating Hand & Jitter
+	if inventory.IsFood(selected.ItemID) {
+		fx := hx + 10
+		fy := hy + 10
+		if c.isEating {
+			fy -= 18 + int(math.Sin(c.eatTimer*40.0)*3.0)
+			fx -= 12
+		}
+		col := uint32(0xFFD85542) // Apple
+		switch selected.ItemID {
+		case inventory.ItemCookedPorkchop, inventory.ItemSteak:
+			col = 0xFF9E5739 // Cooked meat
+		case inventory.ItemBread:
+			col = 0xFFC99742 // Golden bread
+		}
+		c.framebuf.DrawRect(fx, fy, 26, 26, col)
+		c.framebuf.DrawRect(fx+3, fy+3, 8, 8, 0xFFFFA090)
+		c.framebuf.DrawRect(fx+6, fy+22, 24, 16, skinTone)
+		c.framebuf.DrawRect(fx+10, fy+38, 30, 45, sleeveTone)
+		return
+	}
+
+	// 2. Tools (Pickaxe, Sword, Axe, Shovel)
 	props, isTool := inventory.GetToolProperties(selected.ItemID)
 	if isTool {
 		// Draw Steve's arm holding tool
@@ -1628,8 +1740,8 @@ func (c *Client) drawHeldItem() {
 
 		// Diagonal tool handle (brown wood)
 		handleCol := uint32(0xFF6F4F37)
-		for d := 0; d < 22; d++ {
-			c.framebuf.DrawRect(hx+30-d, hy+20-d, 3, 3, handleCol)
+		for d := 0; d < 24; d++ {
+			c.framebuf.DrawRect(hx+32-d, hy+22-d, 3, 3, handleCol)
 		}
 
 		// Tool Head
@@ -1643,15 +1755,15 @@ func (c *Client) drawHeldItem() {
 			headCol = 0xFF4AEDD7
 		}
 
-		tipX := hx + 30 - 22
-		tipY := hy + 20 - 22
+		tipX := hx + 32 - 24
+		tipY := hy + 22 - 24
 		switch props.Type {
 		case inventory.ToolPickaxe:
 			c.framebuf.DrawRect(tipX-10, tipY-2, 22, 6, headCol)
 			c.framebuf.DrawRect(tipX-12, tipY+3, 6, 6, headCol)
 			c.framebuf.DrawRect(tipX+10, tipY+3, 6, 6, headCol)
 		case inventory.ToolSword:
-			for d := 0; d < 18; d++ {
+			for d := 0; d < 20; d++ {
 				c.framebuf.DrawRect(tipX-d, tipY-d, 5, 5, headCol)
 			}
 			c.framebuf.DrawRect(tipX+4, tipY+4, 10, 5, 0xFF4D3B26) // Crossguard
@@ -1663,17 +1775,27 @@ func (c *Client) drawHeldItem() {
 		return
 	}
 
-	// 3D isometric held block held by Steve's hand
+	// 3. 3D Miniature Isometric Held Voxel Block
+	bx := hx - 8
+	by := hy - 12
 	colorTop := render.SampleBlockColor(selected.ItemID, 2, 0.5, 0.5, 1.0)
 	colorLeft := render.SampleBlockColor(selected.ItemID, 1, 0.5, 0.5, 0.8)
 	colorRight := render.SampleBlockColor(selected.ItemID, 0, 0.5, 0.5, 0.6)
 
-	c.framebuf.DrawRect(hx+15, hy, 40, 20, colorTop)
-	c.framebuf.DrawRect(hx, hy+20, 35, 45, colorLeft)
-	c.framebuf.DrawRect(hx+35, hy+20, 35, 45, colorRight)
+	// Top Face (Diamond shape)
+	for ty := 0; ty < 14; ty++ {
+		for tx := 0; tx < 14; tx++ {
+			c.framebuf.DrawRect(bx+20+(tx-ty)*2, by+ty+tx, 2, 1, colorTop)
+		}
+	}
+	// Left Face
+	c.framebuf.DrawRect(bx-6, by+14, 26, 32, colorLeft)
+	// Right Face
+	c.framebuf.DrawRect(bx+20, by+14, 26, 32, colorRight)
 
-	// Steve's fingers grasping the bottom of the block
-	c.framebuf.DrawRect(hx+15, hy+55, 35, 12, skinTone)
+	// Steve's fingers grasping bottom edge
+	c.framebuf.DrawRect(bx+8, by+42, 28, 12, skinTone)
+	c.framebuf.DrawRect(bx+14, by+54, 34, 45, sleeveTone)
 }
 
 func main() {

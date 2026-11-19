@@ -43,6 +43,18 @@ const (
 	ItemRottenFlesh   int32 = 367
 )
 
+// IsPlaceableBlock reports whether an item ID corresponds to a placeable voxel block.
+func IsPlaceableBlock(itemID int32) bool {
+	switch itemID {
+	case ItemStone, ItemGrass, ItemDirt, ItemCobblestone, ItemOakPlanks,
+		7, 8, 9, 10, 11, 12, 13, 14, 15, 16, ItemOakLog, 18, 20, 49,
+		ItemTorch, 56, ItemCraftingTable, ItemFurnace, 87, 89, 121, 150:
+		return true
+	default:
+		return false
+	}
+}
+
 // FoodProperties defines nutrition restored by edible items.
 type FoodProperties struct {
 	HungerRestored int

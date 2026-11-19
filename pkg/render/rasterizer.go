@@ -10,18 +10,20 @@ import (
 
 // Framebuffer holds 2D pixel color and depth buffers.
 type Framebuffer struct {
-	Width  int
-	Height int
-	Color  []uint32  // RGBA packed 0xAABBGGRR
-	Depth  []float32 // Z buffer: 0.0 (near) to 1.0 (far)
+	Width           int
+	Height          int
+	Color           []uint32  // RGBA packed 0xAABBGGRR
+	Depth           []float32 // Z buffer: 0.0 (near) to 1.0 (far)
+	HorizonFogColor uint32    // Current celestial horizon color for distance fog
 }
 
 func NewFramebuffer(w, h int) *Framebuffer {
 	return &Framebuffer{
-		Width:  w,
-		Height: h,
-		Color:  make([]uint32, w*h),
-		Depth:  make([]float32, w*h),
+		Width:           w,
+		Height:          h,
+		Color:           make([]uint32, w*h),
+		Depth:           make([]float32, w*h),
+		HorizonFogColor: 0xFFC3DEFF,
 	}
 }
 
@@ -40,6 +42,7 @@ func (fb *Framebuffer) ClearSky() {
 // ClearSkyWithTime renders authentic day/sunset/night sky, stars, sun & moon.
 func (fb *Framebuffer) ClearSkyWithTime(worldTime int64) {
 	state := world.ComputeCelestialState(worldTime)
+	fb.HorizonFogColor = state.HorizonColor
 	zr := float32((state.ZenithColor >> 16) & 0xFF)
 	zg := float32((state.ZenithColor >> 8) & 0xFF)
 	zb := float32(state.ZenithColor & 0xFF)
@@ -364,9 +367,13 @@ func (fb *Framebuffer) DrawVoxelTrianglePerspective(v0, v1, v2 ScreenVertex) {
 
 	const fogStart = 20.0 // Distance fog start (in meters, tailored for 2-chunk radius horizon)
 	const fogEnd = 33.0   // Distance fog end (full horizon haze)
-	skyHazeR := float32(195)
-	skyHazeG := float32(222)
-	skyHazeB := float32(255)
+	hCol := fb.HorizonFogColor
+	if hCol == 0 {
+		hCol = 0xFFC3DEFF
+	}
+	skyHazeR := float32((hCol >> 16) & 0xFF)
+	skyHazeG := float32((hCol >> 8) & 0xFF)
+	skyHazeB := float32(hCol & 0xFF)
 
 	px0 := float32(minX) + 0.5
 	py0 := float32(minY) + 0.5
@@ -408,6 +415,11 @@ func (fb *Framebuffer) DrawVoxelTrianglePerspective(v0, v1, v2 ScreenVertex) {
 					light := nw0*v0.LightMult + nw1*v1.LightMult + nw2*v2.LightMult
 
 					pixelCol := SampleBlockColor(v0.BlockID, v0.FaceIndex, u, v, light)
+					alpha := (pixelCol >> 24) & 0xFF
+					if alpha == 0 {
+						// Full alpha cutout for leaves and clear glass
+						goto nextPixel
+					}
 
 					// Distance fog calculation
 					if depth > fogStart {
@@ -423,14 +435,31 @@ func (fb *Framebuffer) DrawVoxelTrianglePerspective(v0, v1, v2 ScreenVertex) {
 						finalR := uint32(pr*(1-fogT) + skyHazeR*fogT)
 						finalG := uint32(pg*(1-fogT) + skyHazeG*fogT)
 						finalB := uint32(pb*(1-fogT) + skyHazeB*fogT)
-						pixelCol = 0xFF000000 | (finalR << 16) | (finalG << 8) | finalB
+						pixelCol = (uint32(alpha) << 24) | (finalR << 16) | (finalG << 8) | finalB
 					}
 
-					fb.Depth[idx] = depth
-					fb.Color[idx] = pixelCol
+					if alpha == 255 {
+						fb.Depth[idx] = depth
+						fb.Color[idx] = pixelCol
+					} else {
+						// Translucent alpha blending (e.g. water surface)
+						bg := fb.Color[idx]
+						bgr := (bg >> 16) & 0xFF
+						bgg := (bg >> 8) & 0xFF
+						bgb := bg & 0xFF
+						aNorm := float32(alpha) / 255.0
+						pr := (pixelCol >> 16) & 0xFF
+						pg := (pixelCol >> 8) & 0xFF
+						pb := pixelCol & 0xFF
+						outR := uint32(float32(pr)*aNorm + float32(bgr)*(1-aNorm))
+						outG := uint32(float32(pg)*aNorm + float32(bgg)*(1-aNorm))
+						outB := uint32(float32(pb)*aNorm + float32(bgb)*(1-aNorm))
+						fb.Color[idx] = 0xFF000000 | (outR << 16) | (outG << 8) | outB
+					}
 				}
 			}
 
+		nextPixel:
 			w0 += dy12
 			w1 += dy20
 			w2 += dy01
@@ -472,6 +501,41 @@ func (fb *Framebuffer) DrawBlockOutline(cam *Camera, bx, by, bz int32) {
 	for _, e := range edges {
 		if valid[e[0]] && valid[e[1]] {
 			fb.DrawLine(int(projected[e[0]].X), int(projected[e[0]].Y), int(projected[e[1]].X), int(projected[e[1]].Y), 0xFF000000)
+		}
+	}
+}
+
+// DrawPlacementGhostOutline draws a subtle cyan wireframe outline at the targeted placement location.
+func (fb *Framebuffer) DrawPlacementGhostOutline(cam *Camera, bx, by, bz int32) {
+	fx, fy, fz := float64(bx), float64(by), float64(bz)
+
+	corners := [8][3]float64{
+		{fx, fy, fz},
+		{fx + 1, fy, fz},
+		{fx + 1, fy + 1, fz},
+		{fx, fy + 1, fz},
+		{fx, fy, fz + 1},
+		{fx + 1, fy, fz + 1},
+		{fx + 1, fy + 1, fz + 1},
+		{fx, fy + 1, fz + 1},
+	}
+
+	edges := [12][2]int{
+		{0, 1}, {1, 2}, {2, 3}, {3, 0},
+		{4, 5}, {5, 6}, {6, 7}, {7, 4},
+		{0, 4}, {1, 5}, {2, 6}, {3, 7},
+	}
+
+	var projected [8]ScreenPoint
+	var valid [8]bool
+	for i := 0; i < 8; i++ {
+		projected[i], valid[i] = cam.ProjectToScreen(corners[i][0], corners[i][1], corners[i][2], fb.Width, fb.Height)
+	}
+
+	const ghostCol = 0xFF55FFFF // Luminous cyan wireframe
+	for _, e := range edges {
+		if valid[e[0]] && valid[e[1]] {
+			fb.DrawLine(int(projected[e[0]].X), int(projected[e[0]].Y), int(projected[e[1]].X), int(projected[e[1]].Y), ghostCol)
 		}
 	}
 }

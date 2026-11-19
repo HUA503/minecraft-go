@@ -84,6 +84,43 @@ func TestCannotPlaceBlockInsidePlayer(t *testing.T) {
 	}
 }
 
+func TestBlockPlacementAllFacesAndPillaring(t *testing.T) {
+	eng := NewEngine()
+	p := eng.AddPlayer("Steve", [16]byte{1}, Vec3{8.5, 65.0, 8.5})
+	p.Inventory.Slots[0] = inventory.ItemStack{ItemID: inventory.ItemOakPlanks, Count: 64}
+
+	// 1. Place on top of ground block (adjacent at 9, 65, 8)
+	ok := eng.PlaceBlock(p.ID, world.BlockPos{X: 9, Y: 65, Z: 8}, inventory.ItemOakPlanks)
+	if !ok {
+		t.Fatalf("failed to place block on adjacent ground face")
+	}
+	if eng.GetBlock(9, 65, 8) != inventory.ItemOakPlanks {
+		t.Fatalf("block was not placed at (9, 65, 8)")
+	}
+
+	// 2. Place on +X face of newly placed block (10, 65, 8)
+	ok = eng.PlaceBlock(p.ID, world.BlockPos{X: 10, Y: 65, Z: 8}, inventory.ItemCobblestone)
+	if !ok {
+		t.Fatalf("failed to place block on +X face")
+	}
+
+	// 3. Place on +Z face (9, 65, 9)
+	ok = eng.PlaceBlock(p.ID, world.BlockPos{X: 9, Y: 65, Z: 9}, inventory.ItemDirt)
+	if !ok {
+		t.Fatalf("failed to place block on +Z face")
+	}
+
+	// 4. Pillaring: player jumps up to Y = 66.2, places block underneath feet at (8, 65, 8)
+	p.Position.Y = 66.2
+	ok = eng.PlaceBlock(p.ID, world.BlockPos{X: 8, Y: 65, Z: 8}, inventory.ItemStone)
+	if !ok {
+		t.Fatalf("pillaring failed: should place block underneath feet when jumping")
+	}
+	if eng.GetBlock(8, 65, 8) != inventory.ItemStone {
+		t.Fatalf("pillared block not set at (8, 65, 8)")
+	}
+}
+
 func TestFallDamageAndDeathRespawn(t *testing.T) {
 	eng := NewEngine()
 	p := eng.AddPlayer("Steve", [16]byte{1}, Vec3{0, 64, 0})
