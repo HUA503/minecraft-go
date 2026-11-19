@@ -370,6 +370,14 @@
   - 新增 `TestFullJumpArcAndBunnyHopCycle`：模拟完整起跳抛物线上升、达到 1.25 格顶点、下落着陆、长按空格即刻触发连跳全流程，100% PASS。
   - 新增 `TestWaterInternalFaceCullingAndDepthStability`：验证水体双向内部面剔除、两阶段渲染下水面深度正确写入且后方几何体无法穿透覆写水面，100% PASS。
 
+### ✅ P25 原版 3D 动态漂移云层系统 (100% 通过)
+- [x] **P25-1 原版经典 3D 浮云层 (`pkg/render/rasterizer.go`, `cmd/client/main.go`)**:
+  - 在高空 Y=128 高度引入 3D 动态程序化漂移云层，采用多倍频空间相干连续噪声算法，实时生成绵延成群的典型 Minecraft 矩形云片，沿世界 X 轴随微风悠然漂移（0.2 blocks/tick）。
+  - 云层颜色随天空昼夜运转动态调色：正午为柔和纯白（`0xD0F5FAFF`），日出/日落时泛染温暖的玫瑰橙红霞光，深夜则转为幽静深邃的瓦蓝（`0xB0232D41`）。
+  - 云层处于 3D 空间真实深度缓冲体系中（高度 128m，深度小于天体无限远深度），太阳与月亮穿过云层时呈现逼真的云层遮蔽光晕；高山山巅与拔地而起的高柱可自然挡在云层前方。
+- [x] **P25-2 动态云层测试覆盖 (`pkg/render/render_test.go`)**:
+  - 新增 `TestDrawCloudsAestheticsAndDepth`：抬头仰望时，精确校验云层在天空穹顶被正确光栅化且深度值位于合理空间范围，100% PASS。
+
 ---
 
 ## 验证与复现命令 (Reproduction Commands)

@@ -1283,6 +1283,7 @@ func (c *Client) RenderFrame() {
 	}
 	c.framebuf.ClearSkyWithCamera(worldTime, c.camera)
 	c.framebuf.DrawCelestialBodies(c.camera, worldTime)
+	c.framebuf.DrawClouds(c.camera, worldTime)
 
 	// 2. Render cached 3D chunk meshes with authentic two-pass rendering (Pass 1: Opaque, Pass 2: Translucent Water)
 	c.meshMu.RLock()

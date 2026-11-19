@@ -215,6 +215,183 @@ func (fb *Framebuffer) DrawCelestialBodies(cam *Camera, worldTime int64) {
 	}
 }
 
+// DrawClouds renders 3D procedural drifting clouds at Y=128 with authentic Minecraft Java aesthetics.
+func (fb *Framebuffer) DrawClouds(cam *Camera, worldTime int64) {
+	if cam == nil {
+		return
+	}
+	state := world.ComputeCelestialState(worldTime)
+	cloudY := 128.0
+
+	// Determine cloud color based on celestial time (day, sunset/sunrise, night)
+	cloudAlpha := uint32(0xD0)
+	var cloudR, cloudG, cloudB uint32
+	if state.IsDay {
+		if worldTime >= 11500 && worldTime <= 12500 { // Sunset/twilight
+			cloudR, cloudG, cloudB = 255, 180, 160
+		} else if worldTime <= 1000 { // Sunrise
+			cloudR, cloudG, cloudB = 255, 200, 170
+		} else { // Daytime bright white
+			cloudR, cloudG, cloudB = 245, 250, 255
+		}
+	} else { // Night slate blue
+		cloudR, cloudG, cloudB = 35, 45, 65
+	}
+	cloudCol := (cloudAlpha << 24) | (cloudR << 16) | (cloudG << 8) | cloudB
+
+	// Wind drift speed along X axis
+	cloudDrift := float64(worldTime) * 0.2
+	cellW := 12.0 // Cloud cell dimension: 12x12 blocks
+
+	baseX := math.Floor((cam.X - cloudDrift) / cellW)
+	baseZ := math.Floor(cam.Z / cellW)
+
+	const radius = 8 // 17x17 grid around player (approx 200m radius)
+
+	for dz := -radius; dz <= radius; dz++ {
+		cz := int(baseZ) + dz
+		for dx := -radius; dx <= radius; dx++ {
+			cx := int(baseX) + dx
+
+			// 2-octave integer noise for continuous cloud bands
+			h1 := (math.Sin(float64(cx)*0.45)+math.Cos(float64(cz)*0.45))*50.0 + 50.0
+			h2 := (math.Sin(float64(cx+cz)*0.25))*25.0
+			if h1+h2 < 55.0 {
+				continue // Clear sky here
+			}
+
+			x0 := float64(cx)*cellW + cloudDrift
+			z0 := float64(cz) * cellW
+			x1 := x0 + cellW
+			z1 := z0 + cellW
+
+			vx0, vy0, vz0 := cam.ToViewSpace(x0, cloudY, z0)
+			vx1, vy1, vz1 := cam.ToViewSpace(x1, cloudY, z0)
+			vx2, vy2, vz2 := cam.ToViewSpace(x0, cloudY, z1)
+			vx3, vy3, vz3 := cam.ToViewSpace(x1, cloudY, z1)
+
+			vv0 := ViewVertex{X: vx0, Y: vy0, Z: vz0}
+			vv1 := ViewVertex{X: vx1, Y: vy1, Z: vz1}
+			vv2 := ViewVertex{X: vx2, Y: vy2, Z: vz2}
+			vv3 := ViewVertex{X: vx3, Y: vy3, Z: vz3}
+
+			renderTri := func(va, vb, vc ViewVertex) {
+				clipped, count := ClipTriangleNear(va, vb, vc, 0.10)
+				for ci := 0; ci < count; ci++ {
+					tri := clipped[ci]
+					p0 := cam.ProjectViewToScreen(tri.V0.X, tri.V0.Y, tri.V0.Z, fb.Width, fb.Height)
+					p1 := cam.ProjectViewToScreen(tri.V1.X, tri.V1.Y, tri.V1.Z, fb.Width, fb.Height)
+					p2 := cam.ProjectViewToScreen(tri.V2.X, tri.V2.Y, tri.V2.Z, fb.Width, fb.Height)
+					fb.drawFlatTriangleTranslucent(p0, p1, p2, cloudCol)
+				}
+			}
+
+			renderTri(vv0, vv1, vv2)
+			renderTri(vv1, vv3, vv2)
+		}
+	}
+}
+
+func (fb *Framebuffer) drawFlatTriangleTranslucent(p0, p1, p2 ScreenPoint, col uint32) {
+	minX := int(math.Min(float64(p0.X), math.Min(float64(p1.X), float64(p2.X))))
+	maxX := int(math.Max(float64(p0.X), math.Max(float64(p1.X), float64(p2.X))) + 0.999999)
+	minY := int(math.Min(float64(p0.Y), math.Min(float64(p1.Y), float64(p2.Y))))
+	maxY := int(math.Max(float64(p0.Y), math.Max(float64(p1.Y), float64(p2.Y))) + 0.999999)
+
+	if minX < 0 {
+		minX = 0
+	}
+	if maxX >= fb.Width {
+		maxX = fb.Width - 1
+	}
+	if minY < 0 {
+		minY = 0
+	}
+	if maxY >= fb.Height {
+		maxY = fb.Height - 1
+	}
+	if minX > maxX || minY > maxY {
+		return
+	}
+
+	v0x, v0y := float64(p0.X), float64(p0.Y)
+	v1x, v1y := float64(p1.X), float64(p1.Y)
+	v2x, v2y := float64(p2.X), float64(p2.Y)
+
+	dx12, dy12 := v2x-v1x, v2y-v1y
+	dx20, dy20 := v0x-v2x, v0y-v2y
+	dx01, dy01 := v1x-v0x, v1y-v0y
+
+	area := (v2x-v0x)*dy01 - (v2y-v0y)*dx01
+	absArea := math.Abs(area)
+	if absArea < 1e-4 {
+		return
+	}
+	invArea := 1.0 / area
+
+	invZ0 := 1.0 / float64(p0.Depth)
+	invZ1 := 1.0 / float64(p1.Depth)
+	invZ2 := 1.0 / float64(p2.Depth)
+
+	alpha := (col >> 24) & 0xFF
+	r := (col >> 16) & 0xFF
+	g := (col >> 8) & 0xFF
+	b := col & 0xFF
+	a := float32(alpha) / 255.0
+
+	px0 := float64(minX) + 0.5
+	py0 := float64(minY) + 0.5
+
+	w0Row := (px0-v1x)*dy12 - (py0-v1y)*dx12
+	w1Row := (px0-v2x)*dy20 - (py0-v2y)*dx20
+	w2Row := (px0-v0x)*dy01 - (py0-v0y)*dx01
+
+	isPositiveArea := area > 0
+
+	for y := minY; y <= maxY; y++ {
+		rowOffset := y * fb.Width
+		w0, w1, w2 := w0Row, w1Row, w2Row
+
+		for x := minX; x <= maxX; x++ {
+			inside := false
+			if isPositiveArea {
+				inside = (w0 >= 0 && w1 >= 0 && w2 >= 0)
+			} else {
+				inside = (w0 <= 0 && w1 <= 0 && w2 <= 0)
+			}
+
+			if inside {
+				nw0 := float32(w0 * invArea)
+				nw1 := float32(w1 * invArea)
+				nw2 := float32(w2 * invArea)
+
+				invZ := float64(nw0)*invZ0 + float64(nw1)*invZ1 + float64(nw2)*invZ2
+				depth := float32(1.0 / invZ)
+
+				idx := rowOffset + x
+				if depth < fb.Depth[idx] {
+					bg := fb.Color[idx]
+					bgr := (bg >> 16) & 0xFF
+					bgg := (bg >> 8) & 0xFF
+					bgb := bg & 0xFF
+					outR := uint32(float32(r)*a + float32(bgr)*(1-a))
+					outG := uint32(float32(g)*a + float32(bgg)*(1-a))
+					outB := uint32(float32(b)*a + float32(bgb)*(1-a))
+					fb.Color[idx] = 0xFF000000 | (outR << 16) | (outG << 8) | outB
+					fb.Depth[idx] = depth
+				}
+			}
+
+			w0 += dy12
+			w1 += dy20
+			w2 += dy01
+		}
+		w0Row -= dx12
+		w1Row -= dx20
+		w2Row -= dx01
+	}
+}
+
 func (fb *Framebuffer) drawBillboard(cx, cy, w, h int, depth float32, col uint32) {
 	halfW := w / 2
 	halfH := h / 2

@@ -517,3 +517,28 @@ func TestWaterInternalFaceCullingAndDepthStability(t *testing.T) {
 		t.Fatalf("geometry behind water at depth 16.0 improperly overwrote water! Got color %X, expected %X", fb.Color[idx], waterBlendedCol)
 	}
 }
+
+func TestDrawCloudsAestheticsAndDepth(t *testing.T) {
+	fb := NewFramebuffer(160, 120)
+	fb.ClearSky()
+
+	// Camera looking up towards sky dome (pitch 45 degrees)
+	cam := NewCamera(0, 66, 0)
+	cam.Pitch = 45.0
+
+	// Draw clouds at noon (worldTime = 6000)
+	fb.DrawClouds(cam, 6000)
+
+	// Verify that cloud pixels were written with depth around ~60 to 120m
+	hasCloudPixel := false
+	for i := 0; i < len(fb.Depth); i++ {
+		d := fb.Depth[i]
+		if d < 1e8 && d > 10.0 {
+			hasCloudPixel = true
+			break
+		}
+	}
+	if !hasCloudPixel {
+		t.Fatalf("expected clouds to be rasterized on sky dome when looking up")
+	}
+}
