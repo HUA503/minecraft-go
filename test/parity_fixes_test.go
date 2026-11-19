@@ -109,7 +109,7 @@ func TestChunkUnloadMemoryBound(t *testing.T) {
 
 func TestBlockPlacementOverReplaceableFoliage(t *testing.T) {
 	eng := sim.NewEngine()
-	p := eng.AddPlayer("Steve", [16]byte{1}, sim.Vec3{8.5, 65.0, 8.5})
+	p := eng.AddPlayer("Steve", [16]byte{1}, sim.Vec3{X: 8.5, Y: 65.0, Z: 8.5})
 	p.Inventory.Slots[0] = inventory.ItemStack{ItemID: inventory.ItemOakPlanks, Count: 64}
 
 	// Set ground and tall grass

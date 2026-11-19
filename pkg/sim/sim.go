@@ -65,6 +65,7 @@ type Engine struct {
 	WorldTime      int64
 	Events         chan WorldEvent
 	stopChan       chan struct{}
+	Storage        *world.SaveManager
 }
 
 func NewEngine() *Engine {
@@ -238,6 +239,30 @@ func (e *Engine) AttackMobInFront(origin, look Vec3, reach float64, damage float
 	return closestMob.ID, killed, true
 }
 
+// SetStorage configures an optional world SaveManager for persistence.
+func (e *Engine) SetStorage(s *world.SaveManager) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.Storage = s
+}
+
+// SaveAll flushes all dirty loaded chunks to storage.
+func (e *Engine) SaveAll() error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.Storage == nil {
+		return nil
+	}
+	for _, chunk := range e.World {
+		if chunk != nil && chunk.IsDirty {
+			if err := e.Storage.SaveChunk(chunk); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func (e *Engine) LoadChunk(cp world.ChunkPos, c *world.Chunk) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -245,16 +270,34 @@ func (e *Engine) LoadChunk(cp world.ChunkPos, c *world.Chunk) {
 }
 
 func (e *Engine) GetChunk(cp world.ChunkPos) *world.Chunk {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-	return e.World[cp]
+	e.mu.Lock()
+	chunk, ok := e.World[cp]
+	if (!ok || chunk == nil) && e.Storage != nil {
+		if loaded, err := e.Storage.LoadChunk(cp); err == nil && loaded != nil {
+			e.World[cp] = loaded
+			chunk = loaded
+			ok = true
+		}
+	}
+	e.mu.Unlock()
+	if !ok {
+		return nil
+	}
+	return chunk
 }
 
 func (e *Engine) GetBlock(x, y, z int32) int32 {
 	cp := world.BlockPos{X: x, Y: y, Z: z}.ToChunkPos()
-	e.mu.RLock()
+	e.mu.Lock()
 	chunk, ok := e.World[cp]
-	e.mu.RUnlock()
+	if (!ok || chunk == nil) && e.Storage != nil {
+		if loaded, err := e.Storage.LoadChunk(cp); err == nil && loaded != nil {
+			e.World[cp] = loaded
+			chunk = loaded
+			ok = true
+		}
+	}
+	e.mu.Unlock()
 	if !ok || chunk == nil {
 		return 0
 	}
@@ -265,6 +308,13 @@ func (e *Engine) SetBlock(x, y, z int32, state int32) {
 	cp := world.BlockPos{X: x, Y: y, Z: z}.ToChunkPos()
 	e.mu.Lock()
 	chunk, ok := e.World[cp]
+	if (!ok || chunk == nil) && e.Storage != nil {
+		if loaded, err := e.Storage.LoadChunk(cp); err == nil && loaded != nil {
+			e.World[cp] = loaded
+			chunk = loaded
+			ok = true
+		}
+	}
 	if !ok || chunk == nil {
 		chunk = world.NewChunk(cp)
 		e.World[cp] = chunk
@@ -283,11 +333,16 @@ func (e *Engine) SetBlock(x, y, z int32, state int32) {
 	}
 }
 
-// UnloadChunk purges a distant chunk from active simulation to bound memory usage.
+// UnloadChunk purges a distant chunk from active simulation, saving it to disk if dirty.
 func (e *Engine) UnloadChunk(pos world.ChunkPos) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	delete(e.World, pos)
+	if chunk, exists := e.World[pos]; exists {
+		if e.Storage != nil && chunk != nil && chunk.IsDirty {
+			_ = e.Storage.SaveChunk(chunk)
+		}
+		delete(e.World, pos)
+	}
 }
 
 // BreakBlockWithTool processes player mining using held tool, enforcing authentic harvest requirements and tool wear.
@@ -725,15 +780,22 @@ func (e *Engine) Tick() {
 					drop.Position.Z += dz * 0.2
 				}
 				if dist < 1.8 {
-					p.Inventory.AddItem(drop.ItemID, drop.Count)
-					delete(e.ItemDrops, id)
-					select {
-					case e.Events <- WorldEvent{
-						Type:     "item_pickup",
-						PlayerID: p.ID,
-						BlockID:  drop.ItemID,
-					}:
-					default:
+					rem := p.Inventory.AddItem(drop.ItemID, drop.Count)
+					pickedUp := drop.Count - rem
+					if pickedUp > 0 {
+						select {
+						case e.Events <- WorldEvent{
+							Type:     "item_pickup",
+							PlayerID: p.ID,
+							BlockID:  drop.ItemID,
+						}:
+						default:
+						}
+					}
+					if rem <= 0 {
+						delete(e.ItemDrops, id)
+					} else {
+						drop.Count = rem
 					}
 					break
 				}

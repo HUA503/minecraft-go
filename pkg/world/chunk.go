@@ -1,8 +1,11 @@
 package world
 
 import (
+	"errors"
 	"fmt"
 	"math"
+
+	"github.com/HUA503/minecraft-go/pkg/nbt"
 )
 
 const (
@@ -70,12 +73,17 @@ func (s *Section) SetBlock(localX, localY, localZ int, state int32) {
 
 // Chunk represents a full 16x384x16 vertical column of 24 sections.
 type Chunk struct {
-	Pos      ChunkPos
-	Sections [NumSections]*Section
+	Pos            ChunkPos
+	Sections       [NumSections]*Section
+	IsDirty        bool
+	ModifiedBlocks map[BlockPos]int32
 }
 
 func NewChunk(pos ChunkPos) *Chunk {
-	c := &Chunk{Pos: pos}
+	c := &Chunk{
+		Pos:            pos,
+		ModifiedBlocks: make(map[BlockPos]int32),
+	}
 	for i := 0; i < NumSections; i++ {
 		c.Sections[i] = NewSection(i)
 	}
@@ -110,4 +118,131 @@ func (c *Chunk) SetBlock(x, y, z int32, state int32) {
 	localY := int(y & 15)
 	localZ := int(z & 15)
 	c.Sections[secIdx].SetBlock(localX, localY, localZ, state)
+	c.IsDirty = true
+	if c.ModifiedBlocks == nil {
+		c.ModifiedBlocks = make(map[BlockPos]int32)
+	}
+	c.ModifiedBlocks[BlockPos{X: x, Y: y, Z: z}] = state
+}
+
+// ToNBT serializes a Chunk to standard Minecraft Anvil NBT format (DataVersion 5023).
+func (c *Chunk) ToNBT() *nbt.CompoundTag {
+	root := nbt.NewCompound()
+	root.Put("DataVersion", &nbt.IntTag{Value: 5023}) // Minecraft Java Edition 26.3 standard
+	root.Put("xPos", &nbt.IntTag{Value: c.Pos.X})
+	root.Put("yPos", &nbt.IntTag{Value: MinSectionY})
+	root.Put("zPos", &nbt.IntTag{Value: c.Pos.Z})
+	root.Put("Status", &nbt.StringTag{Value: "minecraft:full"})
+
+	sectionsList := &nbt.ListTag{
+		ElementType: nbt.TagCompound,
+		Elements:    make([]nbt.Tag, 0, NumSections),
+	}
+
+	for i := 0; i < NumSections; i++ {
+		sec := c.Sections[i]
+		secTag := nbt.NewCompound()
+		secY := int32(i + MinSectionY) // -4 to 19
+		secTag.Put("Y", &nbt.ByteTag{Value: int8(secY)})
+
+		// BlockStates
+		blockData := make([]int32, 4096)
+		hasBlock := false
+		for idx := 0; idx < 4096; idx++ {
+			b := sec.BlockStates.Get(idx)
+			blockData[idx] = b
+			if b != 0 {
+				hasBlock = true
+			}
+		}
+		if hasBlock {
+			secTag.Put("BlockStates", &nbt.IntArrayTag{Value: blockData})
+		}
+
+		// Biomes
+		biomeData := make([]int32, 64)
+		for idx := 0; idx < 64; idx++ {
+			biomeData[idx] = sec.Biomes.Get(idx)
+		}
+		secTag.Put("Biomes", &nbt.IntArrayTag{Value: biomeData})
+
+		sectionsList.Elements = append(sectionsList.Elements, secTag)
+	}
+
+	root.Put("sections", sectionsList)
+
+	if len(c.ModifiedBlocks) > 0 {
+		modList := &nbt.ListTag{
+			ElementType: nbt.TagCompound,
+			Elements:    make([]nbt.Tag, 0, len(c.ModifiedBlocks)),
+		}
+		for pos, state := range c.ModifiedBlocks {
+			bt := nbt.NewCompound()
+			bt.Put("x", &nbt.IntTag{Value: pos.X})
+			bt.Put("y", &nbt.IntTag{Value: pos.Y})
+			bt.Put("z", &nbt.IntTag{Value: pos.Z})
+			bt.Put("state", &nbt.IntTag{Value: state})
+			modList.Elements = append(modList.Elements, bt)
+		}
+		root.Put("ModifiedBlocks", modList)
+	}
+
+	return root
+}
+
+// ChunkFromNBT parses a Chunk from NBT tag data.
+func ChunkFromNBT(tag *nbt.CompoundTag) (*Chunk, error) {
+	if tag == nil {
+		return nil, errors.New("nil chunk tag")
+	}
+	x := tag.GetInt("xPos")
+	z := tag.GetInt("zPos")
+	c := NewChunk(ChunkPos{X: x, Z: z})
+
+	if secList, ok := tag.Get("sections").(*nbt.ListTag); ok {
+		for _, elem := range secList.Elements {
+			secTag, ok := elem.(*nbt.CompoundTag)
+			if !ok {
+				continue
+			}
+			var secY int
+			if byteY, ok := secTag.Get("Y").(*nbt.ByteTag); ok {
+				secY = int(byteY.Value)
+			} else if intY, ok := secTag.Get("Y").(*nbt.IntTag); ok {
+				secY = int(intY.Value)
+			}
+			secIdx := secY - MinSectionY
+			if secIdx < 0 || secIdx >= NumSections {
+				continue
+			}
+			sec := c.Sections[secIdx]
+
+			if bArr, ok := secTag.Get("BlockStates").(*nbt.IntArrayTag); ok && len(bArr.Value) == 4096 {
+				for idx, val := range bArr.Value {
+					sec.BlockStates.Set(idx, val)
+				}
+			}
+			if bArr, ok := secTag.Get("Biomes").(*nbt.IntArrayTag); ok && len(bArr.Value) == 64 {
+				for idx, val := range bArr.Value {
+					sec.Biomes.Set(idx, val)
+				}
+			}
+		}
+	}
+
+	// Also support backwards-compatible "ModifiedBlocks" list tag
+	if modBlocks, ok := tag.Get("ModifiedBlocks").(*nbt.ListTag); ok {
+		for _, elem := range modBlocks.Elements {
+			if bTag, ok := elem.(*nbt.CompoundTag); ok {
+				bx := bTag.GetInt("x")
+				by := bTag.GetInt("y")
+				bz := bTag.GetInt("z")
+				state := bTag.GetInt("state")
+				c.SetBlock(bx, by, bz, state)
+			}
+		}
+	}
+
+	c.IsDirty = false
+	return c, nil
 }

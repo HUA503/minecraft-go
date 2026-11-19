@@ -105,3 +105,52 @@ func TestRegionFileRoundTrip(t *testing.T) {
 		t.Fatalf("Status mismatch: got %s", readNBT.GetString("Status"))
 	}
 }
+
+func TestRegionInPlaceOverwriteNoBloat(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "region_bloat_test")
+	if err != nil {
+		t.Fatalf("MkdirTemp failed: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	mcaPath := filepath.Join(tmpDir, "r.0.0.mca")
+	region, err := OpenRegion(mcaPath)
+	if err != nil {
+		t.Fatalf("OpenRegion failed: %v", err)
+	}
+	defer region.Close()
+
+	chunkNBT := nbt.NewCompound()
+	chunkNBT.Put("DataVersion", &nbt.IntTag{Value: 5023})
+	chunkNBT.Put("xPos", &nbt.IntTag{Value: 1})
+	chunkNBT.Put("zPos", &nbt.IntTag{Value: 1})
+	chunkNBT.Put("Status", &nbt.StringTag{Value: "minecraft:full"})
+
+	// First write
+	if err := region.WriteChunkData(1, 1, chunkNBT); err != nil {
+		t.Fatalf("WriteChunkData 1 failed: %v", err)
+	}
+
+	fi, err := os.Stat(mcaPath)
+	if err != nil {
+		t.Fatalf("Stat failed: %v", err)
+	}
+	size1 := fi.Size()
+
+	// Write 2nd, 3rd, and 4th times
+	for i := 0; i < 3; i++ {
+		if err := region.WriteChunkData(1, 1, chunkNBT); err != nil {
+			t.Fatalf("WriteChunkData %d failed: %v", i+2, err)
+		}
+	}
+
+	fi2, err := os.Stat(mcaPath)
+	if err != nil {
+		t.Fatalf("Stat 2 failed: %v", err)
+	}
+	sizeFinal := fi2.Size()
+
+	if sizeFinal != size1 {
+		t.Fatalf("file size bloated on repeated chunk writes! size1=%d, sizeFinal=%d", size1, sizeFinal)
+	}
+}

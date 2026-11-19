@@ -2,12 +2,14 @@ package world
 
 import (
 	"bytes"
+	"compress/gzip"
 	"compress/zlib"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/HUA503/minecraft-go/pkg/nbt"
@@ -24,6 +26,7 @@ const (
 // Region represents an Anvil MCA region file reader and writer.
 type Region struct {
 	file *os.File
+	mu   sync.Mutex
 }
 
 func OpenRegion(path string) (*Region, error) {
@@ -36,18 +39,23 @@ func OpenRegion(path string) (*Region, error) {
 		file.Close()
 		return nil, err
 	}
-	// Initialize empty headers if new file
-	if info.Size() < 8192 {
+	// Initialize empty headers if new file; report error if corrupted/truncated
+	if info.Size() == 0 {
 		emptyHeader := make([]byte, 8192)
 		if _, err := file.WriteAt(emptyHeader, 0); err != nil {
 			file.Close()
 			return nil, err
 		}
+	} else if info.Size() < 8192 {
+		file.Close()
+		return nil, fmt.Errorf("corrupt region file: size %d is less than 8192 header bytes", info.Size())
 	}
 	return &Region{file: file}, nil
 }
 
 func (r *Region) Close() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if r.file != nil {
 		return r.file.Close()
 	}
@@ -62,6 +70,9 @@ func chunkIndex(chunkX, chunkZ int32) int {
 
 // ReadChunkData reads raw uncompressed NBT bytes of a chunk at (chunkX, chunkZ).
 func (r *Region) ReadChunkData(chunkX, chunkZ int32) (*nbt.CompoundTag, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	idx := chunkIndex(chunkX, chunkZ)
 	locBuf := make([]byte, 4)
 	if _, err := r.file.ReadAt(locBuf, int64(idx*4)); err != nil {
@@ -89,6 +100,9 @@ func (r *Region) ReadChunkData(chunkX, chunkZ int32) (*nbt.CompoundTag, error) {
 	if length <= 1 {
 		return nil, errors.New("corrupt chunk length")
 	}
+	if length > uint32(sectorCount*SectorSize) {
+		return nil, fmt.Errorf("corrupt chunk length %d exceeds allocated sectors %d", length, sectorCount)
+	}
 
 	compressedData := make([]byte, length-1)
 	if _, err := r.file.ReadAt(compressedData, byteOffset+5); err != nil {
@@ -96,6 +110,14 @@ func (r *Region) ReadChunkData(chunkX, chunkZ int32) (*nbt.CompoundTag, error) {
 	}
 
 	switch compType {
+	case CompressionGzip:
+		gr, err := gzip.NewReader(bytes.NewReader(compressedData))
+		if err != nil {
+			return nil, err
+		}
+		defer gr.Close()
+		_, tag, err := nbt.NewDecoder(gr).DecodeNamed()
+		return tag, err
 	case CompressionZlib:
 		zr, err := zlib.NewReader(bytes.NewReader(compressedData))
 		if err != nil {
@@ -112,8 +134,11 @@ func (r *Region) ReadChunkData(chunkX, chunkZ int32) (*nbt.CompoundTag, error) {
 	}
 }
 
-// WriteChunkData writes an NBT chunk tag to the region file.
+// WriteChunkData writes an NBT chunk tag to the region file with in-place overwrite support.
 func (r *Region) WriteChunkData(chunkX, chunkZ int32, chunkNBT *nbt.CompoundTag) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	var zlibBuf bytes.Buffer
 	zw := zlib.NewWriter(&zlibBuf)
 	if err := nbt.NewEncoder(zw).EncodeNamed("", chunkNBT); err != nil {
@@ -128,18 +153,35 @@ func (r *Region) WriteChunkData(chunkX, chunkZ int32, chunkNBT *nbt.CompoundTag)
 	requiredBytes := 4 + totalPayloadLen
 	sectorsNeeded := int((requiredBytes + SectorSize - 1) / SectorSize)
 
-	// Seek to end of file to allocate sectors
-	stat, err := r.file.Stat()
-	if err != nil {
-		return err
+	idx := chunkIndex(chunkX, chunkZ)
+	locBuf := make([]byte, 4)
+	var existingOffset, existingSectors int
+	if _, err := r.file.ReadAt(locBuf, int64(idx*4)); err == nil {
+		existingOffset = (int(locBuf[0]) << 16) | (int(locBuf[1]) << 8) | int(locBuf[2])
+		existingSectors = int(locBuf[3])
 	}
-	fileSize := stat.Size()
-	if fileSize < 8192 {
-		fileSize = 8192
-	}
-	sectorOffset := int(fileSize / SectorSize)
-	if fileSize%SectorSize != 0 {
-		sectorOffset++
+
+	var sectorOffset int
+	var allocSectors int
+	if existingOffset >= 2 && existingSectors >= sectorsNeeded {
+		// Overwrite in-place without expanding file!
+		sectorOffset = existingOffset
+		allocSectors = existingSectors
+	} else {
+		// Allocate at end of file
+		stat, err := r.file.Stat()
+		if err != nil {
+			return err
+		}
+		fileSize := stat.Size()
+		if fileSize < 8192 {
+			fileSize = 8192
+		}
+		sectorOffset = int((fileSize + SectorSize - 1) / SectorSize)
+		if sectorOffset < 2 {
+			sectorOffset = 2
+		}
+		allocSectors = sectorsNeeded
 	}
 
 	// Write payload
@@ -151,8 +193,8 @@ func (r *Region) WriteChunkData(chunkX, chunkZ int32, chunkNBT *nbt.CompoundTag)
 	payload.WriteByte(CompressionZlib)
 	payload.Write(compressed)
 
-	// Pad to full sectors
-	padding := (sectorsNeeded * SectorSize) - payload.Len()
+	// Pad to full allocated sectors
+	padding := (allocSectors * SectorSize) - payload.Len()
 	if padding > 0 {
 		payload.Write(make([]byte, padding))
 	}
@@ -162,12 +204,11 @@ func (r *Region) WriteChunkData(chunkX, chunkZ int32, chunkNBT *nbt.CompoundTag)
 	}
 
 	// Update Location Header
-	idx := chunkIndex(chunkX, chunkZ)
 	locHeader := []byte{
 		byte(sectorOffset >> 16),
 		byte(sectorOffset >> 8),
 		byte(sectorOffset),
-		byte(sectorsNeeded),
+		byte(allocSectors),
 	}
 	if _, err := r.file.WriteAt(locHeader, int64(idx*4)); err != nil {
 		return err

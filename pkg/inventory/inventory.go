@@ -125,6 +125,28 @@ func (inv *PlayerInventory) GetSelectedItem() ItemStack {
 	return inv.Slots[inv.SelectedHotbar]
 }
 
+// GetMaxStackSize returns the canonical maximum stack size for the given item.
+func GetMaxStackSize(itemID int32) int {
+	if _, isTool := GetToolProperties(itemID); isTool {
+		return 1
+	}
+	// Armor (Leather 298-301, Chainmail 302-305, Iron 306-309, Diamond 310-313, Gold 314-317)
+	if itemID >= 298 && itemID <= 317 {
+		return 1
+	}
+	// Non-stackable tools, weapons, and accessories
+	switch itemID {
+	case 259, 261, 346, 359: // Flint and Steel, Bow, Fishing Rod, Shears
+		return 1
+	case 325: // Empty bucket
+		return 16
+	case 332, 344, 368: // Snowball, Egg, Ender Pearl
+		return 16
+	default:
+		return 64
+	}
+}
+
 // AddItem tries to stack or insert items into first available slot.
 func (inv *PlayerInventory) AddItem(itemID int32, count int) int {
 	if itemID == ItemAir || count <= 0 {
@@ -132,23 +154,25 @@ func (inv *PlayerInventory) AddItem(itemID int32, count int) int {
 	}
 
 	remaining := count
-	maxStack := 64
+	maxStack := GetMaxStackSize(itemID)
 
-	// First pass: stack onto existing matching items
-	for i := 0; i < len(inv.Slots); i++ {
-		slot := &inv.Slots[i]
-		if slot.ItemID == itemID && slot.Count < maxStack {
-			space := maxStack - slot.Count
-			if remaining <= space {
-				slot.Count += remaining
-				return 0
+	// First pass: stack onto existing matching items only if item is stackable (maxStack > 1)
+	if maxStack > 1 {
+		for i := 0; i < len(inv.Slots); i++ {
+			slot := &inv.Slots[i]
+			if slot.ItemID == itemID && slot.Damage == 0 && slot.Count < maxStack {
+				space := maxStack - slot.Count
+				if remaining <= space {
+					slot.Count += remaining
+					return 0
+				}
+				slot.Count = maxStack
+				remaining -= space
 			}
-			slot.Count = maxStack
-			remaining -= space
 		}
 	}
 
-	// Second pass: fill empty slots
+	// Second pass: fill empty slots respecting maxStack
 	for i := 0; i < len(inv.Slots); i++ {
 		slot := &inv.Slots[i]
 		if slot.IsEmpty() {

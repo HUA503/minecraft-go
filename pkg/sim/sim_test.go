@@ -2,6 +2,7 @@ package sim
 
 import (
 	"math"
+	"os"
 	"testing"
 
 	"github.com/HUA503/minecraft-go/pkg/inventory"
@@ -465,5 +466,108 @@ func TestSheepAndChickenDrops(t *testing.T) {
 	}
 	if !hasFeather {
 		t.Fatalf("expected chicken drops to include Feathers (ID 288)")
+	}
+}
+
+func TestItemPickupFullInventoryAndPartial(t *testing.T) {
+	eng := NewEngine()
+	player := eng.AddPlayer("TestSteve", [16]byte{1}, Vec3{X: 10, Y: 65, Z: 10})
+
+	// Fill all 36 slots completely with stone (stack of 64 each)
+	for i := 0; i < len(player.Inventory.Slots); i++ {
+		player.Inventory.Slots[i] = inventory.ItemStack{ItemID: inventory.ItemStone, Count: 64}
+	}
+
+	// Spawn a diamond drop near the player (within 1.5 blocks) with 0 pickup delay
+	drop := eng.SpawnItemDropWithDelay(inventory.ItemDiamond, 5, Vec3{X: 10.5, Y: 65, Z: 10.5}, Vec3{}, 0.0)
+
+	// Step simulation ticks
+	for i := 0; i < 5; i++ {
+		eng.Tick()
+	}
+
+	// Because inventory was completely full of stone, diamond drop must NOT be swallowed or deleted!
+	eng.mu.RLock()
+	d, exists := eng.ItemDrops[drop.ID]
+	eng.mu.RUnlock()
+	if !exists || d == nil {
+		t.Fatalf("ground item drop was swallowed when inventory was full!")
+	}
+	if d.Count != 5 {
+		t.Fatalf("expected ground drop count to remain 5, got %d", d.Count)
+	}
+
+	// Free up slot 0 but put 62 stone in it (so it has room for only 2 more stone)
+	player.Inventory.Slots[0] = inventory.ItemStack{ItemID: inventory.ItemStone, Count: 62}
+
+	// Spawn a stone drop with 10 stone
+	stoneDrop := eng.SpawnItemDropWithDelay(inventory.ItemStone, 10, Vec3{X: 10.2, Y: 65, Z: 10.2}, Vec3{}, 0.0)
+	for i := 0; i < 5; i++ {
+		eng.Tick()
+	}
+
+	// Slot 0 should now have 64 stone (+2 picked up)
+	if player.Inventory.Slots[0].Count != 64 {
+		t.Fatalf("expected slot 0 to fill to 64, got %d", player.Inventory.Slots[0].Count)
+	}
+
+	// Ground drop must have 8 remaining stone (10 - 2)
+	eng.mu.RLock()
+	sd, exists := eng.ItemDrops[stoneDrop.ID]
+	eng.mu.RUnlock()
+	if !exists || sd == nil {
+		t.Fatalf("partial drop was completely deleted!")
+	}
+	if sd.Count != 8 {
+		t.Fatalf("expected 8 stone remaining on ground, got %d", sd.Count)
+	}
+}
+
+func TestEngineChunkPersistenceAndUnloadSave(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "sim_save_test")
+	if err != nil {
+		t.Fatalf("MkdirTemp failed: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	sm, err := world.NewSaveManager(tmpDir)
+	if err != nil {
+		t.Fatalf("NewSaveManager failed: %v", err)
+	}
+	defer sm.Close()
+
+	eng := NewEngine()
+	eng.SetStorage(sm)
+
+	// Set a block (Diamond Block ID=57) at (5, 65, 5) which is in chunk (0, 0)
+	eng.SetBlock(5, 65, 5, 57)
+	if b := eng.GetBlock(5, 65, 5); b != 57 {
+		t.Fatalf("expected block 57, got %d", b)
+	}
+
+	// Unload the chunk (simulating player walking away)
+	cp := world.ChunkPos{X: 0, Z: 0}
+	eng.UnloadChunk(cp)
+
+	// Ensure chunk is no longer in memory
+	eng.mu.RLock()
+	_, inMem := eng.World[cp]
+	eng.mu.RUnlock()
+	if inMem {
+		t.Fatalf("chunk should have been evicted from memory")
+	}
+
+	// Read block back: GetBlock should auto-load the chunk from region file!
+	loadedBlock := eng.GetBlock(5, 65, 5)
+	if loadedBlock != 57 {
+		t.Fatalf("expected loaded block to be 57, got %d", loadedBlock)
+	}
+
+	// Test cross-process restart: create brand new Engine with the same save directory
+	eng2 := NewEngine()
+	eng2.SetStorage(sm)
+	restartBlock := eng2.GetBlock(5, 65, 5)
+	if restartBlock != 57 {
+		t.Fatalf("expected block across engine restart to be 57, got %d", restartBlock)
 	}
 }

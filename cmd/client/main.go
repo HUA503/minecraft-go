@@ -26,6 +26,12 @@ import (
 	"github.com/HUA503/minecraft-go/pkg/world/gen"
 )
 
+type RemotePlayer struct {
+	Pos   sim.Vec3
+	Yaw   float32
+	Pitch float32
+}
+
 type Client struct {
 	serverAddr   string
 	username     string
@@ -40,6 +46,9 @@ type Client struct {
 	isLocal      bool
 	meshCache    map[[3]int32]*render.Mesh
 	meshMu       sync.RWMutex
+	remoteMu      sync.RWMutex
+	remotePlayers map[string]*RemotePlayer
+	lastRemotePos sim.Vec3
 	targetedPos  world.BlockPos
 	targetedFace world.BlockPos
 	hasTarget    bool
@@ -148,6 +157,7 @@ func NewClient(serverAddr, username string, isSingleplayer bool, width, height i
 		isLocal:          isSingleplayer,
 		meshCache:        make(map[[3]int32]*render.Mesh),
 		loadedChunks:     make(map[world.ChunkPos]bool),
+		remotePlayers:    make(map[string]*RemotePlayer),
 		lastChunkX:       -999,
 		lastChunkZ:       -999,
 		currentEyeHeight: 1.62,
@@ -428,7 +438,7 @@ func (c *Client) Connect() error {
 	log.Printf("[Client] Connected to server at %s", c.serverAddr)
 
 	hs := &protocol.HandshakePacket{
-		ProtocolVersion: 770,
+		ProtocolVersion: protocol.ProtocolVersion,
 		ServerAddress:   "localhost",
 		ServerPort:      25565,
 		NextState:       2,
@@ -457,7 +467,89 @@ func (c *Client) Connect() error {
 	c.state = protocol.StatePlay
 	log.Printf("[Client] Logged in successfully as %s", succ.Username)
 
+	// Initialize local client world replica and authoritative player entity
+	c.engine = sim.NewEngine()
+	spawnPos := world.ChunkPos{X: 0, Z: 0}
+	spawnChunk := world.NewChunk(spawnPos)
+	for x := int32(0); x < 16; x++ {
+		for z := int32(0); z < 16; z++ {
+			spawnChunk.SetBlock(x, -64, z, 1)
+			for y := int32(-63); y <= 60; y++ {
+				spawnChunk.SetBlock(x, y, z, 1)
+			}
+			spawnChunk.SetBlock(x, 61, z, 3)
+			spawnChunk.SetBlock(x, 62, z, 3)
+			spawnChunk.SetBlock(x, 63, z, 3)
+			spawnChunk.SetBlock(x, 64, z, 2)
+		}
+	}
+	c.engine.LoadChunk(spawnPos, spawnChunk)
+
+	spawnVec := sim.Vec3{X: 8.5, Y: 65.0, Z: 8.5}
+	c.player = c.engine.AddPlayer(c.username, c.uuid, spawnVec)
+	c.camera.X = spawnVec.X
+	c.camera.Y = spawnVec.Y + 1.62
+	c.camera.Z = spawnVec.Z
+
+	// Classic starter items in hotbar
+	c.player.Inventory.Slots[0] = inventory.ItemStack{ItemID: inventory.ItemWoodenPickaxe, Count: 1}
+	c.player.Inventory.Slots[1] = inventory.ItemStack{ItemID: inventory.ItemOakPlanks, Count: 64}
+	c.player.Inventory.Slots[2] = inventory.ItemStack{ItemID: inventory.ItemCobblestone, Count: 64}
+	c.player.Inventory.Slots[3] = inventory.ItemStack{ItemID: inventory.ItemDirt, Count: 64}
+	c.player.Inventory.Slots[4] = inventory.ItemStack{ItemID: 268, Count: 1} // Wooden Sword
+	c.player.Inventory.Slots[5] = inventory.ItemStack{ItemID: 271, Count: 1} // Wooden Axe
+	c.player.Inventory.Slots[6] = inventory.ItemStack{ItemID: 269, Count: 1} // Wooden Shovel
+	c.player.Inventory.Slots[7] = inventory.ItemStack{ItemID: inventory.ItemCookedPorkchop, Count: 16}
+	c.player.Inventory.Slots[8] = inventory.ItemStack{ItemID: inventory.ItemApple, Count: 16}
+	c.player.Inventory.SelectedHotbar = 1
+
+	c.engine.StartTickLoop()
+
+	// Launch background network receive loop
+	go c.networkReceiveLoop()
+
 	return nil
+}
+
+func (c *Client) networkReceiveLoop() {
+	for {
+		if c.conn == nil {
+			return
+		}
+		raw, err := protocol.ReadRawPacket(c.conn)
+		if err != nil {
+			log.Printf("[Client] Network connection closed: %v", err)
+			return
+		}
+
+		switch raw.ID {
+		case 0x09: // BlockUpdatePacket
+			var bu protocol.BlockUpdatePacket
+			if err := bu.Decode(raw.Reader()); err == nil {
+				if c.engine != nil {
+					c.engine.SetBlock(bu.X, bu.Y, bu.Z, bu.BlockID)
+					c.RebuildAffectedMeshes(world.BlockPos{X: bu.X, Y: bu.Y, Z: bu.Z})
+				}
+			}
+		case 0x1A: // PlayerPositionPacket
+			var pos protocol.PlayerPositionPacket
+			if err := pos.Decode(raw.Reader()); err == nil {
+				c.remoteMu.Lock()
+				c.lastRemotePos = sim.Vec3{X: pos.X, Y: pos.Y, Z: pos.Z}
+				c.remotePlayers["Remote"] = &RemotePlayer{
+					Pos:   c.lastRemotePos,
+					Yaw:   pos.Yaw,
+					Pitch: pos.Pitch,
+				}
+				c.remoteMu.Unlock()
+			}
+		case 0x26: // KeepAlivePacket
+			var ka protocol.KeepAlivePacket
+			if err := ka.Decode(raw.Reader()); err == nil {
+				_ = protocol.SendPacket(c.conn, &ka)
+			}
+		}
+	}
 }
 
 // checkWaterState examines the player's bounding volume to determine if they are in water,
@@ -763,6 +855,19 @@ func (c *Client) PhysicsStep(fwdInput, strafeInput float64, jumpRequested bool, 
 
 	// Stream chunks as player moves
 	c.EnsureChunksAroundPlayer(resolvedPos.X, resolvedPos.Z, 2)
+
+	// Send authoritative position update to multiplayer server
+	if c.conn != nil && c.player != nil {
+		posPkt := &protocol.PlayerPositionPacket{
+			X:        resolvedPos.X,
+			Y:        resolvedPos.Y,
+			Z:        resolvedPos.Z,
+			Yaw:      float32(c.camera.Yaw),
+			Pitch:    float32(c.camera.Pitch),
+			OnGround: c.player.OnGround,
+		}
+		_ = protocol.SendPacket(c.conn, posPkt)
+	}
 }
 
 func (c *Client) MoveRelative(forward, strafe float64) {
@@ -1176,6 +1281,14 @@ func (c *Client) MineTargetedBlock() (int32, bool) {
 	c.spawnBlockDebris(targetPos, blockID, 20)
 	sound.PlayHardwareFeedback(sound.GetBlockBreakSound(blockID))
 	c.RebuildAffectedMeshes(targetPos)
+	if ok && c.conn != nil {
+		_ = protocol.SendPacket(c.conn, &protocol.BlockUpdatePacket{
+			X:       targetPos.X,
+			Y:       targetPos.Y,
+			Z:       targetPos.Z,
+			BlockID: 0,
+		})
+	}
 	return drop, ok
 }
 
@@ -1242,6 +1355,14 @@ func (c *Client) PlaceBlockInFront() bool {
 		c.RebuildAffectedMeshes(targetPos)
 		c.isSwinging = true
 		c.swingProgress = 0.0
+		if c.conn != nil {
+			_ = protocol.SendPacket(c.conn, &protocol.BlockUpdatePacket{
+				X:       targetPos.X,
+				Y:       targetPos.Y,
+				Z:       targetPos.Z,
+				BlockID: selected.ItemID,
+			})
+		}
 	}
 	return ok
 }
@@ -3036,9 +3157,13 @@ func runGraphicalWindow(c *Client, w, h int) {
 func runInteractiveLoop(c *Client) {
 	fmt.Println("\nCommands:")
 	fmt.Println("  w / s / a / d   : Move player")
+	fmt.Println("  goto <x> <y> <z>: Teleport/move to coordinates")
 	fmt.Println("  look <yaw> <pitch> : Rotate camera view")
 	fmt.Println("  mine            : Mine targeted block in crosshair")
 	fmt.Println("  place           : Place active hotbar block")
+	fmt.Println("  block <x> <y> <z> : Query block ID at coordinates")
+	fmt.Println("  place_at <x> <y> <z> <id> : Place specific block ID at coordinates")
+	fmt.Println("  mine_at <x> <y> <z>       : Mine block at coordinates")
 	fmt.Println("  slot <1-9>      : Switch active hotbar slot")
 	fmt.Println("  inv             : View inventory")
 	fmt.Println("  craft <recipe>  : Craft items")
@@ -3063,17 +3188,56 @@ func runInteractiveLoop(c *Client) {
 
 		switch cmd {
 		case "w":
-			c.MoveRelative(1.0, 0)
-			fmt.Printf("Moved forward. Position: (%.2f, %.2f, %.2f)\n", c.player.Position.X, c.player.Position.Y, c.player.Position.Z)
+			if c.player != nil {
+				c.MoveRelative(1.0, 0)
+				fmt.Printf("Moved forward. Position: (%.2f, %.2f, %.2f)\n", c.player.Position.X, c.player.Position.Y, c.player.Position.Z)
+			} else {
+				fmt.Println("Player entity not initialized.")
+			}
 		case "s":
-			c.MoveRelative(-1.0, 0)
-			fmt.Printf("Moved backward. Position: (%.2f, %.2f, %.2f)\n", c.player.Position.X, c.player.Position.Y, c.player.Position.Z)
+			if c.player != nil {
+				c.MoveRelative(-1.0, 0)
+				fmt.Printf("Moved backward. Position: (%.2f, %.2f, %.2f)\n", c.player.Position.X, c.player.Position.Y, c.player.Position.Z)
+			} else {
+				fmt.Println("Player entity not initialized.")
+			}
 		case "a":
-			c.MoveRelative(0, -1.0)
-			fmt.Printf("Strafed left. Position: (%.2f, %.2f, %.2f)\n", c.player.Position.X, c.player.Position.Y, c.player.Position.Z)
+			if c.player != nil {
+				c.MoveRelative(0, -1.0)
+				fmt.Printf("Strafed left. Position: (%.2f, %.2f, %.2f)\n", c.player.Position.X, c.player.Position.Y, c.player.Position.Z)
+			} else {
+				fmt.Println("Player entity not initialized.")
+			}
 		case "d":
-			c.MoveRelative(0, 1.0)
-			fmt.Printf("Strafed right. Position: (%.2f, %.2f, %.2f)\n", c.player.Position.X, c.player.Position.Y, c.player.Position.Z)
+			if c.player != nil {
+				c.MoveRelative(0, 1.0)
+				fmt.Printf("Strafed right. Position: (%.2f, %.2f, %.2f)\n", c.player.Position.X, c.player.Position.Y, c.player.Position.Z)
+			} else {
+				fmt.Println("Player entity not initialized.")
+			}
+		case "goto":
+			if len(parts) >= 4 {
+				gx, _ := strconv.ParseFloat(parts[1], 64)
+				gy, _ := strconv.ParseFloat(parts[2], 64)
+				gz, _ := strconv.ParseFloat(parts[3], 64)
+				if c.player != nil {
+					c.player.Position = sim.Vec3{X: gx, Y: gy, Z: gz}
+					c.camera.X = gx
+					c.camera.Y = gy + 1.62
+					c.camera.Z = gz
+				}
+				if c.conn != nil {
+					_ = protocol.SendPacket(c.conn, &protocol.PlayerPositionPacket{
+						X:        gx,
+						Y:        gy,
+						Z:        gz,
+						Yaw:      float32(c.camera.Yaw),
+						Pitch:    float32(c.camera.Pitch),
+						OnGround: true,
+					})
+				}
+				fmt.Printf("Moved to (%.2f, %.2f, %.2f)\n", gx, gy, gz)
+			}
 		case "look":
 			if len(parts) >= 3 {
 				yaw, _ := strconv.ParseFloat(parts[1], 64)
@@ -3081,6 +3245,56 @@ func runInteractiveLoop(c *Client) {
 				c.camera.Yaw = yaw
 				c.camera.Pitch = pitch
 				fmt.Printf("Camera rotated: Yaw=%.1f, Pitch=%.1f\n", yaw, pitch)
+			}
+		case "block":
+			if len(parts) >= 4 {
+				bx, _ := strconv.Atoi(parts[1])
+				by, _ := strconv.Atoi(parts[2])
+				bz, _ := strconv.Atoi(parts[3])
+				bid := int32(0)
+				if c.engine != nil {
+					bid = c.engine.GetBlock(int32(bx), int32(by), int32(bz))
+				}
+				fmt.Printf("Block at (%d, %d, %d): ID=%d\n", bx, by, bz, bid)
+			}
+		case "place_at":
+			if len(parts) >= 5 {
+				bx, _ := strconv.Atoi(parts[1])
+				by, _ := strconv.Atoi(parts[2])
+				bz, _ := strconv.Atoi(parts[3])
+				bid, _ := strconv.Atoi(parts[4])
+				if c.engine != nil {
+					c.engine.SetBlock(int32(bx), int32(by), int32(bz), int32(bid))
+					c.RebuildAffectedMeshes(world.BlockPos{X: int32(bx), Y: int32(by), Z: int32(bz)})
+				}
+				if c.conn != nil {
+					_ = protocol.SendPacket(c.conn, &protocol.BlockUpdatePacket{
+						X:       int32(bx),
+						Y:       int32(by),
+						Z:       int32(bz),
+						BlockID: int32(bid),
+					})
+				}
+				fmt.Printf("Placed block ID %d at (%d, %d, %d)\n", bid, bx, by, bz)
+			}
+		case "mine_at":
+			if len(parts) >= 4 {
+				bx, _ := strconv.Atoi(parts[1])
+				by, _ := strconv.Atoi(parts[2])
+				bz, _ := strconv.Atoi(parts[3])
+				if c.engine != nil {
+					c.engine.SetBlock(int32(bx), int32(by), int32(bz), 0)
+					c.RebuildAffectedMeshes(world.BlockPos{X: int32(bx), Y: int32(by), Z: int32(bz)})
+				}
+				if c.conn != nil {
+					_ = protocol.SendPacket(c.conn, &protocol.BlockUpdatePacket{
+						X:       int32(bx),
+						Y:       int32(by),
+						Z:       int32(bz),
+						BlockID: 0,
+					})
+				}
+				fmt.Printf("Mined block at (%d, %d, %d)\n", bx, by, bz)
 			}
 		case "mine":
 			drop, ok := c.MineTargetedBlock()
@@ -3093,7 +3307,7 @@ func runInteractiveLoop(c *Client) {
 				fmt.Println("Placed block successfully!")
 			}
 		case "slot":
-			if len(parts) >= 2 {
+			if len(parts) >= 2 && c.player != nil && c.player.Inventory != nil {
 				s, _ := strconv.Atoi(parts[1])
 				if s >= 1 && s <= 9 {
 					c.player.Inventory.SelectedHotbar = s - 1
@@ -3101,17 +3315,19 @@ func runInteractiveLoop(c *Client) {
 				}
 			}
 		case "inv":
-			fmt.Println("=== Player Hotbar ===")
-			for i := 0; i < 9; i++ {
-				marker := " "
-				if i == c.player.Inventory.SelectedHotbar {
-					marker = "*"
+			if c.player != nil && c.player.Inventory != nil {
+				fmt.Println("=== Player Hotbar ===")
+				for i := 0; i < 9; i++ {
+					marker := " "
+					if i == c.player.Inventory.SelectedHotbar {
+						marker = "*"
+					}
+					slot := c.player.Inventory.Slots[i]
+					fmt.Printf("[%sSlot %d] ID: %d, Count: %d\n", marker, i+1, slot.ItemID, slot.Count)
 				}
-				slot := c.player.Inventory.Slots[i]
-				fmt.Printf("[%sSlot %d] ID: %d, Count: %d\n", marker, i+1, slot.ItemID, slot.Count)
 			}
 		case "craft":
-			if len(parts) >= 2 {
+			if len(parts) >= 2 && c.player != nil && c.player.Inventory != nil {
 				target := strings.ToLower(parts[1])
 				switch target {
 				case "planks":
@@ -3130,11 +3346,22 @@ func runInteractiveLoop(c *Client) {
 				}
 			}
 		case "status":
-			fmt.Printf("Player: %s | Health: %.1f/20 | Hunger: %d/20 | Pos: (%.2f, %.2f, %.2f)\n",
-				c.player.Username, c.player.Health, c.player.Hunger, c.player.Position.X, c.player.Position.Y, c.player.Position.Z)
+			if c.player != nil {
+				fmt.Printf("Player: %s | Health: %.1f/20 | Hunger: %d/20 | Pos: (%.2f, %.2f, %.2f)\n",
+					c.player.Username, c.player.Health, c.player.Hunger, c.player.Position.X, c.player.Position.Y, c.player.Position.Z)
+			} else {
+				fmt.Println("Player entity not initialized.")
+			}
+			c.remoteMu.RLock()
+			for name, rp := range c.remotePlayers {
+				fmt.Printf("  Remote Player %s: Pos: (%.2f, %.2f, %.2f)\n", name, rp.Pos.X, rp.Pos.Y, rp.Pos.Z)
+			}
+			c.remoteMu.RUnlock()
 		case "render":
-			c.RenderFrame()
-			fmt.Printf("Rendered 640x480 frame with 3D terrain and HUD. Active Slot: %d\n", c.player.Inventory.SelectedHotbar+1)
+			if c.player != nil {
+				c.RenderFrame()
+				fmt.Printf("Rendered 640x480 frame with 3D terrain and HUD. Active Slot: %d\n", c.player.Inventory.SelectedHotbar+1)
+			}
 		case "quit", "exit":
 			fmt.Println("Goodbye!")
 			return

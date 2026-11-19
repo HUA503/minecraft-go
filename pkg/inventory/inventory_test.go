@@ -154,3 +154,29 @@ func TestFurnaceSmeltingCycle(t *testing.T) {
 		t.Fatalf("expected 1401 burn time left, got %d", furnace.BurnTimeRemaining)
 	}
 }
+
+func TestToolStackLimit(t *testing.T) {
+	inv := NewPlayerInventory()
+
+	// Adding 2 wooden pickaxes should occupy slot 0 and slot 1 separately (Count=1 each), not stack together
+	left := inv.AddItem(ItemWoodenPickaxe, 2)
+	if left != 0 {
+		t.Fatalf("expected 0 remaining, got %d", left)
+	}
+	if inv.Slots[0].ItemID != ItemWoodenPickaxe || inv.Slots[0].Count != 1 {
+		t.Fatalf("slot 0 must have exactly 1 pickaxe: %+v", inv.Slots[0])
+	}
+	if inv.Slots[1].ItemID != ItemWoodenPickaxe || inv.Slots[1].Count != 1 {
+		t.Fatalf("slot 1 must have exactly 1 pickaxe: %+v", inv.Slots[1])
+	}
+
+	// Adding another pickaxe should go into slot 2, never stack onto slot 0 or slot 1
+	left = inv.AddItem(ItemWoodenPickaxe, 1)
+	if left != 0 {
+		t.Fatalf("expected 0 remaining, got %d", left)
+	}
+	if inv.Slots[0].Count != 1 || inv.Slots[1].Count != 1 || inv.Slots[2].Count != 1 {
+		t.Fatalf("tools must never stack: slot0=%d, slot1=%d, slot2=%d",
+			inv.Slots[0].Count, inv.Slots[1].Count, inv.Slots[2].Count)
+	}
+}

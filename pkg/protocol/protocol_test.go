@@ -84,7 +84,7 @@ func TestPositionPacking(t *testing.T) {
 
 func TestHandshakeRoundTrip(t *testing.T) {
 	orig := &HandshakePacket{
-		ProtocolVersion: 770,
+		ProtocolVersion: ProtocolVersion,
 		ServerAddress:   "127.0.0.1",
 		ServerPort:      25565,
 		NextState:       2,

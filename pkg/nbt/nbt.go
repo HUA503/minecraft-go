@@ -212,25 +212,21 @@ func (e *Encoder) writePayload(t Tag) error {
 	case *CompoundTag:
 		return e.writeCompoundPayload(v)
 	case *IntArrayTag:
-		if err := binary.Write(e.w, binary.BigEndian, int32(len(v.Value))); err != nil {
-			return err
+		buf := make([]byte, 4+len(v.Value)*4)
+		binary.BigEndian.PutUint32(buf[0:4], uint32(len(v.Value)))
+		for i, item := range v.Value {
+			binary.BigEndian.PutUint32(buf[4+i*4:8+i*4], uint32(item))
 		}
-		for _, item := range v.Value {
-			if err := binary.Write(e.w, binary.BigEndian, item); err != nil {
-				return err
-			}
-		}
-		return nil
+		_, err := e.w.Write(buf)
+		return err
 	case *LongArrayTag:
-		if err := binary.Write(e.w, binary.BigEndian, int32(len(v.Value))); err != nil {
-			return err
+		buf := make([]byte, 4+len(v.Value)*8)
+		binary.BigEndian.PutUint32(buf[0:4], uint32(len(v.Value)))
+		for i, item := range v.Value {
+			binary.BigEndian.PutUint64(buf[4+i*8:12+i*8], uint64(item))
 		}
-		for _, item := range v.Value {
-			if err := binary.Write(e.w, binary.BigEndian, item); err != nil {
-				return err
-			}
-		}
-		return nil
+		_, err := e.w.Write(buf)
+		return err
 	default:
 		return fmt.Errorf("unsupported tag type: %T", t)
 	}
@@ -354,11 +350,16 @@ func (d *Decoder) readPayload(tagType TagType) (Tag, error) {
 		if err := binary.Read(d.r, binary.BigEndian, &count); err != nil {
 			return nil, err
 		}
+		if count < 0 || count > 1000000 {
+			return nil, fmt.Errorf("invalid int array length: %d", count)
+		}
+		buf := make([]byte, count*4)
+		if _, err := io.ReadFull(d.r, buf); err != nil {
+			return nil, err
+		}
 		arr := make([]int32, count)
 		for i := int32(0); i < count; i++ {
-			if err := binary.Read(d.r, binary.BigEndian, &arr[i]); err != nil {
-				return nil, err
-			}
+			arr[i] = int32(binary.BigEndian.Uint32(buf[i*4 : (i+1)*4]))
 		}
 		return &IntArrayTag{Value: arr}, nil
 	case TagLongArray:
@@ -366,11 +367,16 @@ func (d *Decoder) readPayload(tagType TagType) (Tag, error) {
 		if err := binary.Read(d.r, binary.BigEndian, &count); err != nil {
 			return nil, err
 		}
+		if count < 0 || count > 1000000 {
+			return nil, fmt.Errorf("invalid long array length: %d", count)
+		}
+		buf := make([]byte, count*8)
+		if _, err := io.ReadFull(d.r, buf); err != nil {
+			return nil, err
+		}
 		arr := make([]int64, count)
 		for i := int32(0); i < count; i++ {
-			if err := binary.Read(d.r, binary.BigEndian, &arr[i]); err != nil {
-				return nil, err
-			}
+			arr[i] = int64(binary.BigEndian.Uint64(buf[i*8 : (i+1)*8]))
 		}
 		return &LongArrayTag{Value: arr}, nil
 	default:

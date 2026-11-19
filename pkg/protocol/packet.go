@@ -10,6 +10,9 @@ import (
 // ConnectionState represents the Minecraft client connection phase.
 type ConnectionState int
 
+// ProtocolVersion is the canonical protocol version for Minecraft Java Edition 26.3.
+const ProtocolVersion int32 = 777
+
 const (
 	StateHandshake ConnectionState = iota
 	StateStatus
