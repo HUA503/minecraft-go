@@ -430,6 +430,204 @@ func initDefaultTextures() {
 		Bottom: cobbleTex,
 		Side:   furnaceFrontTex,
 	}
+
+	// 18. Tall Grass (ID 31 - Alpha cutout crossed foliage)
+	var tallGrassTex BlockTexture
+	grassColors := [4]uint32{0xFF4E9333, 0xFF5AA53C, 0xFF69BD46, 0xFF3D7828}
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			// Natural slender grass blades rising from bottom (y=0) to top (y=15)
+			bladeWidth := 1 + (15 - y) / 3
+			isBlade := false
+			bladeCenters := [5]int{2, 5, 8, 11, 14}
+			for _, bc := range bladeCenters {
+				diff := x - bc
+				if diff < 0 {
+					diff = -diff
+				}
+				if diff*2 <= bladeWidth && y <= 14-(bc%3)*2 {
+					isBlade = true
+					break
+				}
+			}
+			if isBlade {
+				h := texHash(x, y, 3131) % 4
+				tallGrassTex[y][x] = grassColors[h]
+			} else {
+				tallGrassTex[y][x] = 0 // Full transparent cutout
+			}
+		}
+	}
+	Textures[31] = &BlockFaceTextures{Top: tallGrassTex, Bottom: tallGrassTex, Side: tallGrassTex}
+
+	// 19. Dandelion (ID 37 - Yellow Flower with Green Stem)
+	var dandelionTex BlockTexture
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			if y <= 8 && (x == 7 || x == 8) {
+				// Green stem
+				dandelionTex[y][x] = 0xFF4E9333
+			} else if y >= 9 && y <= 14 && x >= 5 && x <= 10 {
+				// Yellow dandelion blossom
+				h := texHash(x, y, 3737) % 3
+				switch h {
+				case 0:
+					dandelionTex[y][x] = 0xFFFFEE33
+				case 1:
+					dandelionTex[y][x] = 0xFFFFDD00
+				default:
+					dandelionTex[y][x] = 0xFFFFAA00
+				}
+			} else {
+				dandelionTex[y][x] = 0 // Cutout
+			}
+		}
+	}
+	Textures[37] = &BlockFaceTextures{Top: dandelionTex, Bottom: dandelionTex, Side: dandelionTex}
+
+	// 20. Poppy (ID 38 - Red Rose/Poppy)
+	var poppyTex BlockTexture
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			if y <= 7 && (x == 7 || x == 8) {
+				// Green stem
+				poppyTex[y][x] = 0xFF3D7828
+			} else if y >= 8 && y <= 13 && x >= 5 && x <= 10 {
+				// Red petals
+				if x >= 7 && x <= 8 && y >= 9 && y <= 10 {
+					poppyTex[y][x] = 0xFF221111 // Dark flower core
+				} else {
+					h := texHash(x, y, 3838) % 3
+					if h == 0 {
+						poppyTex[y][x] = 0xFFE52020
+					} else if h == 1 {
+						poppyTex[y][x] = 0xFFC01515
+					} else {
+						poppyTex[y][x] = 0xFF8A0808
+					}
+				}
+			} else {
+				poppyTex[y][x] = 0 // Cutout
+			}
+		}
+	}
+	Textures[38] = &BlockFaceTextures{Top: poppyTex, Bottom: poppyTex, Side: poppyTex}
+
+	// 21. Torch (ID 50 - Slender wooden post with glowing flame head)
+	var torchTex BlockTexture
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			if x >= 7 && x <= 8 {
+				if y <= 10 {
+					// Wooden stick
+					if (x+y)%2 == 0 {
+						torchTex[y][x] = 0xFF6F4F37
+					} else {
+						torchTex[y][x] = 0xFF8F6849
+					}
+				} else {
+					// Glowing flame
+					if y >= 14 {
+						torchTex[y][x] = 0xFFFF8800 // Orange tip
+					} else {
+						torchTex[y][x] = 0xFFFFEE55 // Yellow flame core
+					}
+				}
+			} else if (x == 6 || x == 9) && y >= 11 && y <= 13 {
+				torchTex[y][x] = 0xAAFF8800 // Flame outer glow
+			} else {
+				torchTex[y][x] = 0 // Cutout
+			}
+		}
+	}
+	Textures[50] = &BlockFaceTextures{Top: torchTex, Bottom: torchTex, Side: torchTex}
+
+	// 22. Bricks (ID 45)
+	var brickTex BlockTexture
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			// Mortar seams
+			isMortar := (y%4 == 0) || ((y/4)%2 == 0 && x%8 == 0) || ((y/4)%2 == 1 && (x+4)%8 == 0)
+			if isMortar {
+				brickTex[y][x] = 0xFFD8D2CE // Mortar gray
+			} else {
+				h := texHash(x, y, 4545) % 3
+				switch h {
+				case 0:
+					brickTex[y][x] = 0xFFB35238 // Rich clay red
+				case 1:
+					brickTex[y][x] = 0xFF9E432C
+				default:
+					brickTex[y][x] = 0xFFBD5E45
+				}
+			}
+		}
+	}
+	Textures[45] = &BlockFaceTextures{Top: brickTex, Bottom: brickTex, Side: brickTex}
+
+	// 23. Obsidian (ID 49)
+	var obsidianTex BlockTexture
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			h := texHash(x, y, 4949) % 100
+			if h < 65 {
+				obsidianTex[y][x] = 0xFF151020 // Deep dark purple-black
+			} else if h < 90 {
+				obsidianTex[y][x] = 0xFF241C35 // Lustrous sheen
+			} else {
+				obsidianTex[y][x] = 0xFF3D2E5C // Violet crystal highlight
+			}
+		}
+	}
+	Textures[49] = &BlockFaceTextures{Top: obsidianTex, Bottom: obsidianTex, Side: obsidianTex}
+
+	// 24. Netherrack (ID 87)
+	var netherrackTex BlockTexture
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			h := texHash(x, y, 8787) % 100
+			if h < 55 {
+				netherrackTex[y][x] = 0xFF6B2424 // Crimson rock
+			} else if h < 85 {
+				netherrackTex[y][x] = 0xFF521818
+			} else {
+				netherrackTex[y][x] = 0xFF853030
+			}
+		}
+	}
+	Textures[87] = &BlockFaceTextures{Top: netherrackTex, Bottom: netherrackTex, Side: netherrackTex}
+
+	// 25. Glowstone (ID 89)
+	var glowstoneTex BlockTexture
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			h := texHash(x, y, 8989) % 100
+			if h < 50 {
+				glowstoneTex[y][x] = 0xFFFFD466 // Golden luminous crystalline
+			} else if h < 80 {
+				glowstoneTex[y][x] = 0xFFECC04D
+			} else {
+				glowstoneTex[y][x] = 0xFFFFF099
+			}
+		}
+	}
+	Textures[89] = &BlockFaceTextures{Top: glowstoneTex, Bottom: glowstoneTex, Side: glowstoneTex}
+
+	// 26. End Stone (ID 121)
+	var endStoneTex BlockTexture
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			h := texHash(x, y, 121121) % 100
+			if h < 60 {
+				endStoneTex[y][x] = 0xFFE2E4A6 // Pale yellow lunar rock
+			} else if h < 85 {
+				endStoneTex[y][x] = 0xFFD4D695
+			} else {
+				endStoneTex[y][x] = 0xFFEFF1BC
+			}
+		}
+	}
+	Textures[121] = &BlockFaceTextures{Top: endStoneTex, Bottom: endStoneTex, Side: endStoneTex}
 }
 
 // SampleBlockColor samples pixel color from block texture and applies directional lighting.
@@ -450,14 +648,28 @@ func SampleBlockColor(blockID int32, faceIndex int, u, v float32, lightMult floa
 		face = &tex.Side
 	}
 
-	// Wrap UV to [0, 1]
-	tx := int(u * 16.0) % 16
-	ty := int(v * 16.0) % 16
+	// Sample UV coordinates mapped to 16x16 texels with boundary clamping
+	if u < 0 {
+		u = 0
+	} else if u > 0.9999 {
+		u = 0.9999
+	}
+	if v < 0 {
+		v = 0
+	} else if v > 0.9999 {
+		v = 0.9999
+	}
+	tx := int(u * 16.0)
+	ty := int(v * 16.0)
 	if tx < 0 {
-		tx += 16
+		tx = 0
+	} else if tx > 15 {
+		tx = 15
 	}
 	if ty < 0 {
-		ty += 16
+		ty = 0
+	} else if ty > 15 {
+		ty = 15
 	}
 
 	pixel := face[ty][tx]

@@ -592,7 +592,8 @@ func (c *Client) UpdateRaycastTarget() {
 	dir := sim.Vec3{X: lx, Y: ly, Z: lz}
 
 	isSolid := func(x, y, z int32) bool {
-		return c.engine.GetBlock(x, y, z) != 0
+		b := c.engine.GetBlock(x, y, z)
+		return b != 0 && b != 8 && b != 9 && b != 10 && b != 11
 	}
 
 	res := sim.Raycast(origin, dir, 5.0, isSolid)
@@ -980,7 +981,8 @@ func (c *Client) PlaceBlockInFront() bool {
 	dir := sim.Vec3{X: lx, Y: ly, Z: lz}
 
 	isSolid := func(x, y, z int32) bool {
-		return c.engine.GetBlock(x, y, z) != 0
+		b := c.engine.GetBlock(x, y, z)
+		return b != 0 && b != 8 && b != 9 && b != 10 && b != 11
 	}
 	res := sim.Raycast(origin, dir, 5.0, isSolid)
 	if !res.Hit {
@@ -2207,6 +2209,9 @@ func runGraphicalWindow(c *Client, w, h int) {
 		}
 		if c.showInventoryGUI {
 			return
+		}
+		if !wnd.MouseCaptured {
+			wnd.SetMouseCaptured(true)
 		}
 		if btn == 1 {
 			// Check if attacking living mob in front

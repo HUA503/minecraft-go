@@ -65,6 +65,27 @@ func (a AABB) Intersects(b AABB) bool {
 		a.Min.Z < b.Max.Z && a.Max.Z > b.Min.Z
 }
 
+// IsSolidBlock returns whether a block impedes physical player movement.
+// Air (0), liquids (8, 9, 10, 11), foliage (31, 32, 37, 38), and torches (50) are passable.
+func IsSolidBlock(blockID int32) bool {
+	switch blockID {
+	case 0: // Air
+		return false
+	case 8, 9: // Water
+		return false
+	case 10, 11: // Lava
+		return false
+	case 31, 32: // Tall grass, Dead bush
+		return false
+	case 37, 38: // Dandelion, Poppy
+		return false
+	case 50: // Torch
+		return false
+	default:
+		return true
+	}
+}
+
 // PlacementIntersects checks if a block intersects a player bounding box for block placement.
 // Uses a subtle tolerance margin (0.06) so standing adjacent to a block or jumping to pillar up
 // does not trigger false intersection rejections.

@@ -131,6 +131,10 @@ var BlockHardness = map[int32]float64{
 	17:  2.0,  // Oak Log
 	18:  0.2,  // Oak Leaves
 	20:  0.3,  // Glass
+	31:  0.0,  // Tall Grass (instant)
+	32:  0.0,  // Dead Bush (instant)
+	37:  0.0,  // Dandelion (instant)
+	38:  0.0,  // Poppy (instant)
 	49:  50.0, // Obsidian
 	50:  0.0,  // Torch (instant)
 	56:  3.0,  // Diamond Ore

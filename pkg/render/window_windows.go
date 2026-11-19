@@ -381,7 +381,7 @@ func (w *Window) GetCursorClientPos(frameW, frameH int) (int, int) {
 
 // IsMouseDown queries whether the given mouse button (1=Left, 2=Right) is currently physically pressed down.
 func (w *Window) IsMouseDown(btn int) bool {
-	if !w.MouseCaptured || w.Closed {
+	if w.Closed {
 		return false
 	}
 	fg, _, _ := procGetForegroundWindow.Call()

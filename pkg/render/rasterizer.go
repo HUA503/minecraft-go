@@ -401,10 +401,39 @@ func (fb *Framebuffer) DrawTriangle(p0, p1, p2 ScreenPoint, col uint32) {
 
 // DrawVoxelTrianglePerspective performs mathematically exact perspective-correct texture mapping & distance fog.
 func (fb *Framebuffer) DrawVoxelTrianglePerspective(v0, v1, v2 ScreenVertex) {
-	minX := int(math.Floor(math.Min(float64(v0.X), math.Min(float64(v1.X), float64(v2.X)))))
-	maxX := int(math.Ceil(math.Max(float64(v0.X), math.Max(float64(v1.X), float64(v2.X)))))
-	minY := int(math.Floor(math.Min(float64(v0.Y), math.Min(float64(v1.Y), float64(v2.Y)))))
-	maxY := int(math.Ceil(math.Max(float64(v0.Y), math.Max(float64(v1.Y), float64(v2.Y)))))
+	fMinX := v0.X
+	if v1.X < fMinX {
+		fMinX = v1.X
+	}
+	if v2.X < fMinX {
+		fMinX = v2.X
+	}
+	fMaxX := v0.X
+	if v1.X > fMaxX {
+		fMaxX = v1.X
+	}
+	if v2.X > fMaxX {
+		fMaxX = v2.X
+	}
+	fMinY := v0.Y
+	if v1.Y < fMinY {
+		fMinY = v1.Y
+	}
+	if v2.Y < fMinY {
+		fMinY = v2.Y
+	}
+	fMaxY := v0.Y
+	if v1.Y > fMaxY {
+		fMaxY = v1.Y
+	}
+	if v2.Y > fMaxY {
+		fMaxY = v2.Y
+	}
+
+	minX := int(fMinX)
+	maxX := int(fMaxX + 0.999999)
+	minY := int(fMinY)
+	maxY := int(fMaxY + 0.999999)
 
 	if minX < 0 {
 		minX = 0
@@ -430,7 +459,11 @@ func (fb *Framebuffer) DrawVoxelTrianglePerspective(v0, v1, v2 ScreenVertex) {
 	dy01 := v1.Y - v0.Y
 
 	area := (v2.X-v0.X)*dy01 - (v2.Y-v0.Y)*dx01
-	if math.Abs(float64(area)) < 1e-4 {
+	absArea := area
+	if absArea < 0 {
+		absArea = -absArea
+	}
+	if absArea < 1e-4 {
 		return
 	}
 	invArea := 1.0 / area

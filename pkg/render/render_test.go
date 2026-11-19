@@ -412,3 +412,50 @@ func TestHurtVignette(t *testing.T) {
 		t.Fatalf("expected red vignette on screen border, got %X", pixel)
 	}
 }
+
+func TestFoliageCrossedQuadsAndOpaqueExposure(t *testing.T) {
+	// Floor grass block at (0, 0, 0) and tall grass foliage directly above it at (0, 1, 0)
+	worldMap := map[[3]int32]int32{
+		{0, 0, 0}: 2,  // Grass Block (Opaque)
+		{0, 1, 0}: 31, // Tall Grass (Foliage)
+	}
+
+	getBlock := func(x, y, z int32) int32 {
+		return worldMap[[3]int32{x, y, z}]
+	}
+
+	mesh := BuildSectionMesh(getBlock, 0, 0, 0)
+
+	// Grass block has 6 exposed faces (including +Y top face under tall grass!) -> 24 vertices
+	// Tall grass has 2 crossed diagonal double-sided quads -> 8 vertices
+	// Total vertices = 32
+	if len(mesh.Vertices) != 32 {
+		t.Fatalf("expected 32 vertices (24 for grass block with exposed top + 8 for foliage), got %d", len(mesh.Vertices))
+	}
+
+	// Verify foliage vertices have FaceIndex == 6
+	foliageVertCount := 0
+	for _, v := range mesh.Vertices {
+		if v.BlockID == 31 {
+			if v.FaceIndex != 6 {
+				t.Errorf("expected FaceIndex == 6 for foliage, got %d", v.FaceIndex)
+			}
+			foliageVertCount++
+		}
+	}
+	if foliageVertCount != 8 {
+		t.Fatalf("expected 8 foliage vertices, got %d", foliageVertCount)
+	}
+
+	// Verify Grass Block top face (FaceIndex == 2, Y == 1.0) was NOT culled by tall grass
+	topFaceFound := false
+	for _, v := range mesh.Vertices {
+		if v.BlockID == 2 && v.FaceIndex == 2 {
+			topFaceFound = true
+			break
+		}
+	}
+	if !topFaceFound {
+		t.Fatalf("grass block top face (+Y) was incorrectly culled by tall grass above it")
+	}
+}

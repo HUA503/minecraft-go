@@ -49,6 +49,40 @@ var NeighborOffsets = [6][3]int32{
 	{0, 0, -1},
 }
 
+// IsOpaqueCube returns whether a block is a solid, fully opaque 1x1x1 cube that hides neighbor faces.
+func IsOpaqueCube(blockID int32) bool {
+	switch blockID {
+	case 0: // Air
+		return false
+	case 8, 9: // Water
+		return false
+	case 10, 11: // Lava
+		return false
+	case 18: // Oak Leaves (cutout alpha)
+		return false
+	case 20: // Glass (transparent)
+		return false
+	case 31, 32: // Tall grass, Dead bush
+		return false
+	case 37, 38: // Dandelion, Poppy
+		return false
+	case 50: // Torch
+		return false
+	default:
+		return true
+	}
+}
+
+// IsFoliage returns true if the block is rendered as crossed diagonal quads.
+func IsFoliage(blockID int32) bool {
+	switch blockID {
+	case 31, 32, 37, 38, 50:
+		return true
+	default:
+		return false
+	}
+}
+
 // BuildSectionMesh generates face-culled geometry for a 16x16x16 section.
 func BuildSectionMesh(getBlock func(x, y, z int32) int32, originX, originY, originZ int32) *Mesh {
 	mesh := &Mesh{
@@ -64,14 +98,26 @@ func BuildSectionMesh(getBlock func(x, y, z int32) int32, originX, originY, orig
 					continue // Air: no mesh
 				}
 
+				// Special crossed diagonal quads for foliage & torches
+				if IsFoliage(blockID) {
+					addCrossedQuads(mesh, originX+x, originY+y, originZ+z, blockID)
+					continue
+				}
+
 				// Check each of 6 faces
 				for face := 0; face < 6; face++ {
 					off := NeighborOffsets[face]
 					neighborID := getBlock(originX+x+off[0], originY+y+off[1], originZ+z+off[2])
-					// If neighbor is air (0), this face is exposed
-					if neighborID == 0 {
-						addFaceQuad(mesh, originX+x, originY+y, originZ+z, face, blockID, getBlock)
+					
+					// If neighbor is an opaque full cube, this face is hidden
+					if IsOpaqueCube(neighborID) {
+						continue
 					}
+					// Internal face culling between identical transparent/translucent blocks
+					if blockID == neighborID && (blockID == 8 || blockID == 9 || blockID == 18 || blockID == 20) {
+						continue
+					}
+					addFaceQuad(mesh, originX+x, originY+y, originZ+z, face, blockID, getBlock)
 				}
 			}
 		}
@@ -113,7 +159,7 @@ func addFaceQuad(mesh *Mesh, x, y, z int32, face int, blockID int32, getBlock fu
 	baseIdx := uint32(len(mesh.Vertices))
 
 	isSolid := func(bx, by, bz int32) bool {
-		return getBlock(bx, by, bz) != 0
+		return IsOpaqueCube(getBlock(bx, by, bz))
 	}
 
 	var corners [4][3]float32
@@ -229,4 +275,60 @@ func addFaceQuad(mesh *Mesh, x, y, z int32, face int, blockID int32, getBlock fu
 			baseIdx, baseIdx+2, baseIdx+3,
 		)
 	}
+}
+
+// addCrossedQuads generates two diagonal double-sided quads for foliage (tall grass, flowers, torches).
+func addCrossedQuads(mesh *Mesh, x, y, z int32, blockID int32) {
+	fx, fy, fz := float32(x), float32(y), float32(z)
+	baseIdx := uint32(len(mesh.Vertices))
+
+	lightMult := float32(1.0)
+	if blockID != 50 {
+		lightMult = 0.95
+	}
+
+	var x0, z0, x1, z1, yTop float32
+	if blockID == 50 {
+		// Torches are slightly narrower/tighter footprint in block center
+		x0, z0 = fx+0.15, fz+0.15
+		x1, z1 = fx+0.85, fz+0.85
+		yTop = fy + 0.85
+	} else {
+		x0, z0 = fx, fz
+		x1, z1 = fx+1, fz+1
+		yTop = fy + 1
+	}
+
+	// Diagonal 1: (x0, fy, z0) -> (x0, yTop, z0) -> (x1, yTop, z1) -> (x1, fy, z1)
+	mesh.Vertices = append(mesh.Vertices,
+		Vertex{X: x0, Y: fy, Z: z0, U: 0, V: 0, BlockID: blockID, FaceIndex: 6, LightingMult: lightMult},
+		Vertex{X: x0, Y: yTop, Z: z0, U: 0, V: 1, BlockID: blockID, FaceIndex: 6, LightingMult: lightMult},
+		Vertex{X: x1, Y: yTop, Z: z1, U: 1, V: 1, BlockID: blockID, FaceIndex: 6, LightingMult: lightMult},
+		Vertex{X: x1, Y: fy, Z: z1, U: 1, V: 0, BlockID: blockID, FaceIndex: 6, LightingMult: lightMult},
+	)
+
+	// Diagonal 2: (x0, fy, z1) -> (x0, yTop, z1) -> (x1, yTop, z0) -> (x1, fy, z0)
+	mesh.Vertices = append(mesh.Vertices,
+		Vertex{X: x0, Y: fy, Z: z1, U: 0, V: 0, BlockID: blockID, FaceIndex: 6, LightingMult: lightMult},
+		Vertex{X: x0, Y: yTop, Z: z1, U: 0, V: 1, BlockID: blockID, FaceIndex: 6, LightingMult: lightMult},
+		Vertex{X: x1, Y: yTop, Z: z0, U: 1, V: 1, BlockID: blockID, FaceIndex: 6, LightingMult: lightMult},
+		Vertex{X: x1, Y: fy, Z: z0, U: 1, V: 0, BlockID: blockID, FaceIndex: 6, LightingMult: lightMult},
+	)
+
+	// Add double-sided indices (front and back) for both diagonals
+	// Diagonal 1: front (0, 1, 2) and (0, 2, 3), back (2, 1, 0) and (3, 2, 0)
+	mesh.Indices = append(mesh.Indices,
+		baseIdx+0, baseIdx+1, baseIdx+2,
+		baseIdx+0, baseIdx+2, baseIdx+3,
+		baseIdx+2, baseIdx+1, baseIdx+0,
+		baseIdx+3, baseIdx+2, baseIdx+0,
+	)
+
+	// Diagonal 2: front (4, 5, 6) and (4, 6, 7), back (6, 5, 4) and (7, 6, 4)
+	mesh.Indices = append(mesh.Indices,
+		baseIdx+4, baseIdx+5, baseIdx+6,
+		baseIdx+4, baseIdx+6, baseIdx+7,
+		baseIdx+6, baseIdx+5, baseIdx+4,
+		baseIdx+7, baseIdx+6, baseIdx+4,
+	)
 }

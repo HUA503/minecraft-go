@@ -314,6 +314,10 @@ func (e *Engine) BreakBlockWithTool(playerID int32, pos world.BlockPos, toolID i
 			dropItem = inventory.ItemCraftingTable
 		case 61: // Furnace
 			dropItem = inventory.ItemFurnace
+		case 31: // Tall Grass -> Wheat Seeds
+			dropItem = 295
+		case 37, 38, 45, 49, 50, 87, 89, 121, 150:
+			dropItem = origBlock
 		}
 
 		dropPos := Vec3{X: float64(pos.X) + 0.5, Y: float64(pos.Y) + 0.5, Z: float64(pos.Z) + 0.5}
@@ -380,25 +384,28 @@ func (e *Engine) BreakBlock(playerID int32, pos world.BlockPos) int32 {
 // PlaceBlock places a block if it does not intersect the player's bounding box.
 func (e *Engine) PlaceBlock(playerID int32, pos world.BlockPos, blockID int32) bool {
 	existing := e.GetBlock(pos.X, pos.Y, pos.Z)
-	// Air (0), water (8, 9), lava (10, 11), tall grass (31, 32), and flowers (37, 38) are replaceable
+	// Air (0), water (8, 9), lava (10, 11), tall grass (31, 32), flowers (37, 38), and torches (50) are replaceable
 	if existing != 0 && existing != 8 && existing != 9 && existing != 10 && existing != 11 &&
-		existing != 31 && existing != 32 && existing != 37 && existing != 38 {
+		existing != 31 && existing != 32 && existing != 37 && existing != 38 && existing != 50 {
 		return false
 	}
 
-	blockBox := NewBlockAABB(pos.X, pos.Y, pos.Z)
+	// For solid blocks, prevent placing inside living players
+	if IsSolidBlock(blockID) {
+		blockBox := NewBlockAABB(pos.X, pos.Y, pos.Z)
 
-	e.mu.RLock()
-	for _, p := range e.Players {
-		if p.IsAlive {
-			playerBox := NewPlayerAABB(p.Position)
-			if PlacementIntersects(playerBox, blockBox) {
-				e.mu.RUnlock()
-				return false // cannot place inside player
+		e.mu.RLock()
+		for _, p := range e.Players {
+			if p.IsAlive {
+				playerBox := NewPlayerAABB(p.Position)
+				if PlacementIntersects(playerBox, blockBox) {
+					e.mu.RUnlock()
+					return false // cannot place inside player
+				}
 			}
 		}
+		e.mu.RUnlock()
 	}
-	e.mu.RUnlock()
 
 	// Decrement item from player's inventory
 	e.mu.Lock()
@@ -575,7 +582,7 @@ func (e *Engine) MovePlayerRelative(id int32, delta Vec3, yaw, pitch float32) (V
 	e.mu.Unlock()
 
 	isSolid := func(x, y, z int32) bool {
-		return e.GetBlock(x, y, z) != 0
+		return IsSolidBlock(e.GetBlock(x, y, z))
 	}
 
 	resolvedPos, ground, hitCeiling := ResolveMovementCollision(oldPos, delta, isSolid)
@@ -631,7 +638,7 @@ func (e *Engine) Tick() {
 		if !ok || chunk == nil {
 			return false
 		}
-		return chunk.GetBlock(x, y, z) != 0
+		return IsSolidBlock(chunk.GetBlock(x, y, z))
 	}
 
 	// Apply gravity and drag for free-falling players (skip client-driven players to avoid jitter/double gravity)

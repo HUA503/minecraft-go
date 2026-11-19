@@ -35,7 +35,11 @@ const (
 	BlockOakLog        int32 = 17
 	BlockOakLeaves     int32 = 18
 	BlockGlass         int32 = 20
+	BlockTallGrass     int32 = 31
+	BlockDandelion     int32 = 37
+	BlockPoppy         int32 = 38
 	BlockObsidian      int32 = 49
+	BlockTorch         int32 = 50
 	BlockDiamondOre    int32 = 56
 	BlockCraftingTable int32 = 58
 	BlockFurnace       int32 = 61
@@ -126,6 +130,19 @@ func (g *Generator) generateOverworld(c *world.Chunk, cp world.ChunkPos) {
 				treeChance := g.noise.Noise2D(wx*0.5, wz*0.5)
 				if treeChance > 0.65 && lx >= 2 && lx <= 13 && lz >= 2 && lz <= 13 {
 					g.growOakTree(c, toI32(wx), height+1, toI32(wz))
+				} else {
+					// Authentic meadow foliage distribution (Tall Grass, Dandelions, Poppies)
+					foliageNoise := g.noise.Noise2D(wx*0.75+313.0, wz*0.75+313.0)
+					if foliageNoise > 0.70 {
+						c.SetBlock(toI32(wx), height+1, toI32(wz), BlockTallGrass)
+					} else if foliageNoise < 0.22 {
+						flowerType := g.noise.Noise2D(wx*1.2+77.0, wz*1.2+77.0)
+						if flowerType > 0.6 {
+							c.SetBlock(toI32(wx), height+1, toI32(wz), BlockDandelion)
+						} else if flowerType < 0.4 {
+							c.SetBlock(toI32(wx), height+1, toI32(wz), BlockPoppy)
+						}
+					}
 				}
 			} else {
 				// Below sea level: Sand surface and fill with water
