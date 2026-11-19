@@ -339,6 +339,18 @@
 - [x] **P22-5 全套水体与物理连跳自动化验证测试 (`test/water_and_spawn_parity_test.go`)**:
   - 新增 `TestRandomSafeSpawnSurface`、`TestContinuousWaterSwimming`、`TestWaterSurfaceLeapBreach`、`TestLandJumpAndBunnyHop` 4 大集成测试，覆盖多种子随机出生点安全度、水中长按上浮与释放下潜、水面腾跃登岸、陆地滞空重力及着地连跳，全部 100% PASS。
 
+### ✅ P23 根除画面微颤闪动、修复地面误判天花板阻断跳跃 Bug (100% 通过)
+- [x] **P23-1 根除地面被误判为天花板导致无法跳跃 Bug (`pkg/sim/aabb.go`)**:
+  - 深度排查发现：在 AABB 上升碰撞检测（$dy > 0$）中，因缺少天花板高度限定，站立地面方块（$Y$ 下方方块）被错误识别为天花板碰撞（`hitCeiling = true`），导致起跳瞬间 $dy$ 被直接截断为 0 且垂直速度被清空，跳跃键完全失效！
+  - 引入天花板位置严格约束：仅当方块底面位于玩家腰部以上（$b.Min.Y \ge pBox.Min.Y + 1.0$）时才允许判定为天花板碰撞，坚决杜绝踩着的地面方块阻断跳跃。
+- [x] **P23-2 消除地面驻留推离过冲微颤与画面闪动 (`pkg/sim/aabb.go`)**:
+  - 修复抗穿透推离（Step 4）中额外累加的 $+1\times 10^{-3}$ 过冲位移：此前每帧推离导致玩家被推升至方块表面上方 1 毫米，随后下一帧重力拉低 1 毫米，造成摄像机在两帧间高频上下颠簸振动（画面闪动）。
+  - 推离严格按最短轴接触距离贴合修正，彻底消灭逐帧坐标震荡，地面站立绝对静止平稳。
+- [x] **P23-3 键盘输入捕获健壮性双重保证 (`pkg/render/window_windows.go`)**:
+  - `IsKeyDown` 增加窗口原生消息泵按键追踪队列（`w.KeyDown`）优先检查，结合底层硬件物理状态 `GetAsyncKeyState`，彻底消除由于 Windows 前台句柄短暂切换导致的空格跳跃漏键问题。
+- [x] **P23-4 起跳与稳定性专属集成测试 (`test/land_jump_test.go`)**:
+  - 新增 `TestPlayerJumpFromGroundDoesNotHitCeiling`（地面起跳不碰顶且位移正常）与 `TestGroundRestingPositionStabilityNoJitter`（连续 10 帧重力下 Y 坐标绝对零颤动稳定），均 100% PASS。
+
 ---
 
 ## 验证与复现命令 (Reproduction Commands)

@@ -262,26 +262,32 @@ func ResolveMovementCollision(pos Vec3, delta Vec3, isSolid func(x, y, z int32) 
 		if pBox.Min.X < b.Max.X-epsilon && pBox.Max.X > b.Min.X+epsilon &&
 			pBox.Min.Z < b.Max.Z-epsilon && pBox.Max.Z > b.Min.Z+epsilon {
 			if dy < 0 {
-				if pBox.Min.Y >= b.Max.Y-epsilon {
-					maxDown := b.Max.Y - pBox.Min.Y
-					if maxDown > dy {
-						dy = maxDown
+				// Only floor blocks below player's mid-body can impede downward movement
+				if b.Max.Y <= pBox.Min.Y+0.6 {
+					if pBox.Min.Y >= b.Max.Y-epsilon {
+						maxDown := b.Max.Y - pBox.Min.Y
+						if maxDown > dy {
+							dy = maxDown
+							onGround = true
+						}
+					} else if pBox.Min.Y < b.Max.Y {
+						dy = b.Max.Y - pBox.Min.Y
 						onGround = true
 					}
-				} else if pBox.Min.Y < b.Max.Y && pBox.Max.Y > b.Min.Y {
-					dy = 0
-					onGround = true
 				}
 			} else if dy > 0 {
-				if pBox.Max.Y <= b.Min.Y+epsilon {
-					maxUp := b.Min.Y - pBox.Max.Y
-					if maxUp < dy {
-						dy = maxUp
+				// Only ceiling blocks strictly above player's waist can impede upward movement
+				if b.Min.Y >= pBox.Min.Y+1.0 {
+					if pBox.Max.Y <= b.Min.Y+epsilon {
+						maxUp := b.Min.Y - pBox.Max.Y
+						if maxUp < dy {
+							dy = maxUp
+							hitCeiling = true
+						}
+					} else if pBox.Max.Y > b.Min.Y {
+						dy = b.Min.Y - pBox.Max.Y
 						hitCeiling = true
 					}
-				} else if pBox.Max.Y > b.Min.Y && pBox.Min.Y < b.Max.Y {
-					dy = 0
-					hitCeiling = true
 				}
 			}
 		}
@@ -292,7 +298,8 @@ func ResolveMovementCollision(pos Vec3, delta Vec3, isSolid func(x, y, z int32) 
 	// 2. Resolve X axis (sliding along X walls)
 	dx := delta.X
 	for _, b := range solidBoxes {
-		if pBox.Min.Y < b.Max.Y-epsilon && pBox.Max.Y > b.Min.Y+epsilon &&
+		// A wall must vertically overlap the player's body (excluding floor below feet)
+		if pBox.Min.Y+0.05 < b.Max.Y && pBox.Max.Y-0.05 > b.Min.Y &&
 			pBox.Min.Z < b.Max.Z-epsilon && pBox.Max.Z > b.Min.Z+epsilon {
 			if dx > 0 {
 				if pBox.Max.X <= b.Min.X+epsilon {
@@ -321,8 +328,9 @@ func ResolveMovementCollision(pos Vec3, delta Vec3, isSolid func(x, y, z int32) 
 	// 3. Resolve Z axis (sliding along Z walls)
 	dz := delta.Z
 	for _, b := range solidBoxes {
+		// A wall must vertically overlap the player's body (excluding floor below feet)
 		if pBox.Min.X < b.Max.X-epsilon && pBox.Max.X > b.Min.X+epsilon &&
-			pBox.Min.Y < b.Max.Y-epsilon && pBox.Max.Y > b.Min.Y+epsilon {
+			pBox.Min.Y+0.05 < b.Max.Y && pBox.Max.Y-0.05 > b.Min.Y {
 			if dz > 0 {
 				if pBox.Max.Z <= b.Min.Z+epsilon {
 					maxFwd := b.Min.Z - pBox.Max.Z
@@ -382,16 +390,16 @@ func ResolveMovementCollision(pos Vec3, delta Vec3, isSolid func(x, y, z int32) 
 			}
 
 			if minPushY < minPushX && minPushY < minPushZ && minPushY < 0.8 {
-				pos.Y += signY * (minPushY + 1e-3)
+				pos.Y += signY * minPushY
 				pBox = NewPlayerAABB(pos)
 				if signY > 0 && delta.Y <= 0 {
 					onGround = true
 				}
 			} else if minPushX < minPushZ && minPushX < 0.8 {
-				pos.X += signX * (minPushX + 1e-3)
+				pos.X += signX * minPushX
 				pBox = NewPlayerAABB(pos)
 			} else if minPushZ < 0.8 {
-				pos.Z += signZ * (minPushZ + 1e-3)
+				pos.Z += signZ * minPushZ
 				pBox = NewPlayerAABB(pos)
 			}
 		}
@@ -402,7 +410,7 @@ func ResolveMovementCollision(pos Vec3, delta Vec3, isSolid func(x, y, z int32) 
 		feetX := int32(math.Floor(pos.X))
 		feetY := int32(math.Floor(pos.Y - 0.05))
 		feetZ := int32(math.Floor(pos.Z))
-		if isSolid(feetX, feetY, feetZ) && math.Abs(pos.Y-float64(feetY+1)) < 0.15 {
+		if isSolid(feetX, feetY, feetZ) && math.Abs(pos.Y-float64(feetY+1)) < 0.05 {
 			pos.Y = float64(feetY + 1)
 			onGround = true
 		}

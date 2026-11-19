@@ -404,14 +404,23 @@ func (w *Window) IsKeyDown(vkCode int) bool {
 	if vkCode < 0 || vkCode >= 256 || w.Closed {
 		return false
 	}
-	// Only respond to key press if window is currently in the active foreground!
-	fg, _, _ := procGetForegroundWindow.Call()
-	if fg != w.Hwnd {
-		return false
+	// 1. Check window message-pump tracked key state (most reliable for focused window)
+	w.mu.Lock()
+	down := w.KeyDown[vkCode]
+	w.mu.Unlock()
+	if down {
+		return true
 	}
-	// Real-time physical key press state (high bit set = key physically pressed down right now)
+
+	// 2. Real-time physical hardware key press state
 	ret, _, _ := procGetAsyncKeyState.Call(uintptr(vkCode))
-	return (ret & 0x8000) != 0
+	if (ret & 0x8000) != 0 {
+		fg, _, _ := procGetForegroundWindow.Call()
+		if fg == w.Hwnd || fg == 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func (w *Window) PollEvents() bool {
