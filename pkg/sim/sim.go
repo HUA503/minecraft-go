@@ -599,17 +599,19 @@ func (e *Engine) MovePlayer(id int32, pos Vec3, yaw, pitch float32, onGround boo
 	e.mu.Lock()
 	p, ok := e.Players[id]
 	if ok && p.IsAlive {
-		// Track fall distance
-		if !onGround && pos.Y < p.Position.Y {
-			p.FallDistance += float32(p.Position.Y - pos.Y)
-		} else if onGround {
-			if p.FallDistance > 3.0 {
-				damage := p.FallDistance - 3.0
-				e.mu.Unlock()
-				e.DamagePlayer(id, damage, "fall")
-				e.mu.Lock()
+		// Track fall distance only for server-simulated players (client-driven handles its own)
+		if !p.ClientDriven {
+			if !onGround && pos.Y < p.Position.Y {
+				p.FallDistance += float32(p.Position.Y - pos.Y)
+			} else if onGround {
+				if p.FallDistance > 3.0 {
+					damage := p.FallDistance - 3.0
+					e.mu.Unlock()
+					e.DamagePlayer(id, damage, "fall")
+					e.mu.Lock()
+				}
+				p.FallDistance = 0
 			}
-			p.FallDistance = 0
 		}
 
 		p.Position = pos
@@ -669,9 +671,18 @@ func (e *Engine) MovePlayerRelative(id int32, delta Vec3, yaw, pitch float32) (V
 
 	resolvedPos, ground, hitCeiling := ResolveMovementCollision(oldPos, delta, isSolid)
 
+	// Check if player is in liquid (water 8/9 or lava 10/11) before acquiring lock
+	bx := int32(math.Floor(resolvedPos.X))
+	by := int32(math.Floor(resolvedPos.Y))
+	bz := int32(math.Floor(resolvedPos.Z))
+	bFeet := e.GetBlock(bx, by, bz)
+	inLiquid := bFeet == 8 || bFeet == 9 || bFeet == 10 || bFeet == 11
+
 	e.mu.Lock()
 	if p, ok := e.Players[id]; ok && p.IsAlive {
-		if ground {
+		if inLiquid {
+			p.FallDistance = 0
+		} else if ground {
 			p.Velocity.Y = 0
 			if p.FallDistance > 3.0 {
 				fallDmg := p.FallDistance - 3.0
@@ -686,6 +697,8 @@ func (e *Engine) MovePlayerRelative(id int32, delta Vec3, yaw, pitch float32) (V
 			p.Velocity.Y = 0
 		} else if resolvedPos.Y < oldPos.Y {
 			p.FallDistance += float32(oldPos.Y - resolvedPos.Y)
+		} else if resolvedPos.Y >= oldPos.Y {
+			p.FallDistance = 0
 		}
 		p.Position = resolvedPos
 		p.Yaw = yaw

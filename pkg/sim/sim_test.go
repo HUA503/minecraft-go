@@ -623,3 +623,58 @@ func TestMobHurtFlashDecay(t *testing.T) {
 		t.Fatalf("mob HurtTime should decay back to 0, got %d", zombie.HurtTime)
 	}
 }
+
+func TestHostileMobLineOfSightThroughWall(t *testing.T) {
+	eng := NewEngine()
+	p := eng.AddPlayer("Steve", [16]byte{1}, Vec3{X: 10, Y: 64, Z: 10})
+	p.Health = 20.0
+
+	// Build a 3-high solid stone wall between player and skeleton
+	eng.SetBlock(10, 64, 11, 1) // Stone
+	eng.SetBlock(10, 65, 11, 1) // Stone
+	eng.SetBlock(10, 66, 11, 1) // Stone
+
+	// Spawn skeleton on other side of wall
+	skeleton := eng.SpawnMob(MobSkeleton, Vec3{X: 10, Y: 64, Z: 12})
+	skeleton.AttackCooldown = 0
+
+	// Tick AI - Skeleton should NOT be able to damage player through solid wall!
+	skeleton.tickSkeletonAI(eng, p, 2.0)
+	if p.Health < 20.0 {
+		t.Fatalf("player took damage through solid wall from skeleton: health = %f", p.Health)
+	}
+
+	// Remove wall - now line of sight is clear
+	eng.SetBlock(10, 64, 11, 0)
+	eng.SetBlock(10, 65, 11, 0)
+	eng.SetBlock(10, 66, 11, 0)
+
+	skeleton.AttackCooldown = 0
+	skeleton.tickSkeletonAI(eng, p, 2.0)
+	if p.Health >= 20.0 {
+		t.Fatalf("player should have taken damage after wall removed, health = %f", p.Health)
+	}
+}
+
+func TestFallDamageResetInWater(t *testing.T) {
+	eng := NewEngine()
+	p := eng.AddPlayer("Steve", [16]byte{2}, Vec3{X: 5, Y: 70, Z: 5})
+	p.Health = 20.0
+	p.FallDistance = 8.0 // Accumulated high fall
+
+	// Place water block at player destination
+	eng.SetBlock(5, 64, 5, 9) // Water block
+	eng.SetBlock(5, 63, 5, 1) // Riverbed stone floor
+
+	// Step down into water
+	_, ground, _ := eng.MovePlayerRelative(p.ID, Vec3{X: 0, Y: -6.0, Z: 0}, 0, 0)
+	_ = ground
+
+	// Fall distance should be completely reset in water!
+	if p.FallDistance != 0 {
+		t.Fatalf("fall distance in water should be 0, got %f", p.FallDistance)
+	}
+	if p.Health != 20.0 {
+		t.Fatalf("player took fall damage entering water: health = %f", p.Health)
+	}
+}

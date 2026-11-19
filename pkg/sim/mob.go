@@ -2,6 +2,7 @@ package sim
 
 import (
 	"math"
+	"time"
 
 	"github.com/HUA503/minecraft-go/pkg/inventory"
 )
@@ -143,10 +144,43 @@ func (m *MobEntity) TickMob(engine *Engine) {
 		m.tickPassiveAI(engine)
 	}
 
-	// 4. Apply velocity
-	m.Position = m.Position.Add(m.Velocity)
+	// 4. Apply velocity with voxel collision resolution so mobs don't clip into terrain or freeze
+	isSolid := func(x, y, z int32) bool {
+		return IsSolidBlock(engine.GetBlock(x, y, z))
+	}
+	resPos, ground, _ := ResolveMovementCollision(m.Position, m.Velocity, isSolid)
+	m.Position = resPos
+	if ground {
+		m.Velocity.Y = 0
+	}
 	m.Velocity.X *= 0.546 // Air / ground drag
 	m.Velocity.Z *= 0.546
+}
+
+// hasLineOfSight tests if an unobstructed direct ray exists between two 3D points.
+// Prevents hostile mobs (skeletons, zombies, creepers) from seeing, shooting, or damaging players through solid voxel blocks.
+func hasLineOfSight(engine *Engine, from, to Vec3) bool {
+	dir := to.Sub(from)
+	dist := dir.Length()
+	if dist < 0.2 {
+		return true
+	}
+	steps := int(dist * 5.0) // Sample every 0.2 blocks along the ray
+	if steps < 1 {
+		steps = 1
+	}
+	stepVec := dir.Scale(1.0 / float64(steps))
+	curr := from
+	for i := 0; i < steps; i++ {
+		curr = curr.Add(stepVec)
+		bx := int32(math.Floor(curr.X))
+		by := int32(math.Floor(curr.Y))
+		bz := int32(math.Floor(curr.Z))
+		if IsSolidBlock(engine.GetBlock(bx, by, bz)) {
+			return false
+		}
+	}
+	return true
 }
 
 func (m *MobEntity) tickZombieAI(engine *Engine, player *PlayerEntity, dist float64) {
@@ -176,10 +210,14 @@ func (m *MobEntity) tickZombieAI(engine *Engine, player *PlayerEntity, dist floa
 		m.Velocity.Y = 0.38
 	}
 
-	// Melee attack: within 1.5 blocks
+	// Melee attack: within 1.5 blocks and line of sight
 	if dist <= 1.5 && m.AttackCooldown <= 0 {
-		engine.DamagePlayer(player.ID, 3.0, "zombie")
-		m.AttackCooldown = 20 // 1 attack per second
+		mobChest := m.Position.Add(Vec3{Y: 1.2})
+		playerChest := player.Position.Add(Vec3{Y: 1.0})
+		if hasLineOfSight(engine, mobChest, playerChest) {
+			engine.DamagePlayer(player.ID, 3.0, "zombie")
+			m.AttackCooldown = 20 // 1 attack per second
+		}
 	}
 }
 
@@ -220,10 +258,14 @@ func (m *MobEntity) tickSkeletonAI(engine *Engine, player *PlayerEntity, dist fl
 		m.Velocity.Y = 0.38
 	}
 
-	// Shoot arrow every 30 ticks (1.5 seconds)
+	// Shoot arrow every 30 ticks (1.5 seconds) - ONLY if line of sight is unobstructed!
 	if m.AttackCooldown <= 0 {
-		engine.DamagePlayer(player.ID, 4.0, "skeleton_arrow")
-		m.AttackCooldown = 30
+		mobEye := m.Position.Add(Vec3{Y: 1.6})
+		playerEye := player.Position.Add(Vec3{Y: 1.62})
+		if hasLineOfSight(engine, mobEye, playerEye) {
+			engine.DamagePlayer(player.ID, 4.0, "skeleton_arrow")
+			m.AttackCooldown = 30
+		}
 	}
 }
 
@@ -238,7 +280,19 @@ func (m *MobEntity) tickCreeperAI(engine *Engine, player *PlayerEntity, dist flo
 	dz := player.Position.Z - m.Position.Z
 	m.Yaw = float32(math.Atan2(-dx, dz) * 180.0 / math.Pi)
 
-	if dist > 3.0 {
+	mobChest := m.Position.Add(Vec3{Y: 1.4})
+	playerChest := player.Position.Add(Vec3{Y: 1.0})
+	hasLOS := hasLineOfSight(engine, mobChest, playerChest)
+
+	if dist > 3.0 || !hasLOS {
+		if m.FuseTicks > 0 {
+			m.FuseTicks--
+		}
+		if !hasLOS {
+			m.IsMoving = false
+			return
+		}
+
 		// Approach player
 		m.Velocity.X = (dx / dist) * 0.14
 		m.Velocity.Z = (dz / dist) * 0.14
@@ -253,10 +307,6 @@ func (m *MobEntity) tickCreeperAI(engine *Engine, player *PlayerEntity, dist flo
 		blockAbove1 := engine.GetBlock(aheadX, footY+1, aheadZ)
 		if IsSolidBlock(blockAhead) && !IsSolidBlock(blockAbove1) && m.Velocity.Y <= 0 {
 			m.Velocity.Y = 0.38
-		}
-
-		if m.FuseTicks > 0 {
-			m.FuseTicks--
 		}
 	} else {
 		// Stop and charge fuse! (30 ticks = 1.5s countdown)
@@ -287,17 +337,25 @@ func (m *MobEntity) tickCreeperAI(engine *Engine, player *PlayerEntity, dist flo
 }
 
 func (m *MobEntity) tickPassiveAI(engine *Engine) {
-	// 1. Check if nearby player exists to look at
-	var nearbyPlayer *PlayerEntity
-	for _, p := range engine.Players {
-		if p.IsAlive {
-			dx := p.Position.X - m.Position.X
-			dz := p.Position.Z - m.Position.Z
-			if dx*dx+dz*dz < 25.0 {
-				nearbyPlayer = p
-				break
-			}
+	// If recently damaged (hurt), PANIC and flee!
+	if m.HurtTime > 0 {
+		m.IsIdle = false
+		panicSpeed := 0.14
+		rad := float64(m.Yaw) * math.Pi / 180.0
+		fwdX := math.Sin(rad)
+		fwdZ := math.Cos(rad)
+		m.Velocity.X = fwdX * panicSpeed
+		m.Velocity.Z = fwdZ * panicSpeed
+		m.WalkDistance += panicSpeed
+		m.IsMoving = true
+		// 1-block step jump
+		aheadX := int32(math.Floor(m.Position.X + fwdX*0.6))
+		footY := int32(math.Floor(m.Position.Y + 0.1))
+		aheadZ := int32(math.Floor(m.Position.Z + fwdZ*0.6))
+		if IsSolidBlock(engine.GetBlock(aheadX, footY, aheadZ)) && !IsSolidBlock(engine.GetBlock(aheadX, footY+1, aheadZ)) && m.Velocity.Y <= 0 {
+			m.Velocity.Y = 0.38
 		}
+		return
 	}
 
 	if m.WanderTicks <= 0 {
@@ -316,19 +374,10 @@ func (m *MobEntity) tickPassiveAI(engine *Engine) {
 			m.IsMoving = true
 			m.Pitch = 0
 			// Pick a new random wandering target angle
-			m.TargetYaw = float32((int(m.ID*47) + m.WanderTicks*13) % 360)
+			m.TargetYaw = float32((int(m.ID*47) + int(time.Now().UnixNano()%360)) % 360)
 		}
 	} else {
 		m.WanderTicks--
-	}
-
-	if nearbyPlayer != nil && m.IsIdle {
-		// Look at nearby player
-		dx := nearbyPlayer.Position.X - m.Position.X
-		dz := nearbyPlayer.Position.Z - m.Position.Z
-		m.Yaw = float32(math.Atan2(dx, dz) * 180.0 / math.Pi)
-		m.Pitch = 0
-		return
 	}
 
 	if m.IsIdle {
@@ -379,6 +428,9 @@ func (m *MobEntity) tickPassiveAI(engine *Engine) {
 		if m.Velocity.Y <= 0 {
 			m.Velocity.Y = 0.38 // Standard 1-block jump
 		}
+	} else if IsSolidBlock(blockAhead) && IsSolidBlock(blockAbove1) {
+		// Blocked by tall wall: turn away
+		m.TargetYaw = float32((int(m.Yaw) + 120 + int(m.ID*23)%90) % 360)
 	} else if IsSolidBlock(blockAhead) && IsSolidBlock(blockAbove1) {
 		// Blocked by a high wall: turn around!
 		m.TargetYaw = float32(int(m.Yaw+120+float32(m.ID%60)) % 360)

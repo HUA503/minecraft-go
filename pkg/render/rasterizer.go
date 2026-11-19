@@ -576,6 +576,88 @@ func (fb *Framebuffer) DrawTriangle(p0, p1, p2 ScreenPoint, col uint32) {
 	}
 }
 
+// DrawTexturedTriangle renders a perspective depth-tested triangle textured by a RawImage with normalized UV coordinates [0.0, 1.0].
+// If tint is non-zero, it blends or overrides the color (e.g. hurt red flash 0xFFFF3333).
+func (fb *Framebuffer) DrawTexturedTriangle(p0, p1, p2 ScreenPoint, u0, v0, u1, v1, u2, v2 float32, img *RawImage, tint uint32) {
+	if img == nil || img.Width == 0 || img.Height == 0 {
+		fb.DrawTriangle(p0, p1, p2, tint)
+		return
+	}
+
+	minX := int(math.Floor(math.Min(float64(p0.X), math.Min(float64(p1.X), float64(p2.X)))))
+	maxX := int(math.Ceil(math.Max(float64(p0.X), math.Max(float64(p1.X), float64(p2.X)))))
+	minY := int(math.Floor(math.Min(float64(p0.Y), math.Min(float64(p1.Y), float64(p2.Y)))))
+	maxY := int(math.Ceil(math.Max(float64(p0.Y), math.Max(float64(p1.Y), float64(p2.Y)))))
+
+	if minX < 0 {
+		minX = 0
+	}
+	if maxX >= fb.Width {
+		maxX = fb.Width - 1
+	}
+	if minY < 0 {
+		minY = 0
+	}
+	if maxY >= fb.Height {
+		maxY = fb.Height - 1
+	}
+	if minX > maxX || minY > maxY {
+		return
+	}
+
+	edge := func(a, b ScreenPoint, px, py float32) float32 {
+		return (px-a.X)*(b.Y-a.Y) - (py-a.Y)*(b.X-a.X)
+	}
+
+	area := edge(p0, p1, p2.X, p2.Y)
+	if area == 0 {
+		return
+	}
+
+	for y := minY; y <= maxY; y++ {
+		rowOffset := y * fb.Width
+		for x := minX; x <= maxX; x++ {
+			px := float32(x) + 0.5
+			py := float32(y) + 0.5
+
+			w0 := edge(p1, p2, px, py)
+			w1 := edge(p2, p0, px, py)
+			w2 := edge(p0, p1, px, py)
+
+			if (w0 >= 0 && w1 >= 0 && w2 >= 0) || (w0 <= 0 && w1 <= 0 && w2 <= 0) {
+				w0 /= area
+				w1 /= area
+				w2 /= area
+				z := w0*p0.Depth + w1*p1.Depth + w2*p2.Depth
+
+				idx := rowOffset + x
+				if z < fb.Depth[idx] {
+					u := w0*u0 + w1*u1 + w2*u2
+					v := w0*v0 + w1*v1 + w2*v2
+					col := img.Sample(u, v)
+					if (col >> 24) == 0 {
+						continue
+					}
+					if tint != 0 {
+						tr := (tint >> 16) & 0xFF
+						tg := (tint >> 8) & 0xFF
+						tb := tint & 0xFF
+						cr := (col >> 16) & 0xFF
+						cg := (col >> 8) & 0xFF
+						cb := col & 0xFF
+						outR := (cr*60 + tr*195) / 255
+						outG := (cg*60 + tg*195) / 255
+						outB := (cb*60 + tb*195) / 255
+						col = 0xFF000000 | (outR << 16) | (outG << 8) | outB
+					}
+					fb.Depth[idx] = z
+					fb.Color[idx] = col
+				}
+			}
+		}
+	}
+}
+
 // DrawVoxelTrianglePerspective performs mathematically exact perspective-correct texture mapping & distance fog.
 func (fb *Framebuffer) DrawVoxelTrianglePerspective(v0, v1, v2 ScreenVertex) {
 	fMinX := v0.X

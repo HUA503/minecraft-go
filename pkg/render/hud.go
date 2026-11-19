@@ -24,15 +24,81 @@ func (fb *Framebuffer) DrawRect(x, y, w, h int, col uint32) {
 	}
 }
 
-// DrawCrosshair renders the standard centered "+" crosshair.
+// DrawRawImage draws a RawImage at screen coordinate (x, y) with alpha transparency.
+func (fb *Framebuffer) DrawRawImage(x, y int, img *RawImage) {
+	if img == nil {
+		return
+	}
+	for iy := 0; iy < img.Height; iy++ {
+		py := y + iy
+		if py < 0 || py >= fb.Height {
+			continue
+		}
+		imgRow := iy * img.Width
+		fbRow := py * fb.Width
+		for ix := 0; ix < img.Width; ix++ {
+			px := x + ix
+			if px < 0 || px >= fb.Width {
+				continue
+			}
+			col := img.Pixels[imgRow+ix]
+			a := (col >> 24) & 0xFF
+			if a == 0 {
+				continue
+			}
+			if a == 255 {
+				fb.Color[fbRow+px] = col
+			} else {
+				// Alpha blend over existing framebuffer pixel
+				bg := fb.Color[fbRow+px]
+				bgR := (bg >> 16) & 0xFF
+				bgG := (bg >> 8) & 0xFF
+				bgB := bg & 0xFF
+				fgR := (col >> 16) & 0xFF
+				fgG := (col >> 8) & 0xFF
+				fgB := col & 0xFF
+				invA := 255 - a
+				outR := (fgR*a + bgR*invA) / 255
+				outG := (fgG*a + bgG*invA) / 255
+				outB := (fgB*a + bgB*invA) / 255
+				fb.Color[fbRow+px] = 0xFF000000 | (outR << 16) | (outG << 8) | outB
+			}
+		}
+	}
+}
+
+// DrawRawImageScaled draws a RawImage scaled by an integer factor.
+func (fb *Framebuffer) DrawRawImageScaled(x, y, scale int, img *RawImage) {
+	if img == nil || scale <= 0 {
+		return
+	}
+	if scale == 1 {
+		fb.DrawRawImage(x, y, img)
+		return
+	}
+	for iy := 0; iy < img.Height; iy++ {
+		imgRow := iy * img.Width
+		for ix := 0; ix < img.Width; ix++ {
+			col := img.Pixels[imgRow+ix]
+			if (col >> 24) == 0 {
+				continue
+			}
+			fb.DrawRect(x+ix*scale, y+iy*scale, scale, scale, col)
+		}
+	}
+}
+
+// DrawCrosshair renders the official Mojang crosshair centered on the screen.
 func (fb *Framebuffer) DrawCrosshair() {
 	cx := fb.Width / 2
 	cy := fb.Height / 2
-	crosshairColor := uint32(0xFFFFFFFF) // White
-
-	// Horizontal line: 9px
+	if crosshairImg, ok := GetOfficialImage("gui/sprites/hud/crosshair.png"); ok {
+		fb.DrawRawImage(cx-crosshairImg.Width/2, cy-crosshairImg.Height/2, crosshairImg)
+		return
+	}
+	// Fallback vector crosshair
+	crosshairColor := uint32(0xFFFFFFFF)
 	fb.DrawRect(cx-4, cy, 9, 1, crosshairColor)
-	// Vertical line: 9px
 	fb.DrawRect(cx, cy-4, 1, 9, crosshairColor)
 }
 
@@ -102,62 +168,44 @@ func (fb *Framebuffer) DrawHUDWithInventory(health float32, hunger int, selected
 	// 1. Center Crosshair
 	fb.DrawCrosshair()
 
-	// 2. Health bar (bottom-left above hotbar, e.g. Y = Height - 55)
-	hudBaseY := fb.Height - 55
-	healthStartX := fb.Width/2 - 180
-
-	numHearts := int(health / 2.0)
-	for i := 0; i < 10; i++ {
-		hx := healthStartX + i*10
-		hy := hudBaseY
-		if health <= 4.0 {
-			// Minecraft Java edition authentic heart shaking at low health
-			shake := (i*7 + int(time.Now().UnixMilli()/70)) % 3
-			hy += shake - 1
-		}
-		// Dark background border
-		fb.DrawRect(hx, hy, 8, 8, 0xFF330000)
-		if i < numHearts {
-			// Red heart
-			fb.DrawRect(hx+1, hy+1, 6, 6, 0xFFFF1111) // Minecraft Authentic Red
-		}
-	}
-
-	// 3. Hunger bar (bottom-right above hotbar)
-	hungerStartX := fb.Width/2 + 80
-	numDrumsticks := hunger / 2
-	for i := 0; i < 10; i++ {
-		hx := hungerStartX + i*10
-		fb.DrawRect(hx, hudBaseY, 8, 8, 0xFF2A1E14)
-		if i < numDrumsticks {
-			// Orange/brown drumstick
-			fb.DrawRect(hx+1, hudBaseY+1, 6, 6, 0xFFD47C2F) // Minecraft Authentic Cooked Meat
-		}
-	}
-
-	// 4. Hotbar (9 slots centered at bottom, Y = Height - 35)
+	// 2. Hotbar dimensions & placement
 	hotbarW := 182
 	hotbarH := 22
 	hotbarX := fb.Width/2 - hotbarW/2
-	hotbarY := fb.Height - 35
+	hotbarY := fb.Height - 32
 
-	// Hotbar background
-	fb.DrawRect(hotbarX, hotbarY, hotbarW, hotbarH, 0x88404040)
+	// Render official hotbar texture (182x22)
+	if hotbarImg, ok := GetOfficialImage("gui/sprites/hud/hotbar.png"); ok {
+		fb.DrawRawImage(hotbarX, hotbarY, hotbarImg)
+	} else {
+		fb.DrawRect(hotbarX, hotbarY, hotbarW, hotbarH, 0x88404040)
+		for i := 0; i < 9; i++ {
+			fb.DrawRect(hotbarX+i*20+2, hotbarY+2, 18, 18, 0xFF222222)
+		}
+	}
 
-	// Draw each slot
-	for i := 0; i < 9; i++ {
-		slotX := hotbarX + i*20 + 2
+	// Render official selected slot highlight (24x23)
+	if selImg, ok := GetOfficialImage("gui/sprites/hud/hotbar_selection.png"); ok {
+		fb.DrawRawImage(hotbarX+selectedSlot*20-1, hotbarY-1, selImg)
+	} else {
+		slotX := hotbarX + selectedSlot*20 + 2
 		slotY := hotbarY + 2
-		// Slot border
-		fb.DrawRect(slotX, slotY, 18, 18, 0xFF222222)
+		fb.DrawRect(slotX-1, slotY-1, 20, 2, 0xFFFFFFFF)
+		fb.DrawRect(slotX-1, slotY+17, 20, 2, 0xFFFFFFFF)
+		fb.DrawRect(slotX-1, slotY-1, 2, 20, 0xFFFFFFFF)
+		fb.DrawRect(slotX+17, slotY-1, 2, 20, 0xFFFFFFFF)
+	}
 
-		// Render item icon inside slot
+	// 3. Hotbar Item Icons, Count, and Durability
+	for i := 0; i < 9; i++ {
+		slotX := hotbarX + i*20 + 3
+		slotY := hotbarY + 3
 		item := slots[i]
 		if !item.IsEmpty() {
-			fb.DrawItemIcon(slotX+1, slotY+1, item.ItemID)
+			fb.DrawItemIcon(slotX, slotY, item.ItemID)
 			// Render count text in lower right corner
 			if item.Count > 1 {
-				fb.DrawNumber(slotX+16, slotY+12, item.Count, 0xFFFFFFFF)
+				fb.DrawNumber(slotX+15, slotY+11, item.Count, 0xFFFFFFFF)
 			}
 			// Durability bar for damaged tools
 			props, isTool := inventory.GetToolProperties(item.ItemID)
@@ -166,24 +214,91 @@ func (fb *Framebuffer) DrawHUDWithInventory(health float32, hunger int, selected
 				if durRatio < 0 {
 					durRatio = 0
 				}
-				barW := int(durRatio * 14.0)
-				fb.DrawRect(slotX+2, slotY+16, 14, 2, 0xFF000000)
+				barW := int(durRatio * 13.0)
+				fb.DrawRect(slotX+1, slotY+13, 14, 2, 0xFF000000)
 				barCol := uint32(0xFF00FF00)
 				if durRatio < 0.25 {
 					barCol = 0xFFFF0000
 				} else if durRatio < 0.50 {
 					barCol = 0xFFFFFF00
 				}
-				fb.DrawRect(slotX+2, slotY+16, barW, 1, barCol)
+				fb.DrawRect(slotX+1, slotY+13, barW, 1, barCol)
 			}
 		}
+	}
 
-		// Selected slot white border highlight
-		if i == selectedSlot {
-			fb.DrawRect(slotX-1, slotY-1, 20, 2, 0xFFFFFFFF)
-			fb.DrawRect(slotX-1, slotY+17, 20, 2, 0xFFFFFFFF)
-			fb.DrawRect(slotX-1, slotY-1, 2, 20, 0xFFFFFFFF)
-			fb.DrawRect(slotX+17, slotY-1, 2, 20, 0xFFFFFFFF)
+	// 4. Experience Bar (182x5) between hotbar and health/hunger
+	if expBg, ok := GetOfficialImage("gui/sprites/hud/experience_bar_background.png"); ok {
+		fb.DrawRawImage(hotbarX, hotbarY-6, expBg)
+	}
+
+	// 5. Health Bar (aligned with left of hotbar, 10 hearts spaced by 8px)
+	heartStartX := hotbarX
+	hudBaseY := hotbarY - 17
+	heartContainer, hasHeartContainer := GetOfficialImage("gui/sprites/hud/heart/container.png")
+	heartFull, hasHeartFull := GetOfficialImage("gui/sprites/hud/heart/full.png")
+	heartHalf, hasHeartHalf := GetOfficialImage("gui/sprites/hud/heart/half.png")
+
+	fullHearts := int(health) / 2
+	hasHalfHeart := (int(health) % 2) == 1
+
+	for i := 0; i < 10; i++ {
+		hx := heartStartX + i*8
+		hy := hudBaseY
+		if health <= 4.0 {
+			// Minecraft Java edition authentic heart shaking at low health
+			shake := (i*7 + int(time.Now().UnixMilli()/70)) % 3
+			hy += shake - 1
+		}
+		if hasHeartContainer {
+			fb.DrawRawImage(hx, hy, heartContainer)
+		} else {
+			fb.DrawRect(hx, hy, 9, 9, 0xFF330000)
+		}
+		if i < fullHearts {
+			if hasHeartFull {
+				fb.DrawRawImage(hx, hy, heartFull)
+			} else {
+				fb.DrawRect(hx+1, hy+1, 7, 7, 0xFFFF1111)
+			}
+		} else if i == fullHearts && hasHalfHeart {
+			if hasHeartHalf {
+				fb.DrawRawImage(hx, hy, heartHalf)
+			} else {
+				fb.DrawRect(hx+1, hy+1, 4, 7, 0xFFFF1111)
+			}
+		}
+	}
+
+	// 6. Hunger Bar (aligned with right of hotbar, drawn right-to-left)
+	hungerStartX := hotbarX + 182 - 9
+	foodEmpty, hasFoodEmpty := GetOfficialImage("gui/sprites/hud/food_empty.png")
+	foodFull, hasFoodFull := GetOfficialImage("gui/sprites/hud/food_full.png")
+	foodHalf, hasFoodHalf := GetOfficialImage("gui/sprites/hud/food_half.png")
+
+	fullFood := hunger / 2
+	hasHalfFood := (hunger % 2) == 1
+
+	for i := 0; i < 10; i++ {
+		hx := hungerStartX - i*8
+		hy := hudBaseY
+		if hasFoodEmpty {
+			fb.DrawRawImage(hx, hy, foodEmpty)
+		} else {
+			fb.DrawRect(hx, hy, 9, 9, 0xFF2A1E14)
+		}
+		if i < fullFood {
+			if hasFoodFull {
+				fb.DrawRawImage(hx, hy, foodFull)
+			} else {
+				fb.DrawRect(hx+1, hy+1, 7, 7, 0xFFD47C2F)
+			}
+		} else if i == fullFood && hasHalfFood {
+			if hasFoodHalf {
+				fb.DrawRawImage(hx, hy, foodHalf)
+			} else {
+				fb.DrawRect(hx+1, hy+1, 4, 7, 0xFFD47C2F)
+			}
 		}
 	}
 }

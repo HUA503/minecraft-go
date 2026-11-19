@@ -14,13 +14,133 @@ import (
 	"github.com/HUA503/minecraft-go/pkg/inventory"
 )
 
-//go:embed assets/textures/item/*.png assets/textures/block/*.png
+//go:embed assets/textures/item/*.png assets/textures/block/*.png assets/textures/gui/sprites/hud/*.png assets/textures/gui/sprites/hud/heart/*.png assets/textures/entity/*/*.png
 var EmbeddedTextures embed.FS
 
 var (
 	officialSpriteCache   = make(map[string][16][16]uint32)
 	officialSpriteCacheMu sync.RWMutex
+
+	officialRawCache   = make(map[string]*RawImage)
+	officialRawCacheMu sync.RWMutex
 )
+
+// RawImage represents an authentic decoded RGBA texture.
+type RawImage struct {
+	Width  int
+	Height int
+	Pixels []uint32 // 0xAARRGGBB in row-major order
+}
+
+// Sample returns the pixel color at normalized UV coordinates [0.0, 1.0].
+func (img *RawImage) Sample(u, v float32) uint32 {
+	if img == nil || img.Width == 0 || img.Height == 0 || len(img.Pixels) == 0 {
+		return 0
+	}
+	if u < 0 {
+		u = 0
+	} else if u > 1.0 {
+		u = 1.0
+	}
+	if v < 0 {
+		v = 0
+	} else if v > 1.0 {
+		v = 1.0
+	}
+	x := int(u * float32(img.Width-1))
+	y := int(v * float32(img.Height-1))
+	if x >= img.Width {
+		x = img.Width - 1
+	}
+	if y >= img.Height {
+		y = img.Height - 1
+	}
+	return img.Pixels[y*img.Width+x]
+}
+
+// SampleUVRect returns pixel color within a sub-rectangle of the texture [u0..u1, v0..v1].
+func (img *RawImage) SampleUVRect(u0, v0, u1, v1 float32, subU, subV float32) uint32 {
+	u := u0 + (u1-u0)*subU
+	v := v0 + (v1-v0)*subV
+	return img.Sample(u, v)
+}
+
+// LoadRawImage decodes any PNG image into a RawImage.
+func LoadRawImage(r io.Reader) (*RawImage, error) {
+	img, _, err := image.Decode(r)
+	if err != nil {
+		return nil, err
+	}
+	bounds := img.Bounds()
+	w := bounds.Dx()
+	h := bounds.Dy()
+	raw := &RawImage{
+		Width:  w,
+		Height: h,
+		Pixels: make([]uint32, w*h),
+	}
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			r, g, b, a := img.At(bounds.Min.X+x, bounds.Min.Y+y).RGBA()
+			if a == 0 {
+				raw.Pixels[y*w+x] = 0
+			} else {
+				a8 := uint32(a >> 8)
+				r8 := uint32((r * 255) / a)
+				g8 := uint32((g * 255) / a)
+				b8 := uint32((b * 255) / a)
+				raw.Pixels[y*w+x] = (a8 << 24) | (r8 << 16) | (g8 << 8) | b8
+			}
+		}
+	}
+	return raw, nil
+}
+
+// ReadOfficialAssetBytes reads bytes from file or embedded FS for any relative path.
+func ReadOfficialAssetBytes(relPath string) ([]byte, error) {
+	if !strings.HasSuffix(relPath, ".png") {
+		relPath += ".png"
+	}
+	normPath := filepath.Clean(relPath)
+	candidates := []string{
+		filepath.Join("assets", "minecraft", "textures", normPath),
+		filepath.Join("..", "assets", "minecraft", "textures", normPath),
+		filepath.Join("..", "..", "assets", "minecraft", "textures", normPath),
+		filepath.Join("pkg", "render", "assets", "textures", normPath),
+	}
+	for _, p := range candidates {
+		if data, err := os.ReadFile(p); err == nil && len(data) > 0 {
+			return data, nil
+		}
+	}
+	// Fallback to embedded textures
+	embedPath := "assets/textures/" + filepath.ToSlash(normPath)
+	return EmbeddedTextures.ReadFile(embedPath)
+}
+
+// GetOfficialImage loads and caches any authentic PNG image from embedded or disk assets.
+func GetOfficialImage(relPath string) (*RawImage, bool) {
+	relPath = filepath.ToSlash(relPath)
+	officialRawCacheMu.RLock()
+	if cached, ok := officialRawCache[relPath]; ok {
+		officialRawCacheMu.RUnlock()
+		return cached, true
+	}
+	officialRawCacheMu.RUnlock()
+
+	data, err := ReadOfficialAssetBytes(relPath)
+	if err != nil {
+		return nil, false
+	}
+	raw, err := LoadRawImage(bytes.NewReader(data))
+	if err != nil {
+		return nil, false
+	}
+	officialRawCacheMu.Lock()
+	officialRawCache[relPath] = raw
+	officialRawCacheMu.Unlock()
+	return raw, true
+}
 
 // LoadPNG16x16 decodes a 16x16 PNG image from an io.Reader into a [16][16]uint32 RGBA pixel buffer.
 func LoadPNG16x16(r io.Reader) ([16][16]uint32, error) {

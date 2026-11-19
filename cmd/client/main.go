@@ -1798,74 +1798,92 @@ func (c *Client) drawMob(m *sim.MobEntity) {
 	radY := yaw * math.Pi / 180.0
 	cosY, sinY := math.Cos(radY), math.Sin(radY)
 
+	var mobTex *render.RawImage
 	switch m.Type {
 	case sim.MobZombie:
-		headCol := uint32(0xFF4C7838)  // Zombie green
-		torsoCol := uint32(0xFF2E8690) // Cyan shirt
-		pantsCol := uint32(0xFF2A3663) // Indigo pants
-		if hurtFlash {
-			headCol = 0xFFFF3333
-			torsoCol = 0xFFFF2222
-			pantsCol = 0xFFFF1111
-		}
-		// Head (facing yaw & pitch)
-		c.render3DBox(pos.X, pos.Y+1.45, pos.Z, 0.22, 0.22, 0.22, yaw, pitch, headCol, headCol, headCol)
-		// Torso
-		c.render3DBox(pos.X, pos.Y+0.88, pos.Z, 0.24, 0.35, 0.12, yaw, 0, torsoCol, torsoCol, torsoCol)
-		// Outstretched arms
+		mobTex, _ = render.GetOfficialImage("entity/zombie/zombie.png")
+	case sim.MobSkeleton:
+		mobTex, _ = render.GetOfficialImage("entity/skeleton/skeleton.png")
+	case sim.MobCreeper:
+		mobTex, _ = render.GetOfficialImage("entity/creeper/creeper.png")
+	case sim.MobCow:
+		mobTex, _ = render.GetOfficialImage("entity/cow/cow.png")
+	case sim.MobPig:
+		mobTex, _ = render.GetOfficialImage("entity/pig/pig.png")
+	case sim.MobSheep:
+		mobTex, _ = render.GetOfficialImage("entity/sheep/sheep.png")
+	case sim.MobChicken:
+		mobTex, _ = render.GetOfficialImage("entity/chicken/chicken.png")
+	}
+
+	tint := uint32(0)
+	if hurtFlash {
+		tint = 0xFFFF2222
+	}
+
+	switch m.Type {
+	case sim.MobZombie:
+		headUV := makeBoxFaceUVs(64, 64, [4]float32{8, 0, 16, 8}, [4]float32{16, 0, 24, 8}, [4]float32{24, 8, 32, 16}, [4]float32{8, 8, 16, 16}, [4]float32{16, 8, 24, 16}, [4]float32{0, 8, 8, 16})
+		fbHead := [6]uint32{0xFF325424, 0xFF325424, 0xFF325424, 0xFF4C7838, 0xFF4C7838, 0xFF4C7838}
+		c.renderTextured3DBox(pos.X, pos.Y+1.45, pos.Z, 0.22, 0.22, 0.22, yaw, pitch, mobTex, headUV, fbHead, tint)
+
+		torsoUV := makeBoxFaceUVs(64, 64, [4]float32{20, 16, 28, 20}, [4]float32{28, 16, 36, 20}, [4]float32{32, 20, 40, 32}, [4]float32{20, 20, 28, 32}, [4]float32{16, 20, 20, 32}, [4]float32{28, 20, 32, 32})
+		fbTorso := [6]uint32{0xFF2E8690, 0xFF2E8690, 0xFF2E8690, 0xFF2E8690, 0xFF2E8690, 0xFF2E8690}
+		c.renderTextured3DBox(pos.X, pos.Y+0.88, pos.Z, 0.24, 0.35, 0.12, yaw, 0, mobTex, torsoUV, fbTorso, tint)
+
 		armOffX := 0.35 * cosY
 		armOffZ := -0.35 * sinY
 		forwardX := 0.25 * sinY
 		forwardZ := 0.25 * cosY
 		armBob := math.Sin(float64(m.WalkDistance)*1.3) * 5.0
-		c.render3DBox(pos.X-armOffX+forwardX, pos.Y+0.88, pos.Z-armOffZ+forwardZ, 0.11, 0.12, 0.35, yaw, armBob, torsoCol, headCol, torsoCol)
-		c.render3DBox(pos.X+armOffX+forwardX, pos.Y+0.88, pos.Z+armOffZ+forwardZ, 0.11, 0.12, 0.35, yaw, -armBob, torsoCol, headCol, torsoCol)
-		// Animated swinging legs
+		armUV := makeUniformFaceUV(64, 64, 44, 20, 48, 32)
+		fbArm := [6]uint32{0xFF2E8690, 0xFF4C7838, 0xFF2E8690, 0xFF4C7838, 0xFF2E8690, 0xFF2E8690}
+		c.renderTextured3DBox(pos.X-armOffX+forwardX, pos.Y+0.88, pos.Z-armOffZ+forwardZ, 0.11, 0.12, 0.35, yaw, armBob, mobTex, armUV, fbArm, tint)
+		c.renderTextured3DBox(pos.X+armOffX+forwardX, pos.Y+0.88, pos.Z+armOffZ+forwardZ, 0.11, 0.12, 0.35, yaw, -armBob, mobTex, armUV, fbArm, tint)
+
 		legOffX := 0.12 * cosY
 		legOffZ := -0.12 * sinY
-		c.render3DBox(pos.X-legOffX, pos.Y+0.36, pos.Z-legOffZ, 0.11, 0.35, 0.12, yaw, -walkSwing, pantsCol, pantsCol, pantsCol)
-		c.render3DBox(pos.X+legOffX, pos.Y+0.36, pos.Z+legOffZ, 0.11, 0.35, 0.12, yaw, walkSwing, pantsCol, pantsCol, pantsCol)
+		legUV := makeUniformFaceUV(64, 64, 4, 20, 8, 32)
+		fbLeg := [6]uint32{0xFF2A3663, 0xFF2A3663, 0xFF2A3663, 0xFF2A3663, 0xFF2A3663, 0xFF2A3663}
+		c.renderTextured3DBox(pos.X-legOffX, pos.Y+0.36, pos.Z-legOffZ, 0.11, 0.35, 0.12, yaw, -walkSwing, mobTex, legUV, fbLeg, tint)
+		c.renderTextured3DBox(pos.X+legOffX, pos.Y+0.36, pos.Z+legOffZ, 0.11, 0.35, 0.12, yaw, walkSwing, mobTex, legUV, fbLeg, tint)
 
 	case sim.MobSkeleton:
-		boneCol := uint32(0xFFE8E8E8) // Bone white
-		if hurtFlash {
-			boneCol = 0xFFFF3333
-		}
-		// Head
-		c.render3DBox(pos.X, pos.Y+1.45, pos.Z, 0.20, 0.20, 0.20, yaw, pitch, boneCol, boneCol, boneCol)
-		// Ribcage / Torso
-		c.render3DBox(pos.X, pos.Y+0.88, pos.Z, 0.20, 0.35, 0.10, yaw, 0, boneCol, boneCol, boneCol)
-		// Arms holding bow forward
+		headUV := makeBoxFaceUVs(64, 32, [4]float32{8, 0, 16, 8}, [4]float32{16, 0, 24, 8}, [4]float32{24, 8, 32, 16}, [4]float32{8, 8, 16, 16}, [4]float32{16, 8, 24, 16}, [4]float32{0, 8, 8, 16})
+		fbBone := [6]uint32{0xFFE8E8E8, 0xFFE8E8E8, 0xFFE8E8E8, 0xFFE8E8E8, 0xFFE8E8E8, 0xFFE8E8E8}
+		c.renderTextured3DBox(pos.X, pos.Y+1.45, pos.Z, 0.20, 0.20, 0.20, yaw, pitch, mobTex, headUV, fbBone, tint)
+
+		torsoUV := makeBoxFaceUVs(64, 32, [4]float32{20, 16, 28, 20}, [4]float32{28, 16, 36, 20}, [4]float32{32, 20, 40, 32}, [4]float32{20, 20, 28, 32}, [4]float32{16, 20, 20, 32}, [4]float32{28, 20, 32, 32})
+		c.renderTextured3DBox(pos.X, pos.Y+0.88, pos.Z, 0.20, 0.35, 0.10, yaw, 0, mobTex, torsoUV, fbBone, tint)
+
 		armOffX := 0.30 * cosY
 		armOffZ := -0.30 * sinY
 		forwardX := 0.20 * sinY
 		forwardZ := 0.20 * cosY
-		c.render3DBox(pos.X-armOffX+forwardX, pos.Y+0.88, pos.Z-armOffZ+forwardZ, 0.08, 0.08, 0.35, yaw, 0, boneCol, boneCol, boneCol)
-		c.render3DBox(pos.X+armOffX+forwardX, pos.Y+0.88, pos.Z+armOffZ+forwardZ, 0.08, 0.08, 0.35, yaw, 0, boneCol, boneCol, boneCol)
-		// Animated legs
+		limbUV := makeUniformFaceUV(64, 32, 0, 20, 4, 32)
+		c.renderTextured3DBox(pos.X-armOffX+forwardX, pos.Y+0.88, pos.Z-armOffZ+forwardZ, 0.08, 0.08, 0.35, yaw, 0, mobTex, limbUV, fbBone, tint)
+		c.renderTextured3DBox(pos.X+armOffX+forwardX, pos.Y+0.88, pos.Z+armOffZ+forwardZ, 0.08, 0.08, 0.35, yaw, 0, mobTex, limbUV, fbBone, tint)
+
 		legOffX := 0.10 * cosY
 		legOffZ := -0.10 * sinY
-		c.render3DBox(pos.X-legOffX, pos.Y+0.36, pos.Z-legOffZ, 0.08, 0.35, 0.08, yaw, -walkSwing, boneCol, boneCol, boneCol)
-		c.render3DBox(pos.X+legOffX, pos.Y+0.36, pos.Z+legOffZ, 0.08, 0.35, 0.08, yaw, walkSwing, boneCol, boneCol, boneCol)
+		c.renderTextured3DBox(pos.X-legOffX, pos.Y+0.36, pos.Z-legOffZ, 0.08, 0.35, 0.08, yaw, -walkSwing, mobTex, limbUV, fbBone, tint)
+		c.renderTextured3DBox(pos.X+legOffX, pos.Y+0.36, pos.Z+legOffZ, 0.08, 0.35, 0.08, yaw, walkSwing, mobTex, limbUV, fbBone, tint)
 
 	case sim.MobCreeper:
-		headCol := uint32(0xFF48B33B) // Creeper green
-		bodyCol := uint32(0xFF3DA330)
-		legCol := uint32(0xFF359428)
+		creeperTint := tint
 		if m.FuseTicks > 0 && (m.FuseTicks%4 < 2) {
-			headCol = 0xFFFFFFFF // Flashing fuse white
-			bodyCol = 0xFFEEEEEE
-			legCol = 0xFFDDDDDD
-		} else if hurtFlash {
-			headCol = 0xFFFF3333
-			bodyCol = 0xFFFF2222
-			legCol = 0xFFFF1111
+			creeperTint = 0xFFFFFFFF
 		}
-		// Creeper Head
-		c.render3DBox(pos.X, pos.Y+1.35, pos.Z, 0.22, 0.22, 0.22, yaw, pitch, headCol, headCol, headCol)
-		// Creeper Body
-		c.render3DBox(pos.X, pos.Y+0.75, pos.Z, 0.20, 0.38, 0.12, yaw, 0, bodyCol, bodyCol, bodyCol)
-		// 4 Animated Feet
+		headUV := makeBoxFaceUVs(64, 32, [4]float32{8, 0, 16, 8}, [4]float32{16, 0, 24, 8}, [4]float32{24, 8, 32, 16}, [4]float32{8, 8, 16, 16}, [4]float32{16, 8, 24, 16}, [4]float32{0, 8, 8, 16})
+		fbCreeperHead := [6]uint32{0xFF48B33B, 0xFF48B33B, 0xFF48B33B, 0xFF48B33B, 0xFF48B33B, 0xFF48B33B}
+		c.renderTextured3DBox(pos.X, pos.Y+1.35, pos.Z, 0.22, 0.22, 0.22, yaw, pitch, mobTex, headUV, fbCreeperHead, creeperTint)
+
+		bodyUV := makeUniformFaceUV(64, 32, 20, 20, 24, 32)
+		fbCreeperBody := [6]uint32{0xFF3DA330, 0xFF3DA330, 0xFF3DA330, 0xFF3DA330, 0xFF3DA330, 0xFF3DA330}
+		c.renderTextured3DBox(pos.X, pos.Y+0.75, pos.Z, 0.20, 0.38, 0.12, yaw, 0, mobTex, bodyUV, fbCreeperBody, creeperTint)
+
+		footUV := makeUniformFaceUV(64, 32, 4, 20, 8, 26)
+		fbFoot := [6]uint32{0xFF359428, 0xFF359428, 0xFF359428, 0xFF359428, 0xFF359428, 0xFF359428}
 		for i, f := range [][2]float64{{-0.12, 0.12}, {0.12, 0.12}, {-0.12, -0.12}, {0.12, -0.12}} {
 			fx := f[0]*cosY + f[1]*sinY
 			fz := -f[0]*sinY + f[1]*cosY
@@ -1873,41 +1891,38 @@ func (c *Client) drawMob(m *sim.MobEntity) {
 			if i%2 == 1 {
 				legPitch = -walkSwing
 			}
-			c.render3DBox(pos.X+fx, pos.Y+0.18, pos.Z+fz, 0.08, 0.18, 0.08, yaw, legPitch, legCol, legCol, legCol)
+			c.renderTextured3DBox(pos.X+fx, pos.Y+0.18, pos.Z+fz, 0.08, 0.18, 0.08, yaw, legPitch, mobTex, footUV, fbFoot, creeperTint)
 		}
 
 	case sim.MobPig:
-		bodyCol := uint32(0xFFF0A0A0) // Pig pink
-		headCol := uint32(0xFFF0A0A0)
-		snoutCol := uint32(0xFFE88A8A)
-		nostrilCol := uint32(0xFFD06868)
-		legCol := uint32(0xFFE08E8E)
-		if hurtFlash {
-			bodyCol = 0xFFFF3333
-			headCol = 0xFFFF3333
-			legCol = 0xFFFF2222
-		}
-		// Horizontal Quadruped Body
-		c.render3DBox(pos.X, pos.Y+0.55, pos.Z, 0.26, 0.22, 0.38, yaw, 0, bodyCol, bodyCol, bodyCol)
-		// Head
 		frontX := 0.42 * sinY
 		frontZ := 0.42 * cosY
-		c.render3DBox(pos.X+frontX, pos.Y+0.65, pos.Z+frontZ, 0.20, 0.20, 0.20, yaw, pitch, headCol, headCol, headCol)
-		// Protruding 3D Snout with nostrils
+		headUV := makeBoxFaceUVs(64, 64, [4]float32{8, 0, 16, 8}, [4]float32{16, 0, 24, 8}, [4]float32{24, 8, 32, 16}, [4]float32{8, 8, 16, 16}, [4]float32{16, 8, 24, 16}, [4]float32{0, 8, 8, 16})
+		fbPigHead := [6]uint32{0xFFF0A0A0, 0xFFF0A0A0, 0xFFF0A0A0, 0xFFF0A0A0, 0xFFF0A0A0, 0xFFF0A0A0}
+		c.renderTextured3DBox(pos.X+frontX, pos.Y+0.65, pos.Z+frontZ, 0.20, 0.20, 0.20, yaw, pitch, mobTex, headUV, fbPigHead, tint)
+
 		snoutX := 0.58 * sinY
 		snoutZ := 0.58 * cosY
-		c.render3DBox(pos.X+snoutX, pos.Y+0.60, pos.Z+snoutZ, 0.10, 0.08, 0.06, yaw, pitch, nostrilCol, snoutCol, snoutCol)
-		// Tiny curly tail
+		snoutUV := makeUniformFaceUV(64, 64, 17, 17, 21, 20)
+		fbSnout := [6]uint32{0xFFD06868, 0xFFE88A8A, 0xFFE88A8A, 0xFFD06868, 0xFFE88A8A, 0xFFE88A8A}
+		c.renderTextured3DBox(pos.X+snoutX, pos.Y+0.60, pos.Z+snoutZ, 0.10, 0.08, 0.06, yaw, pitch, mobTex, snoutUV, fbSnout, tint)
+
+		bodyUV := makeUniformFaceUV(64, 64, 28, 20, 44, 36)
+		fbPigBody := [6]uint32{0xFFF0A0A0, 0xFFF0A0A0, 0xFFF0A0A0, 0xFFF0A0A0, 0xFFF0A0A0, 0xFFF0A0A0}
+		c.renderTextured3DBox(pos.X, pos.Y+0.55, pos.Z, 0.26, 0.22, 0.38, yaw, 0, mobTex, bodyUV, fbPigBody, tint)
+
 		tailX := 0.40 * sinY
 		tailZ := 0.40 * cosY
-		c.render3DBox(pos.X-tailX, pos.Y+0.62, pos.Z-tailZ, 0.04, 0.06, 0.04, yaw, 30.0, snoutCol, snoutCol, snoutCol)
-		// 4 Animated Legs (alternating diagonal swing)
+		c.render3DBox(pos.X-tailX, pos.Y+0.62, pos.Z-tailZ, 0.04, 0.06, 0.04, yaw, 30.0, 0xFFE88A8A, 0xFFE88A8A, 0xFFE88A8A)
+
 		legs := [][2]float64{
-			{-0.15, 0.22},  // Front-Left
-			{0.15, 0.22},   // Front-Right
-			{-0.15, -0.22}, // Rear-Left
-			{0.15, -0.22},  // Rear-Right
+			{-0.15, 0.22},
+			{0.15, 0.22},
+			{-0.15, -0.22},
+			{0.15, -0.22},
 		}
+		legUV := makeUniformFaceUV(64, 64, 0, 20, 4, 28)
+		fbPigLeg := [6]uint32{0xFFE08E8E, 0xFFE08E8E, 0xFFE08E8E, 0xFFE08E8E, 0xFFE08E8E, 0xFFE08E8E}
 		for i, f := range legs {
 			lx := f[0]*cosY + f[1]*sinY
 			lz := -f[0]*sinY + f[1]*cosY
@@ -1915,47 +1930,39 @@ func (c *Client) drawMob(m *sim.MobEntity) {
 			if i == 1 || i == 2 {
 				legPitch = -walkSwing
 			}
-			c.render3DBox(pos.X+lx, pos.Y+0.20, pos.Z+lz, 0.08, 0.20, 0.08, yaw, legPitch, legCol, legCol, legCol)
+			c.renderTextured3DBox(pos.X+lx, pos.Y+0.20, pos.Z+lz, 0.08, 0.20, 0.08, yaw, legPitch, mobTex, legUV, fbPigLeg, tint)
 		}
 
 	case sim.MobCow:
-		bodyCol := uint32(0xFF5A4432)    // Brown cow body
-		spottedCol := uint32(0xFFE5E5E5) // White spots
-		headCol := uint32(0xFF5A4432)
-		muzzleCol := uint32(0xFF7D7D7D)  // Grey muzzle
-		hornCol := uint32(0xFFCCCCCC)
-		udderCol := uint32(0xFFECA0A0)   // Pink udder
-		legCol := uint32(0xFF423225)
-		hoofCol := uint32(0xFF221810)    // Dark hooves
-		if hurtFlash {
-			bodyCol = 0xFFFF3333
-			headCol = 0xFFFF3333
-			legCol = 0xFFFF2222
-		}
-		// Body with authentic spots
-		c.render3DBox(pos.X, pos.Y+0.75, pos.Z, 0.30, 0.28, 0.45, yaw, 0, spottedCol, bodyCol, bodyCol)
-		// Udder under rear abdomen
+		bodyUV := makeUniformFaceUV(64, 64, 28, 20, 40, 34)
+		fbCowBody := [6]uint32{0xFFE5E5E5, 0xFF5A4432, 0xFF5A4432, 0xFF5A4432, 0xFF5A4432, 0xFF5A4432}
+		c.renderTextured3DBox(pos.X, pos.Y+0.75, pos.Z, 0.30, 0.28, 0.45, yaw, 0, mobTex, bodyUV, fbCowBody, tint)
+
 		udderZ := -0.20 * cosY
 		udderX := 0.20 * sinY
-		c.render3DBox(pos.X-udderX, pos.Y+0.52, pos.Z-udderZ, 0.12, 0.08, 0.12, yaw, 0, udderCol, udderCol, udderCol)
-		// Head
+		c.render3DBox(pos.X-udderX, pos.Y+0.52, pos.Z-udderZ, 0.12, 0.08, 0.12, yaw, 0, 0xFFECA0A0, 0xFFECA0A0, 0xFFECA0A0)
+
 		frontX := 0.50 * sinY
 		frontZ := 0.50 * cosY
-		c.render3DBox(pos.X+frontX, pos.Y+0.90, pos.Z+frontZ, 0.22, 0.22, 0.22, yaw, pitch, headCol, headCol, headCol)
-		// Protruding Muzzle
+		headUV := makeBoxFaceUVs(64, 64, [4]float32{8, 0, 16, 8}, [4]float32{16, 0, 24, 8}, [4]float32{24, 8, 32, 16}, [4]float32{8, 8, 16, 16}, [4]float32{16, 8, 24, 16}, [4]float32{0, 8, 8, 16})
+		fbCowHead := [6]uint32{0xFF5A4432, 0xFF5A4432, 0xFF5A4432, 0xFF5A4432, 0xFF5A4432, 0xFF5A4432}
+		c.renderTextured3DBox(pos.X+frontX, pos.Y+0.90, pos.Z+frontZ, 0.22, 0.22, 0.22, yaw, pitch, mobTex, headUV, fbCowHead, tint)
+
 		muzzleX := 0.65 * sinY
 		muzzleZ := 0.65 * cosY
-		c.render3DBox(pos.X+muzzleX, pos.Y+0.82, pos.Z+muzzleZ, 0.14, 0.10, 0.08, yaw, pitch, muzzleCol, muzzleCol, muzzleCol)
-		// Horns on head
-		c.render3DBox(pos.X+frontX-0.18*cosY, pos.Y+1.08, pos.Z+frontZ+0.18*sinY, 0.04, 0.08, 0.04, yaw, 0, hornCol, hornCol, hornCol)
-		c.render3DBox(pos.X+frontX+0.18*cosY, pos.Y+1.08, pos.Z+frontZ-0.18*sinY, 0.04, 0.08, 0.04, yaw, 0, hornCol, hornCol, hornCol)
-		// 4 Animated Legs with hooves
+		c.render3DBox(pos.X+muzzleX, pos.Y+0.82, pos.Z+muzzleZ, 0.14, 0.10, 0.08, yaw, pitch, 0xFF7D7D7D, 0xFF7D7D7D, 0xFF7D7D7D)
+
+		c.render3DBox(pos.X+frontX-0.18*cosY, pos.Y+1.08, pos.Z+frontZ+0.18*sinY, 0.04, 0.08, 0.04, yaw, 0, 0xFFCCCCCC, 0xFFCCCCCC, 0xFFCCCCCC)
+		c.render3DBox(pos.X+frontX+0.18*cosY, pos.Y+1.08, pos.Z+frontZ-0.18*sinY, 0.04, 0.08, 0.04, yaw, 0, 0xFFCCCCCC, 0xFFCCCCCC, 0xFFCCCCCC)
+
 		legs := [][2]float64{
-			{-0.18, 0.28},  // Front-Left
-			{0.18, 0.28},   // Front-Right
-			{-0.18, -0.28}, // Rear-Left
-			{0.18, -0.28},  // Rear-Right
+			{-0.18, 0.28},
+			{0.18, 0.28},
+			{-0.18, -0.28},
+			{0.18, -0.28},
 		}
+		legUV := makeUniformFaceUV(64, 64, 0, 20, 4, 32)
+		fbCowLeg := [6]uint32{0xFF423225, 0xFF221810, 0xFF423225, 0xFF423225, 0xFF423225, 0xFF423225}
 		for i, f := range legs {
 			lx := f[0]*cosY + f[1]*sinY
 			lz := -f[0]*sinY + f[1]*cosY
@@ -1963,33 +1970,29 @@ func (c *Client) drawMob(m *sim.MobEntity) {
 			if i == 1 || i == 2 {
 				legPitch = -walkSwing
 			}
-			c.render3DBox(pos.X+lx, pos.Y+0.28, pos.Z+lz, 0.09, 0.28, 0.09, yaw, legPitch, legCol, hoofCol, legCol)
+			c.renderTextured3DBox(pos.X+lx, pos.Y+0.28, pos.Z+lz, 0.09, 0.28, 0.09, yaw, legPitch, mobTex, legUV, fbCowLeg, tint)
 		}
 
 	case sim.MobSheep:
-		woolCol := uint32(0xFFEFEFEF) // Fluffy white/cream wool
-		woolShade := uint32(0xFFD6D6D6)
-		skinCol := uint32(0xFFD8C0A8) // Tan skin
-		legCol := uint32(0xFFBBA088)
-		if hurtFlash {
-			woolCol = 0xFFFF3333
-			skinCol = 0xFFFF3333
-			legCol = 0xFFFF2222
-		}
-		// Fluffy Wool Body
-		c.render3DBox(pos.X, pos.Y+0.72, pos.Z, 0.34, 0.30, 0.46, yaw, 0, woolCol, woolShade, woolCol)
-		// Head: tan skin face with fluffy wool cap
+		woolUV := makeUniformFaceUV(64, 32, 28, 16, 40, 30)
+		fbSheepBody := [6]uint32{0xFFEFEFEF, 0xFFD6D6D6, 0xFFEFEFEF, 0xFFEFEFEF, 0xFFEFEFEF, 0xFFEFEFEF}
+		c.renderTextured3DBox(pos.X, pos.Y+0.72, pos.Z, 0.34, 0.30, 0.46, yaw, 0, mobTex, woolUV, fbSheepBody, tint)
+
 		frontX := 0.48 * sinY
 		frontZ := 0.48 * cosY
-		c.render3DBox(pos.X+frontX, pos.Y+0.85, pos.Z+frontZ, 0.18, 0.18, 0.20, yaw, pitch, skinCol, skinCol, skinCol)
-		c.render3DBox(pos.X+frontX, pos.Y+0.98, pos.Z+frontZ, 0.19, 0.08, 0.18, yaw, pitch, woolCol, woolCol, woolCol) // Wool cap
-		// 4 Slender animated legs
+		headUV := makeUniformFaceUV(64, 32, 8, 8, 14, 14)
+		fbSheepHead := [6]uint32{0xFFD8C0A8, 0xFFD8C0A8, 0xFFD8C0A8, 0xFFD8C0A8, 0xFFD8C0A8, 0xFFD8C0A8}
+		c.renderTextured3DBox(pos.X+frontX, pos.Y+0.85, pos.Z+frontZ, 0.18, 0.18, 0.20, yaw, pitch, mobTex, headUV, fbSheepHead, tint)
+		c.render3DBox(pos.X+frontX, pos.Y+0.98, pos.Z+frontZ, 0.19, 0.08, 0.18, yaw, pitch, 0xFFEFEFEF, 0xFFEFEFEF, 0xFFEFEFEF)
+
 		legs := [][2]float64{
 			{-0.16, 0.24},
 			{0.16, 0.24},
 			{-0.16, -0.24},
 			{0.16, -0.24},
 		}
+		legUV := makeUniformFaceUV(64, 32, 0, 20, 4, 28)
+		fbSheepLeg := [6]uint32{0xFFBBA088, 0xFF4A3828, 0xFFBBA088, 0xFFBBA088, 0xFFBBA088, 0xFFBBA088}
 		for i, f := range legs {
 			lx := f[0]*cosY + f[1]*sinY
 			lz := -f[0]*sinY + f[1]*cosY
@@ -1997,42 +2000,44 @@ func (c *Client) drawMob(m *sim.MobEntity) {
 			if i == 1 || i == 2 {
 				legPitch = -walkSwing
 			}
-			c.render3DBox(pos.X+lx, pos.Y+0.24, pos.Z+lz, 0.07, 0.24, 0.07, yaw, legPitch, legCol, 0xFF4A3828, legCol)
+			c.renderTextured3DBox(pos.X+lx, pos.Y+0.24, pos.Z+lz, 0.07, 0.24, 0.07, yaw, legPitch, mobTex, legUV, fbSheepLeg, tint)
 		}
 
 	case sim.MobChicken:
-		featherCol := uint32(0xFFFFFFFF) // Pure white
-		combCol := uint32(0xFFFF2020)    // Red comb & wattle
-		beakCol := uint32(0xFFFFB010)    // Yellow beak & feet
-		if hurtFlash {
-			featherCol = 0xFFFF3333
-		}
-		// Body
-		c.render3DBox(pos.X, pos.Y+0.32, pos.Z, 0.18, 0.16, 0.22, yaw, 0, featherCol, featherCol, featherCol)
-		// Flapping Wings
+		bodyUV := makeUniformFaceUV(64, 32, 16, 12, 22, 18)
+		fbChickenBody := [6]uint32{0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF}
+		c.renderTextured3DBox(pos.X, pos.Y+0.32, pos.Z, 0.18, 0.16, 0.22, yaw, 0, mobTex, bodyUV, fbChickenBody, tint)
+
 		wingFlap := 0.0
 		if walkSwing != 0 || m.Velocity.Y != 0 {
 			wingFlap = math.Sin(float64(m.WalkDistance)*4.5) * 22.0
 		}
-		c.render3DBox(pos.X-0.20*cosY, pos.Y+0.35, pos.Z+0.20*sinY, 0.03, 0.12, 0.18, yaw, wingFlap, featherCol, featherCol, featherCol)
-		c.render3DBox(pos.X+0.20*cosY, pos.Y+0.35, pos.Z-0.20*sinY, 0.03, 0.12, 0.18, yaw, -wingFlap, featherCol, featherCol, featherCol)
-		// Neck & Head
+		wingUV := makeUniformFaceUV(64, 32, 24, 13, 26, 17)
+		fbWing := [6]uint32{0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF}
+		c.renderTextured3DBox(pos.X-0.20*cosY, pos.Y+0.35, pos.Z+0.20*sinY, 0.03, 0.12, 0.18, yaw, wingFlap, mobTex, wingUV, fbWing, tint)
+		c.renderTextured3DBox(pos.X+0.20*cosY, pos.Y+0.35, pos.Z-0.20*sinY, 0.03, 0.12, 0.18, yaw, -wingFlap, mobTex, wingUV, fbWing, tint)
+
 		frontX := 0.22 * sinY
 		frontZ := 0.22 * cosY
-		c.render3DBox(pos.X+frontX, pos.Y+0.52, pos.Z+frontZ, 0.10, 0.18, 0.12, yaw, pitch, featherCol, featherCol, featherCol)
-		// Red Comb on head
-		c.render3DBox(pos.X+frontX, pos.Y+0.64, pos.Z+frontZ, 0.04, 0.06, 0.08, yaw, pitch, combCol, combCol, combCol)
-		// Yellow Beak
+		headUV := makeUniformFaceUV(64, 32, 8, 4, 12, 8)
+		fbChickenHead := [6]uint32{0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF}
+		c.renderTextured3DBox(pos.X+frontX, pos.Y+0.52, pos.Z+frontZ, 0.10, 0.18, 0.12, yaw, pitch, mobTex, headUV, fbChickenHead, tint)
+
+		c.render3DBox(pos.X+frontX, pos.Y+0.64, pos.Z+frontZ, 0.04, 0.06, 0.08, yaw, pitch, 0xFFFF2020, 0xFFFF2020, 0xFFFF2020)
+
 		beakX := 0.32 * sinY
 		beakZ := 0.32 * cosY
-		c.render3DBox(pos.X+beakX, pos.Y+0.50, pos.Z+beakZ, 0.06, 0.04, 0.06, yaw, pitch, beakCol, beakCol, beakCol)
-		// Red Wattle
-		c.render3DBox(pos.X+beakX, pos.Y+0.44, pos.Z+beakZ, 0.04, 0.04, 0.04, yaw, pitch, combCol, combCol, combCol)
-		// 2 Yellow Legs
+		beakUV := makeUniformFaceUV(64, 32, 14, 4, 18, 8)
+		fbBeak := [6]uint32{0xFFFFB010, 0xFFFFB010, 0xFFFFB010, 0xFFFFB010, 0xFFFFB010, 0xFFFFB010}
+		c.renderTextured3DBox(pos.X+beakX, pos.Y+0.50, pos.Z+beakZ, 0.06, 0.04, 0.06, yaw, pitch, mobTex, beakUV, fbBeak, tint)
+		c.render3DBox(pos.X+beakX, pos.Y+0.44, pos.Z+beakZ, 0.04, 0.04, 0.04, yaw, pitch, 0xFFFF2020, 0xFFFF2020, 0xFFFF2020)
+
 		legOffX := 0.07 * cosY
 		legOffZ := -0.07 * sinY
-		c.render3DBox(pos.X-legOffX, pos.Y+0.12, pos.Z-legOffZ, 0.03, 0.14, 0.04, yaw, -walkSwing*1.4, beakCol, beakCol, beakCol)
-		c.render3DBox(pos.X+legOffX, pos.Y+0.12, pos.Z+legOffZ, 0.03, 0.14, 0.04, yaw, walkSwing*1.4, beakCol, beakCol, beakCol)
+		legUV := makeUniformFaceUV(64, 32, 26, 0, 28, 4)
+		fbLeg := [6]uint32{0xFFFFB010, 0xFFFFB010, 0xFFFFB010, 0xFFFFB010, 0xFFFFB010, 0xFFFFB010}
+		c.renderTextured3DBox(pos.X-legOffX, pos.Y+0.12, pos.Z-legOffZ, 0.03, 0.14, 0.04, yaw, -walkSwing*1.4, mobTex, legUV, fbLeg, tint)
+		c.renderTextured3DBox(pos.X+legOffX, pos.Y+0.12, pos.Z+legOffZ, 0.03, 0.14, 0.04, yaw, walkSwing*1.4, mobTex, legUV, fbLeg, tint)
 	}
 
 	// Health bar above mob if damaged
@@ -2054,18 +2059,51 @@ func (c *Client) drawMob(m *sim.MobEntity) {
 	}
 }
 
-// render3DBox renders a volumetric 3D cuboid transformed by position, yaw, and pitch with depth testing.
-func (c *Client) render3DBox(cx, cy, cz, hx, hy, hz, yawDeg, pitchDeg float64, colTop, colBottom, colSide uint32) {
+// BoxFaceUV stores the UV bounds for one face of a 3D box.
+type BoxFaceUV struct {
+	U0, V0, U1, V1 float32
+}
+
+func makeBoxFaceUVs(texW, texH float32, top, btm, north, south, west, east [4]float32) [6]BoxFaceUV {
+	uv := func(r [4]float32) BoxFaceUV {
+		return BoxFaceUV{
+			U0: r[0] / texW,
+			V0: r[1] / texH,
+			U1: r[2] / texW,
+			V1: r[3] / texH,
+		}
+	}
+	return [6]BoxFaceUV{
+		uv(top),   // 0: +Y (Top)
+		uv(btm),   // 1: -Y (Bottom)
+		uv(north), // 2: -Z (North/Back)
+		uv(south), // 3: +Z (South/Front)
+		uv(west),  // 4: -X (West/Right)
+		uv(east),  // 5: +X (East/Left)
+	}
+}
+
+func makeUniformFaceUV(texW, texH float32, x0, y0, x1, y1 float32) [6]BoxFaceUV {
+	r := [4]float32{x0, y0, x1, y1}
+	return makeBoxFaceUVs(texW, texH, r, r, r, r, r, r)
+}
+
+// renderTextured3DBox renders a volumetric 3D cuboid with authentic UV texture mapping, lighting and depth testing.
+func (c *Client) renderTextured3DBox(
+	cx, cy, cz, hx, hy, hz, yawDeg, pitchDeg float64,
+	tex *render.RawImage,
+	faceUVs [6]BoxFaceUV,
+	fallbackCols [6]uint32,
+	tint uint32,
+) {
 	radY := yawDeg * math.Pi / 180.0
 	radP := pitchDeg * math.Pi / 180.0
 	cosY, sinY := math.Cos(radY), math.Sin(radY)
 	cosP, sinP := math.Cos(radP), math.Sin(radP)
 
 	rot := func(lx, ly, lz float64) (float64, float64, float64) {
-		// Pitch around local X axis
 		ry := ly*cosP - lz*sinP
 		rz := ly*sinP + lz*cosP
-		// Yaw around world Y axis
 		rx := lx*cosY + rz*sinY
 		rz2 := -lx*sinY + rz*cosY
 		return cx + rx, cy + ry, cz + rz2
@@ -2092,10 +2130,10 @@ func (c *Client) render3DBox(cx, cy, cz, hx, hy, hz, yawDeg, pitchDeg float64, c
 	faces := [6][4]int{
 		{2, 3, 7, 6}, // Top (+Y)
 		{4, 5, 1, 0}, // Bottom (-Y)
-		{3, 2, 1, 0}, // North (-Z)
-		{6, 7, 4, 5}, // South (+Z)
-		{7, 3, 0, 4}, // West (-X)
-		{2, 6, 5, 1}, // East (+X)
+		{3, 2, 1, 0}, // North (-Z, Back)
+		{6, 7, 4, 5}, // South (+Z, Front)
+		{7, 3, 0, 4}, // West (-X, Right)
+		{2, 6, 5, 1}, // East (+X, Left)
 	}
 
 	for fIdx, f := range faces {
@@ -2109,20 +2147,24 @@ func (c *Client) render3DBox(cx, cy, cz, hx, hy, hz, yawDeg, pitchDeg float64, c
 			continue
 		}
 
-		col := colSide
-		if fIdx == 0 {
-			col = colTop
-		} else if fIdx == 1 {
-			col = colBottom
-		} else if fIdx >= 2 && fIdx <= 3 {
-			col = render.ApplyLighting(colSide, 0.85)
+		uv := faceUVs[fIdx]
+		if tex != nil && (uv.U1 > uv.U0 && uv.V1 > uv.V0) {
+			c.framebuf.DrawTexturedTriangle(p0, p1, p2, uv.U0, uv.V0, uv.U1, uv.V0, uv.U1, uv.V1, tex, tint)
+			c.framebuf.DrawTexturedTriangle(p0, p2, p3, uv.U0, uv.V0, uv.U1, uv.V1, uv.U0, uv.V1, tex, tint)
 		} else {
-			col = render.ApplyLighting(colSide, 0.70)
+			col := fallbackCols[fIdx]
+			if tint != 0 {
+				col = tint
+			}
+			c.framebuf.DrawTriangle(p0, p1, p2, col)
+			c.framebuf.DrawTriangle(p0, p2, p3, col)
 		}
-
-		c.framebuf.DrawTriangle(p0, p1, p2, col)
-		c.framebuf.DrawTriangle(p0, p2, p3, col)
 	}
+}
+
+// render3DBox renders a volumetric 3D cuboid transformed by position, yaw, and pitch with depth testing.
+func (c *Client) render3DBox(cx, cy, cz, hx, hy, hz, yawDeg, pitchDeg float64, colTop, colBottom, colSide uint32) {
+	c.renderTextured3DBox(cx, cy, cz, hx, hy, hz, yawDeg, pitchDeg, nil, [6]BoxFaceUV{}, [6]uint32{colTop, colBottom, render.ApplyLighting(colSide, 0.85), render.ApplyLighting(colSide, 0.85), render.ApplyLighting(colSide, 0.70), render.ApplyLighting(colSide, 0.70)}, 0)
 }
 
 // drawPlayerModel renders the authentic volumetric 3D Steve character in third-person view.
@@ -2627,8 +2669,8 @@ func (c *Client) drawHeldItem() {
 	selected := c.player.Inventory.GetSelectedItem()
 
 	// Walking sway calculation
-	swayX := int(math.Cos(c.walkCycle*0.5) * 6.0)
-	swayY := int(math.Abs(math.Sin(c.walkCycle)) * 5.0)
+	swayX := int(math.Cos(c.walkCycle*0.5) * 8.0)
+	swayY := int(math.Abs(math.Sin(c.walkCycle)) * 6.0)
 
 	// Arm / Tool swing animation trajectory using authentic Minecraft Java curve
 	swingOffset := 0
@@ -2636,15 +2678,15 @@ func (c *Client) drawHeldItem() {
 	if c.isSwinging {
 		f1 := math.Sin(math.Sqrt(c.swingProgress) * math.Pi)
 		f2 := math.Sin(c.swingProgress * math.Pi)
-		swingOffset = int(f1 * 55.0)
-		swingDrop = int(f2 * 35.0)
+		swingOffset = int(f1 * 75.0)
+		swingDrop = int(f2 * 45.0)
 	}
 
 	// Hotbar equip raise/lower animation
-	equipDrop := int((1.0 - c.equipProgress) * 45.0)
+	equipDrop := int((1.0 - c.equipProgress) * 60.0)
 
-	hx := c.framebuf.Width - 110 + swayX - swingOffset
-	hy := c.framebuf.Height - 125 + swayY + swingDrop + equipDrop
+	hx := c.framebuf.Width - 150 + swayX - swingOffset
+	hy := c.framebuf.Height - 165 + swayY + swingDrop + equipDrop
 
 	skinTone := uint32(0xFFD6A07E)   // Tan skin
 	skinShade := uint32(0xFFB57C5E)  // Shading
@@ -2652,26 +2694,26 @@ func (c *Client) drawHeldItem() {
 	cuffTone := uint32(0xFF1B5960)   // Cuff border
 
 	if selected.IsEmpty() {
-		// Steve's authentic first-person player arm / fist (3D angled limb)
-		c.framebuf.DrawRect(hx+20, hy+40, 52, 65, sleeveTone)
-		c.framebuf.DrawRect(hx+18, hy+38, 56, 4, cuffTone)
+		// Steve's authentic first-person player arm / fist (prominent 3D angled limb)
+		c.framebuf.DrawRect(hx+35, hy+60, 80, 115, sleeveTone)
+		c.framebuf.DrawRect(hx+30, hy+54, 88, 7, cuffTone)
 		// Forearm & wrist
-		c.framebuf.DrawRect(hx+25, hy+15, 42, 25, skinTone)
-		c.framebuf.DrawRect(hx+22, hy+2, 46, 16, skinShade)
+		c.framebuf.DrawRect(hx+40, hy+22, 65, 34, skinTone)
+		c.framebuf.DrawRect(hx+35, hy+4, 72, 22, skinShade)
 		// Knuckles & thumb details
-		c.framebuf.DrawRect(hx+20, hy+4, 12, 10, skinTone)
-		c.framebuf.DrawRect(hx+32, hy+1, 8, 4, skinTone)
-		c.framebuf.DrawRect(hx+42, hy+1, 8, 4, skinTone)
+		c.framebuf.DrawRect(hx+32, hy+6, 20, 16, skinTone)
+		c.framebuf.DrawRect(hx+52, hy+1, 14, 8, skinTone)
+		c.framebuf.DrawRect(hx+68, hy+1, 14, 8, skinTone)
 		return
 	}
 
 	// 1. Food Eating Hand & Jitter
 	if inventory.IsFood(selected.ItemID) {
-		fx := hx - 5
+		fx := hx - 10
 		fy := hy - 15
 		if c.isEating {
-			fy -= 18 + int(math.Sin(c.eatTimer*40.0)*4.0)
-			fx -= 12 + int(math.Cos(c.eatTimer*40.0)*2.0)
+			fy -= 24 + int(math.Sin(c.eatTimer*40.0)*5.0)
+			fx -= 16 + int(math.Cos(c.eatTimer*40.0)*3.0)
 		}
 		sprite := render.GetItemSprite16x16(selected.ItemID)
 		for y := 0; y < 16; y++ {
@@ -2680,23 +2722,23 @@ func (c *Client) drawHeldItem() {
 				if (col >> 24) == 0 {
 					continue
 				}
-				sx := fx + x*3
-				sy := fy + y*3
-				c.framebuf.DrawRect(sx+1, sy+1, 3, 3, darkenColor(col, 0.65))
-				c.framebuf.DrawRect(sx, sy, 3, 3, col)
+				sx := fx + x*5
+				sy := fy + y*5
+				c.framebuf.DrawRect(sx+1, sy+1, 5, 5, darkenColor(col, 0.65))
+				c.framebuf.DrawRect(sx, sy, 5, 5, col)
 			}
 		}
 		// Steve's grasping hand holding bottom of food item
-		c.framebuf.DrawRect(fx+10, fy+32, 26, 16, skinTone)
-		c.framebuf.DrawRect(fx+16, fy+46, 34, 45, sleeveTone)
-		c.framebuf.DrawRect(fx+14, fy+44, 38, 4, cuffTone)
+		c.framebuf.DrawRect(fx+18, fy+52, 42, 26, skinTone)
+		c.framebuf.DrawRect(fx+28, fy+74, 56, 85, sleeveTone)
+		c.framebuf.DrawRect(fx+24, fy+70, 62, 6, cuffTone)
 		return
 	}
 
 	// 2. Torch (ID 50)
 	if selected.ItemID == 50 {
-		tx := hx + 5
-		ty := hy - 25
+		tx := hx + 10
+		ty := hy - 35
 		sprite := render.GetItemSprite16x16(selected.ItemID)
 		for y := 0; y < 16; y++ {
 			for x := 0; x < 16; x++ {
@@ -2704,16 +2746,16 @@ func (c *Client) drawHeldItem() {
 				if (col >> 24) == 0 {
 					continue
 				}
-				sx := tx + x*3
-				sy := ty + y*3
-				c.framebuf.DrawRect(sx+1, sy+1, 3, 3, darkenColor(col, 0.65))
-				c.framebuf.DrawRect(sx, sy, 3, 3, col)
+				sx := tx + x*5
+				sy := ty + y*5
+				c.framebuf.DrawRect(sx+1, sy+1, 5, 5, darkenColor(col, 0.65))
+				c.framebuf.DrawRect(sx, sy, 5, 5, col)
 			}
 		}
 		// Hand grasping lower post
-		c.framebuf.DrawRect(tx+14, ty+28, 20, 16, skinTone)
-		c.framebuf.DrawRect(tx+18, ty+44, 30, 42, sleeveTone)
-		c.framebuf.DrawRect(tx+16, ty+42, 34, 4, cuffTone)
+		c.framebuf.DrawRect(tx+24, ty+48, 34, 26, skinTone)
+		c.framebuf.DrawRect(tx+32, ty+72, 52, 85, sleeveTone)
+		c.framebuf.DrawRect(tx+28, ty+68, 58, 6, cuffTone)
 		return
 	}
 
@@ -2722,32 +2764,32 @@ func (c *Client) drawHeldItem() {
 	if isTool {
 		_ = props
 		sprite := render.GetItemSprite16x16(selected.ItemID)
-		toolX := hx - 20
-		toolY := hy - 35
-		// Render authentic upright tool sprite at 3x scale
+		toolX := hx - 40
+		toolY := hy - 50
+		// Render authentic upright tool sprite at authentic 5x scale (80x80 pixels)
 		for y := 0; y < 16; y++ {
 			for x := 0; x < 16; x++ {
 				col := sprite[y][x]
 				if (col >> 24) == 0 {
 					continue
 				}
-				sx := toolX + x*3
-				sy := toolY + y*3
-				c.framebuf.DrawRect(sx+1, sy+1, 3, 3, darkenColor(col, 0.65))
-				c.framebuf.DrawRect(sx, sy, 3, 3, col)
+				sx := toolX + x*5
+				sy := toolY + y*5
+				c.framebuf.DrawRect(sx+1, sy+1, 5, 5, darkenColor(col, 0.65))
+				c.framebuf.DrawRect(sx, sy, 5, 5, col)
 			}
 		}
 		// Steve's fist grasping the lower handle
-		c.framebuf.DrawRect(toolX+4, toolY+32, 22, 16, skinTone)
-		c.framebuf.DrawRect(toolX+10, toolY+46, 32, 45, sleeveTone)
-		c.framebuf.DrawRect(toolX+8, toolY+44, 36, 4, cuffTone)
+		c.framebuf.DrawRect(toolX+8, toolY+52, 34, 26, skinTone)
+		c.framebuf.DrawRect(toolX+18, toolY+74, 56, 90, sleeveTone)
+		c.framebuf.DrawRect(toolX+14, toolY+70, 62, 6, cuffTone)
 		return
 	}
 
 	// 4. Non-block item materials (Diamond, Ingot, Coal, Redstone, Stick, Bone, etc.)
 	if !inventory.IsPlaceableBlock(selected.ItemID) {
-		ix := hx - 10
-		iy := hy - 25
+		ix := hx - 20
+		iy := hy - 35
 		sprite := render.GetItemSprite16x16(selected.ItemID)
 		for y := 0; y < 16; y++ {
 			for x := 0; x < 16; x++ {
@@ -2755,21 +2797,21 @@ func (c *Client) drawHeldItem() {
 				if (col >> 24) == 0 {
 					continue
 				}
-				sx := ix + x*3
-				sy := iy + y*3
-				c.framebuf.DrawRect(sx+1, sy+1, 3, 3, darkenColor(col, 0.65))
-				c.framebuf.DrawRect(sx, sy, 3, 3, col)
+				sx := ix + x*5
+				sy := iy + y*5
+				c.framebuf.DrawRect(sx+1, sy+1, 5, 5, darkenColor(col, 0.65))
+				c.framebuf.DrawRect(sx, sy, 5, 5, col)
 			}
 		}
-		c.framebuf.DrawRect(ix+10, iy+32, 24, 16, skinTone)
-		c.framebuf.DrawRect(ix+16, iy+46, 32, 45, sleeveTone)
-		c.framebuf.DrawRect(ix+14, iy+44, 36, 4, cuffTone)
+		c.framebuf.DrawRect(ix+18, iy+52, 40, 26, skinTone)
+		c.framebuf.DrawRect(ix+28, iy+74, 55, 85, sleeveTone)
+		c.framebuf.DrawRect(ix+24, iy+70, 60, 6, cuffTone)
 		return
 	}
 
-	// 5. Authentic 3D Isometric Textured Voxel Block
-	cx := hx - 15
-	cy := hy - 18
+	// 5. Authentic 3D Isometric Textured Voxel Block (3x chunkier scale)
+	cx := hx - 25
+	cy := hy - 25
 
 	// Top Face (Diamond quad, Face 2, 1.0 full light)
 	for ty := 0; ty < 16; ty++ {
@@ -2777,9 +2819,9 @@ func (c *Client) drawHeldItem() {
 			u := float32(tx) / 16.0
 			v := float32(ty) / 16.0
 			col := render.SampleBlockColor(selected.ItemID, 2, u, v, 1.0)
-			sx := cx + (tx-ty)*2
-			sy := cy - 16 + (tx + ty)
-			c.framebuf.DrawRect(sx, sy, 2, 1, col)
+			sx := cx + (tx-ty)*3
+			sy := cy - 24 + (tx+ty)*3/2
+			c.framebuf.DrawRect(sx, sy, 3, 2, col)
 		}
 	}
 
@@ -2789,9 +2831,9 @@ func (c *Client) drawHeldItem() {
 			u := float32(tx) / 16.0
 			v := float32(ty) / 16.0
 			col := render.SampleBlockColor(selected.ItemID, 1, u, v, 0.80)
-			sx := cx - 32 + tx*2
-			sy := cy + tx + ty*2
-			c.framebuf.DrawRect(sx, sy, 2, 2, col)
+			sx := cx - 48 + tx*3
+			sy := cy + (tx+ty*2)*3/2
+			c.framebuf.DrawRect(sx, sy, 3, 3, col)
 		}
 	}
 
@@ -2801,16 +2843,16 @@ func (c *Client) drawHeldItem() {
 			u := float32(tx) / 16.0
 			v := float32(ty) / 16.0
 			col := render.SampleBlockColor(selected.ItemID, 0, u, v, 0.60)
-			sx := cx + tx*2
-			sy := cy + 16 - tx + ty*2
-			c.framebuf.DrawRect(sx, sy, 2, 2, col)
+			sx := cx + tx*3
+			sy := cy + 24 - (tx-ty*2)*3/2
+			c.framebuf.DrawRect(sx, sy, 3, 3, col)
 		}
 	}
 
 	// Steve's grasping hand holding bottom-right corner of the 3D block
-	c.framebuf.DrawRect(cx+12, cy+36, 26, 14, skinTone)
-	c.framebuf.DrawRect(cx+20, cy+48, 36, 45, sleeveTone)
-	c.framebuf.DrawRect(cx+18, cy+46, 40, 4, cuffTone)
+	c.framebuf.DrawRect(cx+18, cy+52, 42, 24, skinTone)
+	c.framebuf.DrawRect(cx+30, cy+72, 58, 85, sleeveTone)
+	c.framebuf.DrawRect(cx+26, cy+68, 64, 6, cuffTone)
 }
 
 func main() {
