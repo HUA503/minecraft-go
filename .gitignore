@@ -21,7 +21,8 @@
 server.jar
 libraries/
 versions/
-assets/
+/assets/
+!pkg/render/assets/
 
 # IDE & OS
 .idea/

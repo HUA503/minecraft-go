@@ -4,6 +4,8 @@ import (
 	"math"
 	"testing"
 	"time"
+
+	"github.com/HUA503/minecraft-go/pkg/inventory"
 )
 
 func TestMeshFaceCullingIsolatedCube(t *testing.T) {
@@ -515,6 +517,73 @@ func TestWaterInternalFaceCullingAndDepthStability(t *testing.T) {
 
 	if fb.Color[idx] != waterBlendedCol {
 		t.Fatalf("geometry behind water at depth 16.0 improperly overwrote water! Got color %X, expected %X", fb.Color[idx], waterBlendedCol)
+	}
+}
+
+func TestOfficialItemAndBlockTextures(t *testing.T) {
+	// 1. Verify authentic official item textures load
+	itemsToCheck := []struct {
+		id   int32
+		name string
+	}{
+		{inventory.ItemWoodenPickaxe, "wooden_pickaxe"},
+		{276, "diamond_sword"},
+		{inventory.ItemApple, "apple"},
+		{inventory.ItemBread, "bread"},
+		{inventory.ItemIronIngot, "iron_ingot"},
+		{inventory.ItemDiamond, "diamond"},
+		{inventory.ItemTorch, "torch"},
+	}
+
+	for _, item := range itemsToCheck {
+		sprite, ok := GetOfficialItemSprite(item.id)
+		if !ok {
+			t.Fatalf("expected official texture for item %d (%s) to be found", item.id, item.name)
+		}
+		hasPixels := false
+		for y := 0; y < 16; y++ {
+			for x := 0; x < 16; x++ {
+				if (sprite[y][x] >> 24) > 0 {
+					hasPixels = true
+					break
+				}
+			}
+		}
+		if !hasPixels {
+			t.Fatalf("official texture for item %s has no non-transparent pixels", item.name)
+		}
+	}
+
+	// 2. Verify GetItemSprite16x16 uses official texture
+	pickSprite := GetItemSprite16x16(inventory.ItemWoodenPickaxe)
+	// In official wooden_pickaxe.png: pixel (10, 3) is pickaxe head (opaque)
+	if (pickSprite[3][10] >> 24) == 0 {
+		t.Fatalf("expected pixel (10, 3) in wooden pickaxe to be opaque, got %X", pickSprite[3][10])
+	}
+
+	// 3. Verify RenderIsometricBlock16x16 renders isometric cube
+	isoGrass := RenderIsometricBlock16x16(inventory.ItemGrass)
+	// Center of top face (7, 5) should be green tinted
+	centerCol := isoGrass[5][7]
+	if (centerCol >> 24) == 0 {
+		t.Fatalf("expected isometric grass top face to be rendered, got %X", centerCol)
+	}
+
+	// 4. Verify HUD DrawItemSprite16x16 renders to framebuffer
+	fb := NewFramebuffer(32, 32)
+	fb.DrawItemSprite16x16(5, 5, inventory.ItemApple)
+	// Check that apple pixels were drawn
+	appleDrawn := false
+	for y := 5; y < 21; y++ {
+		for x := 5; x < 21; x++ {
+			if (fb.Color[y*fb.Width+x] >> 24) > 0 {
+				appleDrawn = true
+				break
+			}
+		}
+	}
+	if !appleDrawn {
+		t.Fatalf("apple sprite was not drawn to framebuffer")
 	}
 }
 

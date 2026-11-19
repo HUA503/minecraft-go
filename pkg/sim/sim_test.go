@@ -571,3 +571,55 @@ func TestEngineChunkPersistenceAndUnloadSave(t *testing.T) {
 		t.Fatalf("expected block across engine restart to be 57, got %d", restartBlock)
 	}
 }
+
+func TestMobHurtFlashDecay(t *testing.T) {
+	eng := NewEngine()
+	zombie := eng.SpawnMob(MobZombie, Vec3{X: 10, Y: 65, Z: 10})
+	if zombie.HurtTime != 0 {
+		t.Fatalf("new mob should start with HurtTime 0, got %d", zombie.HurtTime)
+	}
+
+	// Player attacks the zombie with 3.0 damage
+	eng.DamageMob(zombie.ID, 3.0)
+	if zombie.HurtTime != 10 {
+		t.Fatalf("mob should have HurtTime 10 after taking damage, got %d", zombie.HurtTime)
+	}
+	if zombie.Health != 17.0 {
+		t.Fatalf("zombie health should be 17.0, got %f", zombie.Health)
+	}
+
+	// Tick the engine for 5 ticks
+	for i := 0; i < 5; i++ {
+		eng.Tick()
+	}
+	if zombie.HurtTime != 5 {
+		t.Fatalf("mob HurtTime should decay to 5 after 5 ticks, got %d", zombie.HurtTime)
+	}
+
+	// Tick 5 more ticks (total 10 ticks = 0.5s)
+	for i := 0; i < 5; i++ {
+		eng.Tick()
+	}
+	if zombie.HurtTime != 0 {
+		t.Fatalf("mob HurtTime should decay to 0 and not stay red indefinitely, got %d", zombie.HurtTime)
+	}
+
+	// Test AttackMobInFront
+	camPos := Vec3{X: zombie.Position.X - 1.5, Y: zombie.Position.Y + 0.9, Z: zombie.Position.Z}
+	look := Vec3{X: 1, Y: 0, Z: 0}
+	mobID, killed, hit := eng.AttackMobInFront(camPos, look, 3.0, 4.0)
+	if !hit || killed || mobID != zombie.ID {
+		t.Fatalf("expected hit on zombie, got hit=%v killed=%v mobID=%d", hit, killed, mobID)
+	}
+	if zombie.HurtTime != 10 {
+		t.Fatalf("mob should reset HurtTime to 10 on new attack, got %d", zombie.HurtTime)
+	}
+
+	// Step 10 ticks again
+	for i := 0; i < 10; i++ {
+		eng.Tick()
+	}
+	if zombie.HurtTime != 0 {
+		t.Fatalf("mob HurtTime should decay back to 0, got %d", zombie.HurtTime)
+	}
+}

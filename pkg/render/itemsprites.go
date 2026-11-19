@@ -22,8 +22,7 @@ func applyLighting(c uint32, factor float32) uint32 {
 // Light angles match vanilla Minecraft GUI: Top face (1.0x), Left face (0.8x), Right face (0.6x).
 func RenderIsometricBlock16x16(blockID int32) [16][16]uint32 {
 	var s [16][16]uint32
-
-	// Determine face palette and procedural noise per block type
+	tex := Textures[blockID]
 	topBase, leftBase, rightBase := getBlockBaseColors(blockID)
 
 	for y := 0; y < 16; y++ {
@@ -36,16 +35,67 @@ func RenderIsometricBlock16x16(blockID int32) [16][16]uint32 {
 			var baseCol uint32
 			var light float32
 
-			switch face {
-			case 1: // Top Face
-				baseCol = sampleBlockSurface(blockID, 1, x, y, topBase)
-				light = 1.05
-			case 2: // Left Face
-				baseCol = sampleBlockSurface(blockID, 2, x, y, leftBase)
-				light = 0.82
-			case 3: // Right Face
-				baseCol = sampleBlockSurface(blockID, 3, x, y, rightBase)
-				light = 0.62
+			if tex != nil {
+				var u, v int
+				switch face {
+				case 1: // Top Face
+					u = int((float64(x-7) + float64(y-1)*1.5) * 15.0 / 12.0)
+					v = int((float64(7-x) + float64(y-1)*1.5) * 15.0 / 12.0)
+					if u < 0 {
+						u = 0
+					} else if u > 15 {
+						u = 15
+					}
+					if v < 0 {
+						v = 0
+					} else if v > 15 {
+						v = 15
+					}
+					baseCol = tex.Top[v][u]
+					light = 1.05
+				case 2: // Left Face
+					u = int(float64(x-1) * 15.0 / 6.0)
+					v = int(float64(y-5) * 15.0 / 6.0)
+					if u < 0 {
+						u = 0
+					} else if u > 15 {
+						u = 15
+					}
+					if v < 0 {
+						v = 0
+					} else if v > 15 {
+						v = 15
+					}
+					baseCol = tex.Side[v][u]
+					light = 0.82
+				case 3: // Right Face
+					u = int(float64(x-7) * 15.0 / 7.0)
+					v = int(float64(y-9) * 15.0 / 6.0)
+					if u < 0 {
+						u = 0
+					} else if u > 15 {
+						u = 15
+					}
+					if v < 0 {
+						v = 0
+					} else if v > 15 {
+						v = 15
+					}
+					baseCol = tex.Side[v][u]
+					light = 0.62
+				}
+			} else {
+				switch face {
+				case 1: // Top Face
+					baseCol = sampleBlockSurface(blockID, 1, x, y, topBase)
+					light = 1.05
+				case 2: // Left Face
+					baseCol = sampleBlockSurface(blockID, 2, x, y, leftBase)
+					light = 0.82
+				case 3: // Right Face
+					baseCol = sampleBlockSurface(blockID, 3, x, y, rightBase)
+					light = 0.62
+				}
 			}
 
 			if isBorder {
@@ -313,7 +363,17 @@ func sampleBlockSurface(blockID int32, face, x, y int, baseCol uint32) uint32 {
 
 // GetItemSprite16x16 returns the authentic 16x16 pixel art sprite for non-block tools and items.
 func GetItemSprite16x16(itemID int32) [16][16]uint32 {
-	// Check if this is a tool (Sword, Pickaxe, Axe, Shovel)
+	// 1. First priority: Load 100% authentic official vanilla Mojang texture if available
+	if official, ok := GetOfficialItemSprite(itemID); ok {
+		return official
+	}
+
+	// 2. If placeable voxel block, render 3D isometric cube using block textures
+	if inventory.IsPlaceableBlock(itemID) {
+		return RenderIsometricBlock16x16(itemID)
+	}
+
+	// 3. Fallback to procedural generator
 	props, isTool := inventory.GetToolProperties(itemID)
 	if isTool {
 		return generateToolSprite(props.Type, props.Tier)

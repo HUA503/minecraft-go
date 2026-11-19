@@ -149,7 +149,11 @@ func (e *Engine) DamageMob(mobID int32, damage float32) (drops []inventory.ItemS
 	if !ok || !mob.IsAlive {
 		return nil, false
 	}
+	if mob.HurtTime > 5 {
+		return nil, false
+	}
 	mob.Health -= damage
+	mob.HurtTime = 10
 	if mob.Health <= 0 {
 		mob.Health = 0
 		mob.IsAlive = false
@@ -194,7 +198,9 @@ func (e *Engine) AttackMobInFront(origin, look Vec3, reach float64, damage float
 		if !mob.IsAlive {
 			continue
 		}
-		toMob := mob.Position.Sub(origin)
+		// Target mob center/chest (~0.9m above feet) for authentic hit registration
+		mobCenter := mob.Position.Add(Vec3{X: 0, Y: 0.9, Z: 0})
+		toMob := mobCenter.Sub(origin)
 		dist := toMob.Length()
 		if dist > reach {
 			continue
@@ -210,8 +216,12 @@ func (e *Engine) AttackMobInFront(origin, look Vec3, reach float64, damage float
 	if closestMob == nil {
 		return 0, false, false
 	}
+	if closestMob.HurtTime > 5 {
+		return closestMob.ID, false, false
+	}
 
 	closestMob.Health -= damage
+	closestMob.HurtTime = 10
 	knockback := look.Scale(0.25)
 	knockback.Y = 0.12
 	closestMob.Velocity = closestMob.Velocity.Add(knockback)

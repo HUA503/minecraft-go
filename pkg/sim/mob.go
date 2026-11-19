@@ -61,6 +61,7 @@ type MobEntity struct {
 	WanderTicks  int     // Countdown for current wander or idle action
 	IsIdle       bool    // Idle/grazing vs active walking
 	TargetYaw    float32 // Target heading towards which animal smoothly steers
+	HurtTime     int     // Authentic Minecraft hurt flash timer in ticks (10 ticks = 0.5s)
 }
 
 // NewMobEntity creates an initialized mob.
@@ -93,6 +94,9 @@ func (m *MobEntity) TickMob(engine *Engine) {
 
 	if m.AttackCooldown > 0 {
 		m.AttackCooldown--
+	}
+	if m.HurtTime > 0 {
+		m.HurtTime--
 	}
 
 	// 1. Gravity simulation

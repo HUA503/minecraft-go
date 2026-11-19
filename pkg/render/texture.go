@@ -15,6 +15,7 @@ var Textures = make(map[int32]*BlockFaceTextures)
 
 func init() {
 	initDefaultTextures()
+	initOfficialBlockTextures()
 }
 
 // texHash produces a fast, deterministic pseudo-random hash for organic texture dithering.
@@ -628,6 +629,65 @@ func initDefaultTextures() {
 		}
 	}
 	Textures[121] = &BlockFaceTextures{Top: endStoneTex, Bottom: endStoneTex, Side: endStoneTex}
+}
+
+// initOfficialBlockTextures loads authentic official textures from embedded Mojang vanilla assets.
+func initOfficialBlockTextures() {
+	loadBlock := func(id int32, top, bottom, side string) {
+		topTex, topOk := GetOfficialTexture("block", top)
+		bottomTex, botOk := GetOfficialTexture("block", bottom)
+		sideTex, sideOk := GetOfficialTexture("block", side)
+		if topOk && botOk && sideOk {
+			if top == "grass_block_top" {
+				for y := 0; y < 16; y++ {
+					for x := 0; x < 16; x++ {
+						grey := (topTex[y][x] >> 16) & 0xFF
+						r := (grey * 0x5A) / 255
+						g := (grey * 0xA5) / 255
+						b := (grey * 0x3C) / 255
+						topTex[y][x] = 0xFF000000 | (r << 16) | (g << 8) | b
+					}
+				}
+			}
+			Textures[id] = &BlockFaceTextures{
+				Top:    topTex,
+				Bottom: bottomTex,
+				Side:   sideTex,
+			}
+		}
+	}
+
+	loadSingle := func(id int32, name string) {
+		loadBlock(id, name, name, name)
+	}
+
+	loadSingle(1, "stone")
+	loadBlock(2, "grass_block_top", "dirt", "grass_block_side")
+	loadSingle(3, "dirt")
+	loadSingle(4, "cobblestone")
+	loadSingle(5, "oak_planks")
+	loadSingle(7, "bedrock")
+	loadSingle(12, "sand")
+	loadSingle(13, "gravel")
+	loadSingle(14, "gold_ore")
+	loadSingle(15, "iron_ore")
+	loadSingle(16, "coal_ore")
+	loadBlock(17, "oak_log_top", "oak_log_top", "oak_log")
+	loadSingle(18, "oak_leaves")
+	loadSingle(20, "glass")
+	loadSingle(37, "dandelion")
+	loadSingle(38, "poppy")
+	loadSingle(45, "bricks")
+	loadBlock(46, "tnt_top", "tnt_bottom", "tnt_side")
+	loadSingle(49, "obsidian")
+	loadSingle(50, "torch")
+	loadSingle(56, "diamond_ore")
+	loadSingle(57, "diamond_block")
+	loadBlock(58, "crafting_table_top", "oak_planks", "crafting_table_side")
+	loadBlock(61, "furnace_top", "furnace_top", "furnace_front")
+	loadSingle(87, "netherrack")
+	loadSingle(89, "glowstone")
+	loadSingle(121, "end_stone")
 }
 
 // SampleBlockColor samples pixel color from block texture and applies directional lighting.

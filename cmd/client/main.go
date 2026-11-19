@@ -1787,7 +1787,7 @@ func (c *Client) drawMob(m *sim.MobEntity) {
 
 	yaw := float64(m.Yaw)
 	pitch := float64(m.Pitch)
-	hurtFlash := m.Health < m.MaxHealth && (int(m.Health*10)%2 == 0)
+	hurtFlash := m.HurtTime > 0
 
 	// Leg-swing animation: pitch angle in degrees alternating dynamically
 	walkSwing := 0.0
@@ -2673,7 +2673,7 @@ func (c *Client) drawHeldItem() {
 			fy -= 18 + int(math.Sin(c.eatTimer*40.0)*4.0)
 			fx -= 12 + int(math.Cos(c.eatTimer*40.0)*2.0)
 		}
-		sprite := getFoodSprite16x16(selected.ItemID)
+		sprite := render.GetItemSprite16x16(selected.ItemID)
 		for y := 0; y < 16; y++ {
 			for x := 0; x < 16; x++ {
 				col := sprite[y][x]
@@ -2681,7 +2681,7 @@ func (c *Client) drawHeldItem() {
 					continue
 				}
 				sx := fx + x*3
-				sy := fy + (15-y)*3
+				sy := fy + y*3
 				c.framebuf.DrawRect(sx+1, sy+1, 3, 3, darkenColor(col, 0.65))
 				c.framebuf.DrawRect(sx, sy, 3, 3, col)
 			}
@@ -2697,7 +2697,7 @@ func (c *Client) drawHeldItem() {
 	if selected.ItemID == 50 {
 		tx := hx + 5
 		ty := hy - 25
-		sprite := getTorchSprite16x16()
+		sprite := render.GetItemSprite16x16(selected.ItemID)
 		for y := 0; y < 16; y++ {
 			for x := 0; x < 16; x++ {
 				col := sprite[y][x]
@@ -2705,7 +2705,7 @@ func (c *Client) drawHeldItem() {
 					continue
 				}
 				sx := tx + x*3
-				sy := ty + (15-y)*3
+				sy := ty + y*3
 				c.framebuf.DrawRect(sx+1, sy+1, 3, 3, darkenColor(col, 0.65))
 				c.framebuf.DrawRect(sx, sy, 3, 3, col)
 			}
@@ -2717,13 +2717,14 @@ func (c *Client) drawHeldItem() {
 		return
 	}
 
-	// 3. Tools (Pickaxe, Sword, Axe, Shovel)
+	// 3. Tools (Pickaxe, Sword, Axe, Shovel, Hoe)
 	props, isTool := inventory.GetToolProperties(selected.ItemID)
 	if isTool {
-		sprite := getToolSprite16x16(props.Type, props.Tier)
+		_ = props
+		sprite := render.GetItemSprite16x16(selected.ItemID)
 		toolX := hx - 20
 		toolY := hy - 35
-		// Render authentic 2.5D extruded tool sprite at 3x scale
+		// Render authentic upright tool sprite at 3x scale
 		for y := 0; y < 16; y++ {
 			for x := 0; x < 16; x++ {
 				col := sprite[y][x]
@@ -2731,7 +2732,7 @@ func (c *Client) drawHeldItem() {
 					continue
 				}
 				sx := toolX + x*3
-				sy := toolY + (15-y)*3
+				sy := toolY + y*3
 				c.framebuf.DrawRect(sx+1, sy+1, 3, 3, darkenColor(col, 0.65))
 				c.framebuf.DrawRect(sx, sy, 3, 3, col)
 			}
@@ -2755,7 +2756,7 @@ func (c *Client) drawHeldItem() {
 					continue
 				}
 				sx := ix + x*3
-				sy := iy + (15-y)*3
+				sy := iy + y*3
 				c.framebuf.DrawRect(sx+1, sy+1, 3, 3, darkenColor(col, 0.65))
 				c.framebuf.DrawRect(sx, sy, 3, 3, col)
 			}

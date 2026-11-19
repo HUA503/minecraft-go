@@ -159,6 +159,23 @@ func (fb *Framebuffer) DrawHUDWithInventory(health float32, hunger int, selected
 			if item.Count > 1 {
 				fb.DrawNumber(slotX+16, slotY+12, item.Count, 0xFFFFFFFF)
 			}
+			// Durability bar for damaged tools
+			props, isTool := inventory.GetToolProperties(item.ItemID)
+			if isTool && item.Damage > 0 && props.MaxDurability > 0 {
+				durRatio := float32(props.MaxDurability-item.Damage) / float32(props.MaxDurability)
+				if durRatio < 0 {
+					durRatio = 0
+				}
+				barW := int(durRatio * 14.0)
+				fb.DrawRect(slotX+2, slotY+16, 14, 2, 0xFF000000)
+				barCol := uint32(0xFF00FF00)
+				if durRatio < 0.25 {
+					barCol = 0xFFFF0000
+				} else if durRatio < 0.50 {
+					barCol = 0xFFFFFF00
+				}
+				fb.DrawRect(slotX+2, slotY+16, barW, 1, barCol)
+			}
 		}
 
 		// Selected slot white border highlight
@@ -281,6 +298,22 @@ func (fb *Framebuffer) DrawInventoryGUI(inv *inventory.PlayerInventory) {
 				if item.Count > 1 {
 					fb.DrawNumber(sx+19, sy+14, item.Count, 0xFFFFFFFF)
 				}
+				props, isTool := inventory.GetToolProperties(item.ItemID)
+				if isTool && item.Damage > 0 && props.MaxDurability > 0 {
+					durRatio := float32(props.MaxDurability-item.Damage) / float32(props.MaxDurability)
+					if durRatio < 0 {
+						durRatio = 0
+					}
+					barW := int(durRatio * 16.0)
+					fb.DrawRect(sx+3, sy+18, 16, 2, 0xFF000000)
+					barCol := uint32(0xFF00FF00)
+					if durRatio < 0.25 {
+						barCol = 0xFFFF0000
+					} else if durRatio < 0.50 {
+						barCol = 0xFFFFFF00
+					}
+					fb.DrawRect(sx+3, sy+18, barW, 1, barCol)
+				}
 			}
 		}
 	}
@@ -299,6 +332,22 @@ func (fb *Framebuffer) DrawInventoryGUI(inv *inventory.PlayerInventory) {
 			fb.DrawItemIcon(sx+3, sy+3, item.ItemID)
 			if item.Count > 1 {
 				fb.DrawNumber(sx+19, sy+14, item.Count, 0xFFFFFFFF)
+			}
+			props, isTool := inventory.GetToolProperties(item.ItemID)
+			if isTool && item.Damage > 0 && props.MaxDurability > 0 {
+				durRatio := float32(props.MaxDurability-item.Damage) / float32(props.MaxDurability)
+				if durRatio < 0 {
+					durRatio = 0
+				}
+				barW := int(durRatio * 16.0)
+				fb.DrawRect(sx+3, sy+18, 16, 2, 0xFF000000)
+				barCol := uint32(0xFF00FF00)
+				if durRatio < 0.25 {
+					barCol = 0xFFFF0000
+				} else if durRatio < 0.50 {
+					barCol = 0xFFFFFF00
+				}
+				fb.DrawRect(sx+3, sy+18, barW, 1, barCol)
 			}
 		}
 
