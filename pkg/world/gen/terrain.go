@@ -131,16 +131,24 @@ func (g *Generator) generateOverworld(c *world.Chunk, cp world.ChunkPos) {
 				if treeChance > 0.65 && lx >= 2 && lx <= 13 && lz >= 2 && lz <= 13 {
 					g.growOakTree(c, toI32(wx), height+1, toI32(wz))
 				} else {
-					// Authentic meadow foliage distribution (Tall Grass, Dandelions, Poppies)
-					foliageNoise := g.noise.Noise2D(wx*0.75+313.0, wz*0.75+313.0)
-					if foliageNoise > 0.70 {
-						c.SetBlock(toI32(wx), height+1, toI32(wz), BlockTallGrass)
-					} else if foliageNoise < 0.22 {
-						flowerType := g.noise.Noise2D(wx*1.2+77.0, wz*1.2+77.0)
-						if flowerType > 0.6 {
-							c.SetBlock(toI32(wx), height+1, toI32(wz), BlockDandelion)
-						} else if flowerType < 0.4 {
-							c.SetBlock(toI32(wx), height+1, toI32(wz), BlockPoppy)
+					// Authentic Minecraft Java plains vegetation:
+					// Organic clustered patches with > 88% expansive clean green grass fields.
+					patchNoise := g.noise.Noise2D(wx*0.06, wz*0.06)
+					if patchNoise > 0.42 {
+						// Tall grass meadow cluster
+						detail := g.noise.Noise2D(wx*0.8+50.0, wz*0.8+50.0)
+						if detail > 0.15 {
+							c.SetBlock(toI32(wx), height+1, toI32(wz), BlockTallGrass)
+						}
+					} else if patchNoise < -0.48 {
+						// Distinct flower patches (Dandelions or Poppies in natural clusters)
+						detail := g.noise.Noise2D(wx*0.8+150.0, wz*0.8+150.0)
+						if detail > 0.22 {
+							if patchNoise < -0.60 {
+								c.SetBlock(toI32(wx), height+1, toI32(wz), BlockPoppy)
+							} else {
+								c.SetBlock(toI32(wx), height+1, toI32(wz), BlockDandelion)
+							}
 						}
 					}
 				}

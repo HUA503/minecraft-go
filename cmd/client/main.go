@@ -151,6 +151,38 @@ func (c *Client) EnsureChunksAroundPlayer(playerX, playerZ float64, radius int32
 	pcx := int32(math.Floor(playerX / 16.0))
 	pcz := int32(math.Floor(playerZ / 16.0))
 
+	// Pass 0: Prune distant meshes and chunks beyond (radius + 2) to maintain strictly bounded memory (< 40MB)
+	c.meshMu.Lock()
+	for key := range c.meshCache {
+		diffX := key[0] - pcx
+		if diffX < 0 {
+			diffX = -diffX
+		}
+		diffZ := key[2] - pcz
+		if diffZ < 0 {
+			diffZ = -diffZ
+		}
+		if diffX > radius+1 || diffZ > radius+1 {
+			delete(c.meshCache, key)
+		}
+	}
+	c.meshMu.Unlock()
+
+	for cp := range c.loadedChunks {
+		diffX := cp.X - pcx
+		if diffX < 0 {
+			diffX = -diffX
+		}
+		diffZ := cp.Z - pcz
+		if diffZ < 0 {
+			diffZ = -diffZ
+		}
+		if diffX > radius+2 || diffZ > radius+2 {
+			delete(c.loadedChunks, cp)
+			c.engine.UnloadChunk(cp)
+		}
+	}
+
 	// Pass 1: Progressively generate missing chunks in radius+1 (up to 2 chunks per frame to eliminate main-thread stutter)
 	generatedCount := 0
 	for dx := -radius - 1; dx <= radius + 1; dx++ {
@@ -455,7 +487,11 @@ func (c *Client) PhysicsStep(fwdInput, strafeInput float64, jumpRequested bool, 
 	c.player.OnGround = onGround
 	if onGround {
 		c.player.Velocity.Y = 0
+	} else if delta.Y > 0 && resolvedPos.Y < c.player.Position.Y+delta.Y-1e-4 {
+		// Hit ceiling! Stop upward vertical momentum immediately
+		c.player.Velocity.Y = 0
 	}
+	c.player.Position = resolvedPos
 
 	// 4. Update Camera & Bobbing
 	c.isMoving = (lenInput > 0)
@@ -520,26 +556,24 @@ func (c *Client) PhysicsStep(fwdInput, strafeInput float64, jumpRequested bool, 
 	case 1: // Third-person back: 3.5 blocks behind with obstacle raycast clipping
 		camDist := 3.5
 		ray := sim.Raycast(sim.Vec3{X: eyeX, Y: eyeY, Z: eyeZ}, sim.Vec3{X: -lx, Y: -ly, Z: -lz}, 3.5, func(x, y, z int32) bool {
-			return c.engine.GetBlock(x, y, z) != 0
+			return sim.IsSolidBlock(c.engine.GetBlock(x, y, z))
 		})
 		if ray.Hit {
-			hitDist := math.Hypot(math.Hypot(float64(ray.BlockX)-eyeX, float64(ray.BlockY)-eyeY), float64(ray.BlockZ)-eyeZ)
-			camDist = math.Max(0.35, hitDist-0.35)
+			camDist = math.Max(0.25, ray.Distance-0.25)
 		}
 		c.camera.X = eyeX - lx*camDist
-		c.camera.Y = eyeY - ly*camDist + 0.15*(camDist/3.5)
+		c.camera.Y = eyeY - ly*camDist
 		c.camera.Z = eyeZ - lz*camDist
 	case 2: // Third-person front: 3.5 blocks in front with obstacle raycast clipping
 		camDist := 3.5
 		ray := sim.Raycast(sim.Vec3{X: eyeX, Y: eyeY, Z: eyeZ}, sim.Vec3{X: lx, Y: ly, Z: lz}, 3.5, func(x, y, z int32) bool {
-			return c.engine.GetBlock(x, y, z) != 0
+			return sim.IsSolidBlock(c.engine.GetBlock(x, y, z))
 		})
 		if ray.Hit {
-			hitDist := math.Hypot(math.Hypot(float64(ray.BlockX)-eyeX, float64(ray.BlockY)-eyeY), float64(ray.BlockZ)-eyeZ)
-			camDist = math.Max(0.35, hitDist-0.35)
+			camDist = math.Max(0.25, ray.Distance-0.25)
 		}
 		c.camera.X = eyeX + lx*camDist
-		c.camera.Y = eyeY + ly*camDist + 0.15*(camDist/3.5)
+		c.camera.Y = eyeY + ly*camDist
 		c.camera.Z = eyeZ + lz*camDist
 	default: // First-person
 		c.camera.X = eyeX
@@ -989,10 +1023,36 @@ func (c *Client) PlaceBlockInFront() bool {
 		return false
 	}
 
-	targetPos := world.BlockPos{
-		X: res.BlockX + res.FaceX,
-		Y: res.BlockY + res.FaceY,
-		Z: res.BlockZ + res.FaceZ,
+	hitBlockID := c.engine.GetBlock(res.BlockX, res.BlockY, res.BlockZ)
+	var targetPos world.BlockPos
+	if inventory.IsReplaceableBlock(hitBlockID) {
+		// Replaceable grass/flowers are directly replaced at their position
+		targetPos = world.BlockPos{X: res.BlockX, Y: res.BlockY, Z: res.BlockZ}
+		if sim.IsSolidBlock(selected.ItemID) {
+			bBox := sim.NewBlockAABB(targetPos.X, targetPos.Y, targetPos.Z)
+			pBox := sim.NewPlayerAABB(c.player.Position)
+			if sim.PlacementIntersects(pBox, bBox) {
+				// Player is standing in this foliage! Pass through foliage to hit the solid block underneath/behind
+				solidRes := sim.Raycast(origin, dir, 5.0, func(x, y, z int32) bool {
+					b := c.engine.GetBlock(x, y, z)
+					return sim.IsSolidBlock(b)
+				})
+				if solidRes.Hit {
+					targetPos = world.BlockPos{
+						X: solidRes.BlockX + solidRes.FaceX,
+						Y: solidRes.BlockY + solidRes.FaceY,
+						Z: solidRes.BlockZ + solidRes.FaceZ,
+					}
+				}
+			}
+		}
+	} else {
+		// Solid block: place against exposed face
+		targetPos = world.BlockPos{
+			X: res.BlockX + res.FaceX,
+			Y: res.BlockY + res.FaceY,
+			Z: res.BlockZ + res.FaceZ,
+		}
 	}
 
 	ok := c.engine.PlaceBlock(c.player.ID, targetPos, selected.ItemID)
@@ -1149,7 +1209,7 @@ func (c *Client) RenderFrame() {
 			vv1 := render.ViewVertex{X: vx1, Y: vy1, Z: vz1, U: v1.U, V: v1.V, BlockID: v1.BlockID, FaceIndex: v1.FaceIndex, LightingMult: v1.LightingMult}
 			vv2 := render.ViewVertex{X: vx2, Y: vy2, Z: vz2, U: v2.U, V: v2.V, BlockID: v2.BlockID, FaceIndex: v2.FaceIndex, LightingMult: v2.LightingMult}
 
-			clipped, count := render.ClipTriangleNear(vv0, vv1, vv2, 0.02)
+			clipped, count := render.ClipTriangleNear(vv0, vv1, vv2, 0.10)
 			for ci := 0; ci < count; ci++ {
 				tri := clipped[ci]
 				p0 := c.camera.ProjectViewToScreen(tri.V0.X, tri.V0.Y, tri.V0.Z, c.framebuf.Width, c.framebuf.Height)
@@ -1181,10 +1241,16 @@ func (c *Client) RenderFrame() {
 		if c.player != nil && c.player.Inventory != nil {
 			sel := c.player.Inventory.GetSelectedItem()
 			if inventory.IsPlaceableBlock(sel.ItemID) {
-				placePos := world.BlockPos{
-					X: c.targetedPos.X + c.targetedFace.X,
-					Y: c.targetedPos.Y + c.targetedFace.Y,
-					Z: c.targetedPos.Z + c.targetedFace.Z,
+				hitBlockID := c.engine.GetBlock(c.targetedPos.X, c.targetedPos.Y, c.targetedPos.Z)
+				var placePos world.BlockPos
+				if inventory.IsReplaceableBlock(hitBlockID) {
+					placePos = c.targetedPos
+				} else {
+					placePos = world.BlockPos{
+						X: c.targetedPos.X + c.targetedFace.X,
+						Y: c.targetedPos.Y + c.targetedFace.Y,
+						Z: c.targetedPos.Z + c.targetedFace.Z,
+					}
 				}
 				c.framebuf.DrawPlacementGhostOutline(c.camera, placePos.X, placePos.Y, placePos.Z)
 			}
@@ -1887,6 +1953,206 @@ func (c *Client) drawItemDrop(drop sim.ItemDrop) {
 	c.render3DBox(cx, cy, cz, 0.12, 0.12, 0.12, spinYaw, 15.0, topCol, darkCol, sideCol)
 }
 
+func darkenColor(c uint32, factor float32) uint32 {
+	a := (c >> 24) & 0xFF
+	r := uint32(float32((c>>16)&0xFF) * factor)
+	g := uint32(float32((c>>8)&0xFF) * factor)
+	b := uint32(float32(c&0xFF) * factor)
+	return (a << 24) | (r << 16) | (g << 8) | b
+}
+
+func getToolSprite16x16(toolType inventory.ToolType, tier inventory.ToolTier) [16][16]uint32 {
+	var s [16][16]uint32
+	stickCol := uint32(0xFF8F6849)
+	stickShade := uint32(0xFF5C3E28)
+
+	headCol := uint32(0xFFB8945F) // Wood
+	shineCol := uint32(0xFFD4B07B)
+	darkCol := uint32(0xFF8A6B3A)
+	switch tier {
+	case inventory.TierStone:
+		headCol = 0xFF7D7D7D
+		shineCol = 0xFF9E9E9E
+		darkCol = 0xFF545454
+	case inventory.TierIron:
+		headCol = 0xFFD8D8D8
+		shineCol = 0xFFFFFFFF
+		darkCol = 0xFFA0A0A0
+	case inventory.TierDiamond:
+		headCol = 0xFF4AEDD7
+		shineCol = 0xFF8CFFEE
+		darkCol = 0xFF28A896
+	}
+
+	// Stick handle from (2, 2) to (9, 9)
+	for d := 1; d <= 9; d++ {
+		s[d][d] = stickCol
+		if d > 1 {
+			s[d-1][d] = stickShade
+		}
+	}
+
+	switch toolType {
+	case inventory.ToolPickaxe:
+		// Pickaxe head arched from (6, 13) through (10, 10) to (13, 6)
+		s[10][10] = darkCol
+		s[11][10] = headCol
+		s[10][11] = headCol
+		s[11][11] = shineCol
+		s[12][9] = headCol
+		s[13][8] = headCol
+		s[14][7] = headCol
+		s[14][6] = shineCol
+		s[15][5] = headCol
+		s[9][12] = headCol
+		s[8][13] = headCol
+		s[7][14] = headCol
+		s[6][14] = shineCol
+		s[5][15] = headCol
+		s[11][12] = shineCol
+		s[12][11] = shineCol
+	case inventory.ToolSword:
+		// Double-edged blade from (5, 5) to (14, 14)
+		s[1][1] = headCol // Pommel
+		s[2][2] = stickCol
+		s[3][3] = stickCol
+		// Crossguard
+		s[3][5] = darkCol
+		s[4][4] = darkCol
+		s[5][3] = darkCol
+		s[4][5] = headCol
+		s[5][4] = headCol
+		s[2][5] = darkCol
+		s[5][2] = darkCol
+		// Blade
+		for d := 5; d <= 13; d++ {
+			s[d][d] = headCol
+			s[d+1][d] = shineCol
+			s[d][d+1] = darkCol
+		}
+		s[14][14] = shineCol // Blade tip
+	case inventory.ToolAxe:
+		// Broad axe blade
+		s[10][10] = darkCol
+		s[10][11] = headCol
+		s[11][11] = shineCol
+		s[11][12] = shineCol
+		s[12][12] = headCol
+		s[12][13] = shineCol
+		s[13][13] = headCol
+		s[10][12] = headCol
+		s[9][12] = headCol
+		s[9][11] = darkCol
+		s[13][12] = headCol
+		s[13][11] = darkCol
+		s[12][10] = darkCol
+	case inventory.ToolShovel:
+		// Spade scoop
+		s[10][10] = darkCol
+		s[11][11] = headCol
+		s[12][12] = shineCol
+		s[13][13] = shineCol
+		s[12][11] = headCol
+		s[11][12] = headCol
+		s[13][12] = shineCol
+		s[12][13] = headCol
+		s[14][13] = shineCol
+		s[13][14] = shineCol
+	}
+	return s
+}
+
+func getTorchSprite16x16() [16][16]uint32 {
+	var s [16][16]uint32
+	// Handle: columns 7 and 8, rows 1 to 9
+	for y := 1; y <= 9; y++ {
+		s[y][7] = 0xFF6F4F37
+		s[y][8] = 0xFF8F6849
+	}
+	s[10][7] = 0xFF352B20 // Burnt top
+	s[10][8] = 0xFF453628
+	// Flame head
+	s[11][7] = 0xFFFF6600
+	s[11][8] = 0xFFFF8800
+	s[12][6] = 0xFFFF6600
+	s[12][7] = 0xFFFFEE55 // Hot core
+	s[12][8] = 0xFFFFEE55
+	s[12][9] = 0xFFFF8800
+	s[13][7] = 0xFFFFFFFF // White hot tip
+	s[13][8] = 0xFFFFEE55
+	s[14][7] = 0xFFFF8800
+	return s
+}
+
+func getFoodSprite16x16(itemID int32) [16][16]uint32 {
+	var s [16][16]uint32
+	switch itemID {
+	case inventory.ItemApple:
+		// Iconic Red Apple
+		for y := 3; y <= 11; y++ {
+			for x := 4; x <= 12; x++ {
+				s[y][x] = 0xFFD82020
+			}
+		}
+		s[3][4] = 0
+		s[3][12] = 0
+		s[11][4] = 0
+		s[11][12] = 0
+		s[11][8] = 0
+		s[3][8] = 0
+		// Glint
+		s[9][5] = 0xFFFFA090
+		s[8][5] = 0xFFFFA090
+		s[9][6] = 0xFFFFA090
+		// Stem & Leaf
+		s[12][8] = 0xFF5C3A21
+		s[13][8] = 0xFF5C3A21
+		s[13][9] = 0xFF4E9333
+		s[14][10] = 0xFF69BD46
+	case inventory.ItemBread:
+		// Golden Bread Loaf
+		for y := 4; y <= 11; y++ {
+			for x := 2; x <= 13; x++ {
+				s[y][x] = 0xFFC99742
+			}
+		}
+		s[4][2] = 0
+		s[4][13] = 0
+		s[11][2] = 0
+		s[11][13] = 0
+		for x := 4; x <= 11; x++ {
+			s[11][x] = 0xFFE0B058
+		}
+		// Crust score lines
+		s[7][5] = 0xFF8A5D20
+		s[8][5] = 0xFF8A5D20
+		s[7][8] = 0xFF8A5D20
+		s[8][8] = 0xFF8A5D20
+		s[7][11] = 0xFF8A5D20
+		s[8][11] = 0xFF8A5D20
+	default: // Cooked Porkchop / Steak
+		for y := 4; y <= 12; y++ {
+			for x := 3; x <= 12; x++ {
+				s[y][x] = 0xFF9E432C
+			}
+		}
+		s[4][3] = 0
+		s[4][12] = 0
+		s[12][3] = 0
+		s[12][12] = 0
+		for y := 6; y <= 10; y++ {
+			for x := 5; x <= 10; x++ {
+				s[y][x] = 0xFFB35238
+			}
+		}
+		// Bone
+		s[11][12] = 0xFFECE7E2
+		s[12][13] = 0xFFECE7E2
+		s[10][13] = 0xFFECE7E2
+	}
+	return s
+}
+
 func (c *Client) drawHeldItem() {
 	if c.player == nil {
 		return
@@ -1903,188 +2169,157 @@ func (c *Client) drawHeldItem() {
 	if c.isSwinging {
 		f1 := math.Sin(math.Sqrt(c.swingProgress) * math.Pi)
 		f2 := math.Sin(c.swingProgress * math.Pi)
-		swingOffset = int(f1 * 50.0)
-		swingDrop = int(f2 * 30.0)
+		swingOffset = int(f1 * 55.0)
+		swingDrop = int(f2 * 35.0)
 	}
 
 	// Hotbar equip raise/lower animation
 	equipDrop := int((1.0 - c.equipProgress) * 45.0)
 
-	hx := c.framebuf.Width - 95 + swayX - swingOffset
-	hy := c.framebuf.Height - 110 + swayY + swingDrop + equipDrop
+	hx := c.framebuf.Width - 110 + swayX - swingOffset
+	hy := c.framebuf.Height - 125 + swayY + swingDrop + equipDrop
 
 	skinTone := uint32(0xFFD6A07E)   // Tan skin
 	skinShade := uint32(0xFFB57C5E)  // Shading
 	sleeveTone := uint32(0xFF2E8690) // Classic Cyan shirt sleeve
+	cuffTone := uint32(0xFF1B5960)   // Cuff border
 
 	if selected.IsEmpty() {
-		// Steve's authentic first-person player arm / fist
-		c.framebuf.DrawRect(hx+20, hy+40, 48, 65, sleeveTone)
-		c.framebuf.DrawRect(hx+18, hy+38, 52, 4, 0xFF1B5960) // Sleeve cuff border
-		c.framebuf.DrawRect(hx+25, hy+15, 38, 25, skinTone)
-		c.framebuf.DrawRect(hx+22, hy, 42, 16, skinShade)
+		// Steve's authentic first-person player arm / fist (3D angled limb)
+		c.framebuf.DrawRect(hx+20, hy+40, 52, 65, sleeveTone)
+		c.framebuf.DrawRect(hx+18, hy+38, 56, 4, cuffTone)
+		// Forearm & wrist
+		c.framebuf.DrawRect(hx+25, hy+15, 42, 25, skinTone)
+		c.framebuf.DrawRect(hx+22, hy+2, 46, 16, skinShade)
 		// Knuckles & thumb details
-		c.framebuf.DrawRect(hx+20, hy+4, 10, 10, skinTone)
+		c.framebuf.DrawRect(hx+20, hy+4, 12, 10, skinTone)
+		c.framebuf.DrawRect(hx+32, hy+1, 8, 4, skinTone)
+		c.framebuf.DrawRect(hx+42, hy+1, 8, 4, skinTone)
 		return
 	}
 
 	// 1. Food Eating Hand & Jitter
 	if inventory.IsFood(selected.ItemID) {
-		fx := hx + 10
-		fy := hy + 10
+		fx := hx - 5
+		fy := hy - 15
 		if c.isEating {
 			fy -= 18 + int(math.Sin(c.eatTimer*40.0)*4.0)
 			fx -= 12 + int(math.Cos(c.eatTimer*40.0)*2.0)
 		}
-		// Render authentic food sprite
-		switch selected.ItemID {
-		case inventory.ItemApple:
-			// Apple body
-			c.framebuf.DrawRect(fx+4, fy+6, 20, 20, 0xFFD82020)
-			c.framebuf.DrawRect(fx+6, fy+4, 16, 24, 0xFFD82020)
-			c.framebuf.DrawRect(fx+8, fy+8, 6, 6, 0xFFFFA090) // Glint
-			c.framebuf.DrawRect(fx+13, fy+1, 3, 5, 0xFF5C3A21)  // Stem
-			c.framebuf.DrawRect(fx+16, fy+2, 5, 3, 0xFF4E9333)  // Leaf
-		case inventory.ItemBread:
-			// Golden baked loaf
-			c.framebuf.DrawRect(fx+2, fy+8, 26, 16, 0xFFC99742)
-			c.framebuf.DrawRect(fx+6, fy+6, 18, 4, 0xFFE0B058)
-			c.framebuf.DrawRect(fx+8, fy+10, 3, 10, 0xFF8A5D20) // Crust cuts
-			c.framebuf.DrawRect(fx+15, fy+10, 3, 10, 0xFF8A5D20)
-			c.framebuf.DrawRect(fx+22, fy+10, 3, 10, 0xFF8A5D20)
-		default: // Steak / Porkchop
-			c.framebuf.DrawRect(fx+4, fy+6, 22, 18, 0xFF9E432C)
-			c.framebuf.DrawRect(fx+8, fy+8, 14, 14, 0xFFB35238)
-			c.framebuf.DrawRect(fx+20, fy+4, 6, 6, 0xFFECE7E2) // Bone
+		sprite := getFoodSprite16x16(selected.ItemID)
+		for y := 0; y < 16; y++ {
+			for x := 0; x < 16; x++ {
+				col := sprite[y][x]
+				if (col >> 24) == 0 {
+					continue
+				}
+				sx := fx + x*3
+				sy := fy + (15-y)*3
+				c.framebuf.DrawRect(sx+1, sy+1, 3, 3, darkenColor(col, 0.65))
+				c.framebuf.DrawRect(sx, sy, 3, 3, col)
+			}
 		}
-		c.framebuf.DrawRect(fx+6, fy+24, 24, 16, skinTone)
-		c.framebuf.DrawRect(fx+10, fy+40, 32, 45, sleeveTone)
+		// Steve's grasping hand holding bottom of food item
+		c.framebuf.DrawRect(fx+10, fy+32, 26, 16, skinTone)
+		c.framebuf.DrawRect(fx+16, fy+46, 34, 45, sleeveTone)
+		c.framebuf.DrawRect(fx+14, fy+44, 38, 4, cuffTone)
 		return
 	}
 
 	// 2. Torch (ID 50)
 	if selected.ItemID == 50 {
-		tx := hx + 12
-		ty := hy + 2
-		// Wooden handle
-		c.framebuf.DrawRect(tx+8, ty+14, 6, 32, 0xFF6F4F37)
-		c.framebuf.DrawRect(tx+10, ty+14, 2, 32, 0xFF8F6849)
-		// Glowing flame head
-		c.framebuf.DrawRect(tx+6, ty+4, 10, 10, 0xFFFF8800)
-		c.framebuf.DrawRect(tx+8, ty+6, 6, 6, 0xFFFFEE55)
+		tx := hx + 5
+		ty := hy - 25
+		sprite := getTorchSprite16x16()
+		for y := 0; y < 16; y++ {
+			for x := 0; x < 16; x++ {
+				col := sprite[y][x]
+				if (col >> 24) == 0 {
+					continue
+				}
+				sx := tx + x*3
+				sy := ty + (15-y)*3
+				c.framebuf.DrawRect(sx+1, sy+1, 3, 3, darkenColor(col, 0.65))
+				c.framebuf.DrawRect(sx, sy, 3, 3, col)
+			}
+		}
 		// Hand grasping lower post
-		c.framebuf.DrawRect(tx+4, ty+32, 18, 14, skinTone)
-		c.framebuf.DrawRect(tx+8, ty+46, 28, 40, sleeveTone)
+		c.framebuf.DrawRect(tx+14, ty+28, 20, 16, skinTone)
+		c.framebuf.DrawRect(tx+18, ty+44, 30, 42, sleeveTone)
+		c.framebuf.DrawRect(tx+16, ty+42, 34, 4, cuffTone)
 		return
 	}
 
 	// 3. Tools (Pickaxe, Sword, Axe, Shovel)
 	props, isTool := inventory.GetToolProperties(selected.ItemID)
 	if isTool {
-		// Draw Steve's arm holding tool
-		c.framebuf.DrawRect(hx+25, hy+50, 42, 50, sleeveTone)
-		c.framebuf.DrawRect(hx+23, hy+48, 46, 4, 0xFF1B5960)
-		c.framebuf.DrawRect(hx+30, hy+30, 30, 20, skinTone)
-		c.framebuf.DrawRect(hx+25, hy+20, 25, 12, skinShade)
-
-		// Diagonal tool handle (brown wood)
-		handleCol := uint32(0xFF6F4F37)
-		for d := 0; d < 28; d++ {
-			c.framebuf.DrawRect(hx+35-d, hy+26-d, 3, 3, handleCol)
-		}
-
-		// Tool Head
-		headCol := uint32(0xFFB8945F) // Wood
-		shineCol := uint32(0xFFD4B07B)
-		switch props.Tier {
-		case inventory.TierStone:
-			headCol = 0xFF7D7D7D
-			shineCol = 0xFF9E9E9E
-		case inventory.TierIron:
-			headCol = 0xFFD8D8D8
-			shineCol = 0xFFFFFFFF
-		case inventory.TierDiamond:
-			headCol = 0xFF4AEDD7
-			shineCol = 0xFF8CFFEE
-		}
-
-		tipX := hx + 35 - 28
-		tipY := hy + 26 - 28
-		switch props.Type {
-		case inventory.ToolPickaxe:
-			// Curved authentic pickaxe head
-			c.framebuf.DrawRect(tipX-14, tipY-4, 28, 6, headCol)
-			c.framebuf.DrawRect(tipX-18, tipY+1, 6, 8, headCol)
-			c.framebuf.DrawRect(tipX+12, tipY+1, 6, 8, headCol)
-			c.framebuf.DrawRect(tipX-12, tipY-4, 20, 2, shineCol)
-		case inventory.ToolSword:
-			// Double-edged sword blade
-			for d := 0; d < 26; d++ {
-				c.framebuf.DrawRect(tipX-d, tipY-d, 6, 6, headCol)
-				c.framebuf.DrawRect(tipX-d+1, tipY-d+1, 2, 2, shineCol)
+		sprite := getToolSprite16x16(props.Type, props.Tier)
+		toolX := hx - 20
+		toolY := hy - 35
+		// Render authentic 2.5D extruded tool sprite at 3x scale
+		for y := 0; y < 16; y++ {
+			for x := 0; x < 16; x++ {
+				col := sprite[y][x]
+				if (col >> 24) == 0 {
+					continue
+				}
+				sx := toolX + x*3
+				sy := toolY + (15-y)*3
+				c.framebuf.DrawRect(sx+1, sy+1, 3, 3, darkenColor(col, 0.65))
+				c.framebuf.DrawRect(sx, sy, 3, 3, col)
 			}
-			c.framebuf.DrawRect(tipX+6, tipY+6, 12, 6, 0xFF4D3B26) // Crossguard
-			c.framebuf.DrawRect(tipX+14, tipY+14, 5, 5, 0xFFB8945F) // Pommel
-		case inventory.ToolAxe:
-			// Curved wedge axe head
-			c.framebuf.DrawRect(tipX-12, tipY-10, 16, 20, headCol)
-			c.framebuf.DrawRect(tipX-16, tipY-6, 6, 14, headCol)
-			c.framebuf.DrawRect(tipX-16, tipY-6, 2, 14, shineCol)
-		case inventory.ToolShovel:
-			// Concave spade scoop
-			c.framebuf.DrawRect(tipX-8, tipY-12, 14, 16, headCol)
-			c.framebuf.DrawRect(tipX-6, tipY-14, 10, 4, headCol)
-			c.framebuf.DrawRect(tipX-6, tipY-12, 2, 12, shineCol)
-		default:
-			c.framebuf.DrawRect(tipX-6, tipY-6, 14, 14, headCol)
 		}
+		// Steve's fist grasping the lower handle
+		c.framebuf.DrawRect(toolX+4, toolY+32, 22, 16, skinTone)
+		c.framebuf.DrawRect(toolX+10, toolY+46, 32, 45, sleeveTone)
+		c.framebuf.DrawRect(toolX+8, toolY+44, 36, 4, cuffTone)
 		return
 	}
 
-	// 4. 3D Miniature Isometric Textured Voxel Block
-	bx := hx - 12
-	by := hy - 16
+	// 4. Authentic 3D Isometric Textured Voxel Block
+	cx := hx - 15
+	cy := hy - 18
 
-	// Render Top Face (16x16 sampled texels mapped to diamond)
+	// Top Face (Diamond quad, Face 2, 1.0 full light)
 	for ty := 0; ty < 16; ty++ {
 		for tx := 0; tx < 16; tx++ {
 			u := float32(tx) / 16.0
 			v := float32(ty) / 16.0
 			col := render.SampleBlockColor(selected.ItemID, 2, u, v, 1.0)
-			sx := bx + 28 + (tx - ty)*2
-			sy := by + (tx + ty)
+			sx := cx + (tx-ty)*2
+			sy := cy - 16 + (tx + ty)
 			c.framebuf.DrawRect(sx, sy, 2, 1, col)
 		}
 	}
 
-	// Render Left Face (16x16 sampled texels with 0.8 directional shade)
+	// Left Face (Parallelogram, Face 1, 0.8 directional shade)
 	for ty := 0; ty < 16; ty++ {
 		for tx := 0; tx < 16; tx++ {
 			u := float32(tx) / 16.0
 			v := float32(ty) / 16.0
-			col := render.SampleBlockColor(selected.ItemID, 1, u, v, 0.8)
-			sx := bx - 2 + tx*2
-			sy := by + 16 + tx + ty
-			c.framebuf.DrawRect(sx, sy, 2, 1, col)
+			col := render.SampleBlockColor(selected.ItemID, 1, u, v, 0.80)
+			sx := cx - 32 + tx*2
+			sy := cy + tx + ty*2
+			c.framebuf.DrawRect(sx, sy, 2, 2, col)
 		}
 	}
 
-	// Render Right Face (16x16 sampled texels with 0.6 directional shade)
+	// Right Face (Parallelogram, Face 0, 0.6 directional shade)
 	for ty := 0; ty < 16; ty++ {
 		for tx := 0; tx < 16; tx++ {
 			u := float32(tx) / 16.0
 			v := float32(ty) / 16.0
-			col := render.SampleBlockColor(selected.ItemID, 0, u, v, 0.6)
-			sx := bx + 28 + tx*2
-			sy := by + 31 - tx + ty
-			c.framebuf.DrawRect(sx, sy, 2, 1, col)
+			col := render.SampleBlockColor(selected.ItemID, 0, u, v, 0.60)
+			sx := cx + tx*2
+			sy := cy + 16 - tx + ty*2
+			c.framebuf.DrawRect(sx, sy, 2, 2, col)
 		}
 	}
 
-	// Steve's grasping hand holding bottom-right block corner
-	c.framebuf.DrawRect(bx+14, by+44, 28, 14, skinTone)
-	c.framebuf.DrawRect(bx+22, by+56, 36, 45, sleeveTone)
-	c.framebuf.DrawRect(bx+20, by+54, 40, 4, 0xFF1B5960) // Cuff border
+	// Steve's grasping hand holding bottom-right corner of the 3D block
+	c.framebuf.DrawRect(cx+12, cy+36, 26, 14, skinTone)
+	c.framebuf.DrawRect(cx+20, cy+48, 36, 45, sleeveTone)
+	c.framebuf.DrawRect(cx+18, cy+46, 40, 4, cuffTone)
 }
 
 func main() {

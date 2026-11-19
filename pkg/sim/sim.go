@@ -282,6 +282,13 @@ func (e *Engine) SetBlock(x, y, z int32, state int32) {
 	}
 }
 
+// UnloadChunk purges a distant chunk from active simulation to bound memory usage.
+func (e *Engine) UnloadChunk(pos world.ChunkPos) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	delete(e.World, pos)
+}
+
 // BreakBlockWithTool processes player mining using held tool, enforcing authentic harvest requirements and tool wear.
 func (e *Engine) BreakBlockWithTool(playerID int32, pos world.BlockPos, toolID int32) (int32, bool) {
 	origBlock := e.GetBlock(pos.X, pos.Y, pos.Z)
@@ -407,10 +414,13 @@ func (e *Engine) PlaceBlock(playerID int32, pos world.BlockPos, blockID int32) b
 		e.mu.RUnlock()
 	}
 
-	// Decrement item from player's inventory
+	// Decrement item from player's inventory if matching item is held
 	e.mu.Lock()
 	if p, ok := e.Players[playerID]; ok && p.Inventory != nil {
-		_ = p.Inventory.RemoveItem(p.Inventory.SelectedHotbar, 1)
+		sel := p.Inventory.GetSelectedItem()
+		if sel.ItemID == blockID && sel.Count > 0 {
+			_ = p.Inventory.RemoveItem(p.Inventory.SelectedHotbar, 1)
+		}
 	}
 	e.mu.Unlock()
 

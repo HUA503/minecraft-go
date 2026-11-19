@@ -86,7 +86,7 @@ func (c *Camera) ProjectViewToScreen(vx, vy, vz float64, screenW, screenH int) S
 // ProjectToScreen transforms a world point (wx, wy, wz) to screen coordinates.
 func (c *Camera) ProjectToScreen(wx, wy, wz float64, screenW, screenH int) (ScreenPoint, bool) {
 	rx, ry, vz := c.ToViewSpace(wx, wy, wz)
-	if vz <= 0.02 {
+	if vz <= 0.12 {
 		return ScreenPoint{}, false
 	}
 	return c.ProjectViewToScreen(rx, ry, vz, screenW, screenH), true

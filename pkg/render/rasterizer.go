@@ -451,14 +451,21 @@ func (fb *Framebuffer) DrawVoxelTrianglePerspective(v0, v1, v2 ScreenVertex) {
 		return
 	}
 
-	dx12 := v2.X - v1.X
-	dy12 := v2.Y - v1.Y
-	dx20 := v0.X - v2.X
-	dy20 := v0.Y - v2.Y
-	dx01 := v1.X - v0.X
-	dy01 := v1.Y - v0.Y
+	v0x := float64(v0.X)
+	v0y := float64(v0.Y)
+	v1x := float64(v1.X)
+	v1y := float64(v1.Y)
+	v2x := float64(v2.X)
+	v2y := float64(v2.Y)
 
-	area := (v2.X-v0.X)*dy01 - (v2.Y-v0.Y)*dx01
+	dx12 := v2x - v1x
+	dy12 := v2y - v1y
+	dx20 := v0x - v2x
+	dy20 := v0y - v2y
+	dx01 := v1x - v0x
+	dy01 := v1y - v0y
+
+	area := (v2x-v0x)*dy01 - (v2y-v0y)*dx01
 	absArea := area
 	if absArea < 0 {
 		absArea = -absArea
@@ -478,12 +485,12 @@ func (fb *Framebuffer) DrawVoxelTrianglePerspective(v0, v1, v2 ScreenVertex) {
 	skyHazeG := float32((hCol >> 8) & 0xFF)
 	skyHazeB := float32(hCol & 0xFF)
 
-	px0 := float32(minX) + 0.5
-	py0 := float32(minY) + 0.5
+	px0 := float64(minX) + 0.5
+	py0 := float64(minY) + 0.5
 
-	w0Row := (px0-v1.X)*dy12 - (py0-v1.Y)*dx12
-	w1Row := (px0-v2.X)*dy20 - (py0-v2.Y)*dx20
-	w2Row := (px0-v0.X)*dy01 - (py0-v0.Y)*dx01
+	w0Row := (px0-v1x)*dy12 - (py0-v1y)*dx12
+	w1Row := (px0-v2x)*dy20 - (py0-v2y)*dx20
+	w2Row := (px0-v0x)*dy01 - (py0-v0y)*dx01
 
 	isPositiveArea := area > 0
 
@@ -502,9 +509,9 @@ func (fb *Framebuffer) DrawVoxelTrianglePerspective(v0, v1, v2 ScreenVertex) {
 			}
 
 			if inside {
-				nw0 := w0 * invArea
-				nw1 := w1 * invArea
-				nw2 := w2 * invArea
+				nw0 := float32(w0 * invArea)
+				nw1 := float32(w1 * invArea)
+				nw2 := float32(w2 * invArea)
 
 				// Interpolate 1/Z linearly in screen space
 				invZ := nw0*v0.InvZ + nw1*v1.InvZ + nw2*v2.InvZ

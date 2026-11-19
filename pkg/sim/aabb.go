@@ -98,13 +98,15 @@ func PlacementIntersects(playerBox AABB, blockBox AABB) bool {
 
 // RaycastResult contains intersection details.
 type RaycastResult struct {
-	Hit    bool
-	BlockX int32
-	BlockY int32
-	BlockZ int32
-	FaceX  int32
-	FaceY  int32
-	FaceZ  int32
+	Hit      bool
+	BlockX   int32
+	BlockY   int32
+	BlockZ   int32
+	FaceX    int32
+	FaceY    int32
+	FaceZ    int32
+	Distance float64
+	HitPos   Vec3
 }
 
 // Raycast performs 3D digital differential analysis (DDA) through voxels.
@@ -165,15 +167,21 @@ func Raycast(origin Vec3, dir Vec3, maxDistance float64, isSolid func(x, y, z in
 	distTraveled := 0.0
 
 	for distTraveled <= maxDistance {
-		if isSolid(currX, currY, currZ) {
+		if distTraveled > 0 && isSolid(currX, currY, currZ) {
 			return RaycastResult{
-				Hit:    true,
-				BlockX: currX,
-				BlockY: currY,
-				BlockZ: currZ,
-				FaceX:  faceX,
-				FaceY:  faceY,
-				FaceZ:  faceZ,
+				Hit:      true,
+				BlockX:   currX,
+				BlockY:   currY,
+				BlockZ:   currZ,
+				FaceX:    faceX,
+				FaceY:    faceY,
+				FaceZ:    faceZ,
+				Distance: distTraveled,
+				HitPos: Vec3{
+					X: origin.X + dir.X*distTraveled,
+					Y: origin.Y + dir.Y*distTraveled,
+					Z: origin.Z + dir.Z*distTraveled,
+				},
 			}
 		}
 
@@ -253,16 +261,26 @@ func ResolveMovementCollision(pos Vec3, delta Vec3, isSolid func(x, y, z int32) 
 	for _, b := range solidBoxes {
 		if pBox.Min.X < b.Max.X-epsilon && pBox.Max.X > b.Min.X+epsilon &&
 			pBox.Min.Z < b.Max.Z-epsilon && pBox.Max.Z > b.Min.Z+epsilon {
-			if dy < 0 && pBox.Min.Y >= b.Max.Y-epsilon {
-				maxDown := b.Max.Y - pBox.Min.Y
-				if maxDown > dy {
-					dy = maxDown
+			if dy < 0 {
+				if pBox.Min.Y >= b.Max.Y-epsilon {
+					maxDown := b.Max.Y - pBox.Min.Y
+					if maxDown > dy {
+						dy = maxDown
+						onGround = true
+					}
+				} else if pBox.Min.Y < b.Max.Y && pBox.Max.Y > b.Min.Y {
+					dy = 0
 					onGround = true
 				}
-			} else if dy > 0 && pBox.Max.Y <= b.Min.Y+epsilon {
-				maxUp := b.Min.Y - pBox.Max.Y
-				if maxUp < dy {
-					dy = maxUp
+			} else if dy > 0 {
+				if pBox.Max.Y <= b.Min.Y+epsilon {
+					maxUp := b.Min.Y - pBox.Max.Y
+					if maxUp < dy {
+						dy = maxUp
+						hitCeiling = true
+					}
+				} else if pBox.Max.Y > b.Min.Y && pBox.Min.Y < b.Max.Y {
+					dy = 0
 					hitCeiling = true
 				}
 			}
@@ -276,15 +294,23 @@ func ResolveMovementCollision(pos Vec3, delta Vec3, isSolid func(x, y, z int32) 
 	for _, b := range solidBoxes {
 		if pBox.Min.Y < b.Max.Y-epsilon && pBox.Max.Y > b.Min.Y+epsilon &&
 			pBox.Min.Z < b.Max.Z-epsilon && pBox.Max.Z > b.Min.Z+epsilon {
-			if dx > 0 && pBox.Max.X <= b.Min.X+epsilon {
-				maxRight := b.Min.X - pBox.Max.X
-				if maxRight < dx {
-					dx = maxRight
+			if dx > 0 {
+				if pBox.Max.X <= b.Min.X+epsilon {
+					maxRight := b.Min.X - pBox.Max.X
+					if maxRight < dx {
+						dx = maxRight
+					}
+				} else if pBox.Max.X > b.Min.X && pBox.Min.X < b.Min.X {
+					dx = 0
 				}
-			} else if dx < 0 && pBox.Min.X >= b.Max.X-epsilon {
-				maxLeft := b.Max.X - pBox.Min.X
-				if maxLeft > dx {
-					dx = maxLeft
+			} else if dx < 0 {
+				if pBox.Min.X >= b.Max.X-epsilon {
+					maxLeft := b.Max.X - pBox.Min.X
+					if maxLeft > dx {
+						dx = maxLeft
+					}
+				} else if pBox.Min.X < b.Max.X && pBox.Max.X > b.Max.X {
+					dx = 0
 				}
 			}
 		}
@@ -297,20 +323,79 @@ func ResolveMovementCollision(pos Vec3, delta Vec3, isSolid func(x, y, z int32) 
 	for _, b := range solidBoxes {
 		if pBox.Min.X < b.Max.X-epsilon && pBox.Max.X > b.Min.X+epsilon &&
 			pBox.Min.Y < b.Max.Y-epsilon && pBox.Max.Y > b.Min.Y+epsilon {
-			if dz > 0 && pBox.Max.Z <= b.Min.Z+epsilon {
-				maxFwd := b.Min.Z - pBox.Max.Z
-				if maxFwd < dz {
-					dz = maxFwd
+			if dz > 0 {
+				if pBox.Max.Z <= b.Min.Z+epsilon {
+					maxFwd := b.Min.Z - pBox.Max.Z
+					if maxFwd < dz {
+						dz = maxFwd
+					}
+				} else if pBox.Max.Z > b.Min.Z && pBox.Min.Z < b.Min.Z {
+					dz = 0
 				}
-			} else if dz < 0 && pBox.Min.Z >= b.Max.Z-epsilon {
-				maxBack := b.Max.Z - pBox.Min.Z
-				if maxBack > dz {
-					dz = maxBack
+			} else if dz < 0 {
+				if pBox.Min.Z >= b.Max.Z-epsilon {
+					maxBack := b.Max.Z - pBox.Min.Z
+					if maxBack > dz {
+						dz = maxBack
+					}
+				} else if pBox.Min.Z < b.Max.Z && pBox.Max.Z > b.Max.Z {
+					dz = 0
 				}
 			}
 		}
 	}
 	pos.Z += dz
+	pBox = NewPlayerAABB(pos)
+
+	// 4. Anti-penetration push-out: if player's box still overlaps any solid block, push out along shortest axis
+	for _, b := range solidBoxes {
+		if pBox.Min.X < b.Max.X-epsilon && pBox.Max.X > b.Min.X+epsilon &&
+			pBox.Min.Y < b.Max.Y-epsilon && pBox.Max.Y > b.Min.Y+epsilon &&
+			pBox.Min.Z < b.Max.Z-epsilon && pBox.Max.Z > b.Min.Z+epsilon {
+
+			overlapX1 := b.Max.X - pBox.Min.X
+			overlapX2 := pBox.Max.X - b.Min.X
+			overlapY1 := b.Max.Y - pBox.Min.Y
+			overlapY2 := pBox.Max.Y - b.Min.Y
+			overlapZ1 := b.Max.Z - pBox.Min.Z
+			overlapZ2 := pBox.Max.Z - b.Min.Z
+
+			minPushX := overlapX1
+			signX := 1.0
+			if overlapX2 < minPushX {
+				minPushX = overlapX2
+				signX = -1.0
+			}
+
+			minPushY := overlapY1
+			signY := 1.0
+			if overlapY2 < minPushY {
+				minPushY = overlapY2
+				signY = -1.0
+			}
+
+			minPushZ := overlapZ1
+			signZ := 1.0
+			if overlapZ2 < minPushZ {
+				minPushZ = overlapZ2
+				signZ = -1.0
+			}
+
+			if minPushY < minPushX && minPushY < minPushZ && minPushY < 0.8 {
+				pos.Y += signY * (minPushY + 1e-3)
+				pBox = NewPlayerAABB(pos)
+				if signY > 0 {
+					onGround = true
+				}
+			} else if minPushX < minPushZ && minPushX < 0.8 {
+				pos.X += signX * (minPushX + 1e-3)
+				pBox = NewPlayerAABB(pos)
+			} else if minPushZ < 0.8 {
+				pos.Z += signZ * (minPushZ + 1e-3)
+				pBox = NewPlayerAABB(pos)
+			}
+		}
+	}
 
 	// Extra ground stability check (feet resting on solid block, only when not jumping upward)
 	if !onGround && delta.Y <= 0 {
