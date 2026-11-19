@@ -158,7 +158,8 @@ func NewClient(serverAddr, username string, isSingleplayer bool, width, height i
 
 	if isSingleplayer {
 		cli.engine = sim.NewEngine()
-		cli.genOverworld = gen.NewGenerator(12345, gen.DimensionOverworld)
+		seed := time.Now().UnixNano()
+		cli.genOverworld = gen.NewGenerator(seed, gen.DimensionOverworld)
 		cli.engine.StartTickLoop()
 
 		spawnPos := findSafeSpawnPoint(cli.genOverworld, cli.engine)
@@ -179,11 +180,55 @@ func NewClient(serverAddr, username string, isSingleplayer bool, width, height i
 		cli.player.Inventory.Slots[8] = inventory.ItemStack{ItemID: inventory.ItemApple, Count: 16}
 		cli.player.Inventory.SelectedHotbar = 1 // Start on placeable Oak Planks by default
 
-		// Spawn living mobs in meadow around player (safe distance from spawn point)
-		cli.engine.SpawnMob(sim.MobPig, sim.Vec3{X: spawnPos.X + 3.5, Y: spawnPos.Y, Z: spawnPos.Z + 2.5})
-		cli.engine.SpawnMob(sim.MobCow, sim.Vec3{X: spawnPos.X - 3.5, Y: spawnPos.Y, Z: spawnPos.Z + 4.5})
-		cli.engine.SpawnMob(sim.MobZombie, sim.Vec3{X: spawnPos.X + 24.0, Y: spawnPos.Y, Z: spawnPos.Z + 24.0})
-		cli.engine.SpawnMob(sim.MobCreeper, sim.Vec3{X: spawnPos.X + 30.0, Y: spawnPos.Y, Z: spawnPos.Z + 30.0})
+		// Helper to spawn mob accurately resting on surface block
+		spawnMobOnSurface := func(mobType sim.MobType, ox, oz float64) {
+			mx := spawnPos.X + ox
+			mz := spawnPos.Z + oz
+			wx := int32(math.Floor(mx))
+			wz := int32(math.Floor(mz))
+			cp := world.BlockPos{X: wx, Y: 0, Z: wz}.ToChunkPos()
+			chk := cli.engine.GetChunk(cp)
+			if chk == nil {
+				chk = cli.genOverworld.GenerateChunk(cp)
+				cli.engine.LoadChunk(cp, chk)
+			}
+			surfY := spawnPos.Y
+			for y := int32(110); y >= 55; y-- {
+				b := chk.GetBlock(wx, y, wz)
+				if sim.IsSolidBlock(b) {
+					surfY = float64(y + 1)
+					break
+				}
+			}
+			cli.engine.SpawnMob(mobType, sim.Vec3{X: mx, Y: surfY, Z: mz})
+		}
+
+		// Spawn authentic natural herds and flocks around meadow
+		// 1. Cow Herd (3 cows)
+		spawnMobOnSurface(sim.MobCow, -6.5, 5.0)
+		spawnMobOnSurface(sim.MobCow, -8.0, 7.0)
+		spawnMobOnSurface(sim.MobCow, -5.0, 8.5)
+
+		// 2. Pig Herd (3 pigs)
+		spawnMobOnSurface(sim.MobPig, 6.0, 4.5)
+		spawnMobOnSurface(sim.MobPig, 8.0, 6.0)
+		spawnMobOnSurface(sim.MobPig, 5.0, 7.5)
+
+		// 3. Sheep Flock (4 sheep)
+		spawnMobOnSurface(sim.MobSheep, -12.0, -8.0)
+		spawnMobOnSurface(sim.MobSheep, -10.5, -10.0)
+		spawnMobOnSurface(sim.MobSheep, -13.5, -6.5)
+		spawnMobOnSurface(sim.MobSheep, -11.0, -5.0)
+
+		// 4. Chicken Flock (3 chickens)
+		spawnMobOnSurface(sim.MobChicken, 9.0, -7.0)
+		spawnMobOnSurface(sim.MobChicken, 11.0, -8.5)
+		spawnMobOnSurface(sim.MobChicken, 8.0, -10.0)
+
+		// 5. Hostile mobs spawned at distance (> 24 blocks)
+		spawnMobOnSurface(sim.MobZombie, 26.0, 26.0)
+		spawnMobOnSurface(sim.MobSkeleton, -28.0, 24.0)
+		spawnMobOnSurface(sim.MobCreeper, 30.0, -28.0)
 
 		// Pre-mesh immediate spawn sections synchronously so terrain is immediately visible
 		for i := 0; i < 25; i++ {
@@ -1623,6 +1668,15 @@ func (c *Client) drawMob(m *sim.MobEntity) {
 	pitch := float64(m.Pitch)
 	hurtFlash := m.Health < m.MaxHealth && (int(m.Health*10)%2 == 0)
 
+	// Leg-swing animation: pitch angle in degrees alternating dynamically
+	walkSwing := 0.0
+	if m.IsMoving || math.Hypot(m.Velocity.X, m.Velocity.Z) > 0.005 {
+		walkSwing = math.Sin(float64(m.WalkDistance)*2.6) * 32.0
+	}
+
+	radY := yaw * math.Pi / 180.0
+	cosY, sinY := math.Cos(radY), math.Sin(radY)
+
 	switch m.Type {
 	case sim.MobZombie:
 		headCol := uint32(0xFF4C7838)  // Zombie green
@@ -1637,20 +1691,41 @@ func (c *Client) drawMob(m *sim.MobEntity) {
 		c.render3DBox(pos.X, pos.Y+1.45, pos.Z, 0.22, 0.22, 0.22, yaw, pitch, headCol, headCol, headCol)
 		// Torso
 		c.render3DBox(pos.X, pos.Y+0.88, pos.Z, 0.24, 0.35, 0.12, yaw, 0, torsoCol, torsoCol, torsoCol)
-		// Arms outstretched forward (Minecraft classic Zombie pose: 90 deg pitch)
-		radY := yaw * math.Pi / 180.0
-		cosY, sinY := math.Cos(radY), math.Sin(radY)
+		// Outstretched arms
 		armOffX := 0.35 * cosY
 		armOffZ := -0.35 * sinY
 		forwardX := 0.25 * sinY
 		forwardZ := 0.25 * cosY
-		c.render3DBox(pos.X-armOffX+forwardX, pos.Y+0.88, pos.Z-armOffZ+forwardZ, 0.11, 0.12, 0.35, yaw, 0, torsoCol, headCol, torsoCol)
-		c.render3DBox(pos.X+armOffX+forwardX, pos.Y+0.88, pos.Z+armOffZ+forwardZ, 0.11, 0.12, 0.35, yaw, 0, torsoCol, headCol, torsoCol)
-		// Legs
+		armBob := math.Sin(float64(m.WalkDistance)*1.3) * 5.0
+		c.render3DBox(pos.X-armOffX+forwardX, pos.Y+0.88, pos.Z-armOffZ+forwardZ, 0.11, 0.12, 0.35, yaw, armBob, torsoCol, headCol, torsoCol)
+		c.render3DBox(pos.X+armOffX+forwardX, pos.Y+0.88, pos.Z+armOffZ+forwardZ, 0.11, 0.12, 0.35, yaw, -armBob, torsoCol, headCol, torsoCol)
+		// Animated swinging legs
 		legOffX := 0.12 * cosY
 		legOffZ := -0.12 * sinY
-		c.render3DBox(pos.X-legOffX, pos.Y+0.36, pos.Z-legOffZ, 0.11, 0.35, 0.12, yaw, 0, pantsCol, pantsCol, pantsCol)
-		c.render3DBox(pos.X+legOffX, pos.Y+0.36, pos.Z+legOffZ, 0.11, 0.35, 0.12, yaw, 0, pantsCol, pantsCol, pantsCol)
+		c.render3DBox(pos.X-legOffX, pos.Y+0.36, pos.Z-legOffZ, 0.11, 0.35, 0.12, yaw, -walkSwing, pantsCol, pantsCol, pantsCol)
+		c.render3DBox(pos.X+legOffX, pos.Y+0.36, pos.Z+legOffZ, 0.11, 0.35, 0.12, yaw, walkSwing, pantsCol, pantsCol, pantsCol)
+
+	case sim.MobSkeleton:
+		boneCol := uint32(0xFFE8E8E8) // Bone white
+		if hurtFlash {
+			boneCol = 0xFFFF3333
+		}
+		// Head
+		c.render3DBox(pos.X, pos.Y+1.45, pos.Z, 0.20, 0.20, 0.20, yaw, pitch, boneCol, boneCol, boneCol)
+		// Ribcage / Torso
+		c.render3DBox(pos.X, pos.Y+0.88, pos.Z, 0.20, 0.35, 0.10, yaw, 0, boneCol, boneCol, boneCol)
+		// Arms holding bow forward
+		armOffX := 0.30 * cosY
+		armOffZ := -0.30 * sinY
+		forwardX := 0.20 * sinY
+		forwardZ := 0.20 * cosY
+		c.render3DBox(pos.X-armOffX+forwardX, pos.Y+0.88, pos.Z-armOffZ+forwardZ, 0.08, 0.08, 0.35, yaw, 0, boneCol, boneCol, boneCol)
+		c.render3DBox(pos.X+armOffX+forwardX, pos.Y+0.88, pos.Z+armOffZ+forwardZ, 0.08, 0.08, 0.35, yaw, 0, boneCol, boneCol, boneCol)
+		// Animated legs
+		legOffX := 0.10 * cosY
+		legOffZ := -0.10 * sinY
+		c.render3DBox(pos.X-legOffX, pos.Y+0.36, pos.Z-legOffZ, 0.08, 0.35, 0.08, yaw, -walkSwing, boneCol, boneCol, boneCol)
+		c.render3DBox(pos.X+legOffX, pos.Y+0.36, pos.Z+legOffZ, 0.08, 0.35, 0.08, yaw, walkSwing, boneCol, boneCol, boneCol)
 
 	case sim.MobCreeper:
 		headCol := uint32(0xFF48B33B) // Creeper green
@@ -1669,96 +1744,174 @@ func (c *Client) drawMob(m *sim.MobEntity) {
 		c.render3DBox(pos.X, pos.Y+1.35, pos.Z, 0.22, 0.22, 0.22, yaw, pitch, headCol, headCol, headCol)
 		// Creeper Body
 		c.render3DBox(pos.X, pos.Y+0.75, pos.Z, 0.20, 0.38, 0.12, yaw, 0, bodyCol, bodyCol, bodyCol)
-		// Creeper 4 Feet
-		radY := yaw * math.Pi / 180.0
-		cosY, sinY := math.Cos(radY), math.Sin(radY)
-		for _, f := range [][2]float64{{-0.12, -0.12}, {0.12, -0.12}, {-0.12, 0.12}, {0.12, 0.12}} {
+		// 4 Animated Feet
+		for i, f := range [][2]float64{{-0.12, 0.12}, {0.12, 0.12}, {-0.12, -0.12}, {0.12, -0.12}} {
 			fx := f[0]*cosY + f[1]*sinY
 			fz := -f[0]*sinY + f[1]*cosY
-			c.render3DBox(pos.X+fx, pos.Y+0.18, pos.Z+fz, 0.08, 0.18, 0.08, yaw, 0, legCol, legCol, legCol)
+			legPitch := walkSwing
+			if i%2 == 1 {
+				legPitch = -walkSwing
+			}
+			c.render3DBox(pos.X+fx, pos.Y+0.18, pos.Z+fz, 0.08, 0.18, 0.08, yaw, legPitch, legCol, legCol, legCol)
 		}
 
 	case sim.MobPig:
 		bodyCol := uint32(0xFFF0A0A0) // Pig pink
 		headCol := uint32(0xFFF0A0A0)
 		snoutCol := uint32(0xFFE88A8A)
+		nostrilCol := uint32(0xFFD06868)
 		legCol := uint32(0xFFE08E8E)
 		if hurtFlash {
 			bodyCol = 0xFFFF3333
 			headCol = 0xFFFF3333
 			legCol = 0xFFFF2222
 		}
-		radY := yaw * math.Pi / 180.0
-		cosY, sinY := math.Cos(radY), math.Sin(radY)
 		// Horizontal Quadruped Body
 		c.render3DBox(pos.X, pos.Y+0.55, pos.Z, 0.26, 0.22, 0.38, yaw, 0, bodyCol, bodyCol, bodyCol)
 		// Head
 		frontX := 0.42 * sinY
 		frontZ := 0.42 * cosY
 		c.render3DBox(pos.X+frontX, pos.Y+0.65, pos.Z+frontZ, 0.20, 0.20, 0.20, yaw, pitch, headCol, headCol, headCol)
-		// Snout
+		// Protruding 3D Snout with nostrils
 		snoutX := 0.58 * sinY
 		snoutZ := 0.58 * cosY
-		c.render3DBox(pos.X+snoutX, pos.Y+0.60, pos.Z+snoutZ, 0.10, 0.08, 0.06, yaw, pitch, snoutCol, snoutCol, snoutCol)
-		// 4 Legs
-		for _, f := range [][2]float64{{-0.15, -0.22}, {0.15, -0.22}, {-0.15, 0.22}, {0.15, 0.22}} {
+		c.render3DBox(pos.X+snoutX, pos.Y+0.60, pos.Z+snoutZ, 0.10, 0.08, 0.06, yaw, pitch, nostrilCol, snoutCol, snoutCol)
+		// Tiny curly tail
+		tailX := 0.40 * sinY
+		tailZ := 0.40 * cosY
+		c.render3DBox(pos.X-tailX, pos.Y+0.62, pos.Z-tailZ, 0.04, 0.06, 0.04, yaw, 30.0, snoutCol, snoutCol, snoutCol)
+		// 4 Animated Legs (alternating diagonal swing)
+		legs := [][2]float64{
+			{-0.15, 0.22},  // Front-Left
+			{0.15, 0.22},   // Front-Right
+			{-0.15, -0.22}, // Rear-Left
+			{0.15, -0.22},  // Rear-Right
+		}
+		for i, f := range legs {
 			lx := f[0]*cosY + f[1]*sinY
 			lz := -f[0]*sinY + f[1]*cosY
-			c.render3DBox(pos.X+lx, pos.Y+0.20, pos.Z+lz, 0.08, 0.20, 0.08, yaw, 0, legCol, legCol, legCol)
+			legPitch := walkSwing
+			if i == 1 || i == 2 {
+				legPitch = -walkSwing
+			}
+			c.render3DBox(pos.X+lx, pos.Y+0.20, pos.Z+lz, 0.08, 0.20, 0.08, yaw, legPitch, legCol, legCol, legCol)
 		}
 
 	case sim.MobCow:
 		bodyCol := uint32(0xFF5A4432)    // Brown cow body
 		spottedCol := uint32(0xFFE5E5E5) // White spots
 		headCol := uint32(0xFF5A4432)
+		muzzleCol := uint32(0xFF7D7D7D)  // Grey muzzle
 		hornCol := uint32(0xFFCCCCCC)
+		udderCol := uint32(0xFFECA0A0)   // Pink udder
 		legCol := uint32(0xFF423225)
+		hoofCol := uint32(0xFF221810)    // Dark hooves
 		if hurtFlash {
 			bodyCol = 0xFFFF3333
 			headCol = 0xFFFF3333
 			legCol = 0xFFFF2222
 		}
-		radY := yaw * math.Pi / 180.0
-		cosY, sinY := math.Cos(radY), math.Sin(radY)
-		// Body
+		// Body with authentic spots
 		c.render3DBox(pos.X, pos.Y+0.75, pos.Z, 0.30, 0.28, 0.45, yaw, 0, spottedCol, bodyCol, bodyCol)
+		// Udder under rear abdomen
+		udderZ := -0.20 * cosY
+		udderX := 0.20 * sinY
+		c.render3DBox(pos.X-udderX, pos.Y+0.52, pos.Z-udderZ, 0.12, 0.08, 0.12, yaw, 0, udderCol, udderCol, udderCol)
 		// Head
 		frontX := 0.50 * sinY
 		frontZ := 0.50 * cosY
 		c.render3DBox(pos.X+frontX, pos.Y+0.90, pos.Z+frontZ, 0.22, 0.22, 0.22, yaw, pitch, headCol, headCol, headCol)
-		// Horns
+		// Protruding Muzzle
+		muzzleX := 0.65 * sinY
+		muzzleZ := 0.65 * cosY
+		c.render3DBox(pos.X+muzzleX, pos.Y+0.82, pos.Z+muzzleZ, 0.14, 0.10, 0.08, yaw, pitch, muzzleCol, muzzleCol, muzzleCol)
+		// Horns on head
 		c.render3DBox(pos.X+frontX-0.18*cosY, pos.Y+1.08, pos.Z+frontZ+0.18*sinY, 0.04, 0.08, 0.04, yaw, 0, hornCol, hornCol, hornCol)
 		c.render3DBox(pos.X+frontX+0.18*cosY, pos.Y+1.08, pos.Z+frontZ-0.18*sinY, 0.04, 0.08, 0.04, yaw, 0, hornCol, hornCol, hornCol)
-		// 4 Legs
-		for _, f := range [][2]float64{{-0.18, -0.28}, {0.18, -0.28}, {-0.18, 0.28}, {0.18, 0.28}} {
+		// 4 Animated Legs with hooves
+		legs := [][2]float64{
+			{-0.18, 0.28},  // Front-Left
+			{0.18, 0.28},   // Front-Right
+			{-0.18, -0.28}, // Rear-Left
+			{0.18, -0.28},  // Rear-Right
+		}
+		for i, f := range legs {
 			lx := f[0]*cosY + f[1]*sinY
 			lz := -f[0]*sinY + f[1]*cosY
-			c.render3DBox(pos.X+lx, pos.Y+0.28, pos.Z+lz, 0.09, 0.28, 0.09, yaw, 0, legCol, legCol, legCol)
+			legPitch := walkSwing
+			if i == 1 || i == 2 {
+				legPitch = -walkSwing
+			}
+			c.render3DBox(pos.X+lx, pos.Y+0.28, pos.Z+lz, 0.09, 0.28, 0.09, yaw, legPitch, legCol, hoofCol, legCol)
 		}
 
-	case sim.MobSkeleton:
-		boneCol := uint32(0xFFE8E8E8) // Bone white
+	case sim.MobSheep:
+		woolCol := uint32(0xFFEFEFEF) // Fluffy white/cream wool
+		woolShade := uint32(0xFFD6D6D6)
+		skinCol := uint32(0xFFD8C0A8) // Tan skin
+		legCol := uint32(0xFFBBA088)
 		if hurtFlash {
-			boneCol = 0xFFFF3333
+			woolCol = 0xFFFF3333
+			skinCol = 0xFFFF3333
+			legCol = 0xFFFF2222
 		}
-		// Head
-		c.render3DBox(pos.X, pos.Y+1.45, pos.Z, 0.20, 0.20, 0.20, yaw, pitch, boneCol, boneCol, boneCol)
-		// Ribcage / Torso
-		c.render3DBox(pos.X, pos.Y+0.88, pos.Z, 0.20, 0.35, 0.10, yaw, 0, boneCol, boneCol, boneCol)
-		// Arms holding bow forward
-		radY := yaw * math.Pi / 180.0
-		cosY, sinY := math.Cos(radY), math.Sin(radY)
-		armOffX := 0.30 * cosY
-		armOffZ := -0.30 * sinY
-		forwardX := 0.20 * sinY
-		forwardZ := 0.20 * cosY
-		c.render3DBox(pos.X-armOffX+forwardX, pos.Y+0.88, pos.Z-armOffZ+forwardZ, 0.08, 0.08, 0.35, yaw, 0, boneCol, boneCol, boneCol)
-		c.render3DBox(pos.X+armOffX+forwardX, pos.Y+0.88, pos.Z+armOffZ+forwardZ, 0.08, 0.08, 0.35, yaw, 0, boneCol, boneCol, boneCol)
-		// Legs
-		legOffX := 0.10 * cosY
-		legOffZ := -0.10 * sinY
-		c.render3DBox(pos.X-legOffX, pos.Y+0.36, pos.Z-legOffZ, 0.08, 0.35, 0.08, yaw, 0, boneCol, boneCol, boneCol)
-		c.render3DBox(pos.X+legOffX, pos.Y+0.36, pos.Z+legOffZ, 0.08, 0.35, 0.08, yaw, 0, boneCol, boneCol, boneCol)
+		// Fluffy Wool Body
+		c.render3DBox(pos.X, pos.Y+0.72, pos.Z, 0.34, 0.30, 0.46, yaw, 0, woolCol, woolShade, woolCol)
+		// Head: tan skin face with fluffy wool cap
+		frontX := 0.48 * sinY
+		frontZ := 0.48 * cosY
+		c.render3DBox(pos.X+frontX, pos.Y+0.85, pos.Z+frontZ, 0.18, 0.18, 0.20, yaw, pitch, skinCol, skinCol, skinCol)
+		c.render3DBox(pos.X+frontX, pos.Y+0.98, pos.Z+frontZ, 0.19, 0.08, 0.18, yaw, pitch, woolCol, woolCol, woolCol) // Wool cap
+		// 4 Slender animated legs
+		legs := [][2]float64{
+			{-0.16, 0.24},
+			{0.16, 0.24},
+			{-0.16, -0.24},
+			{0.16, -0.24},
+		}
+		for i, f := range legs {
+			lx := f[0]*cosY + f[1]*sinY
+			lz := -f[0]*sinY + f[1]*cosY
+			legPitch := walkSwing
+			if i == 1 || i == 2 {
+				legPitch = -walkSwing
+			}
+			c.render3DBox(pos.X+lx, pos.Y+0.24, pos.Z+lz, 0.07, 0.24, 0.07, yaw, legPitch, legCol, 0xFF4A3828, legCol)
+		}
+
+	case sim.MobChicken:
+		featherCol := uint32(0xFFFFFFFF) // Pure white
+		combCol := uint32(0xFFFF2020)    // Red comb & wattle
+		beakCol := uint32(0xFFFFB010)    // Yellow beak & feet
+		if hurtFlash {
+			featherCol = 0xFFFF3333
+		}
+		// Body
+		c.render3DBox(pos.X, pos.Y+0.32, pos.Z, 0.18, 0.16, 0.22, yaw, 0, featherCol, featherCol, featherCol)
+		// Flapping Wings
+		wingFlap := 0.0
+		if walkSwing != 0 || m.Velocity.Y != 0 {
+			wingFlap = math.Sin(float64(m.WalkDistance)*4.5) * 22.0
+		}
+		c.render3DBox(pos.X-0.20*cosY, pos.Y+0.35, pos.Z+0.20*sinY, 0.03, 0.12, 0.18, yaw, wingFlap, featherCol, featherCol, featherCol)
+		c.render3DBox(pos.X+0.20*cosY, pos.Y+0.35, pos.Z-0.20*sinY, 0.03, 0.12, 0.18, yaw, -wingFlap, featherCol, featherCol, featherCol)
+		// Neck & Head
+		frontX := 0.22 * sinY
+		frontZ := 0.22 * cosY
+		c.render3DBox(pos.X+frontX, pos.Y+0.52, pos.Z+frontZ, 0.10, 0.18, 0.12, yaw, pitch, featherCol, featherCol, featherCol)
+		// Red Comb on head
+		c.render3DBox(pos.X+frontX, pos.Y+0.64, pos.Z+frontZ, 0.04, 0.06, 0.08, yaw, pitch, combCol, combCol, combCol)
+		// Yellow Beak
+		beakX := 0.32 * sinY
+		beakZ := 0.32 * cosY
+		c.render3DBox(pos.X+beakX, pos.Y+0.50, pos.Z+beakZ, 0.06, 0.04, 0.06, yaw, pitch, beakCol, beakCol, beakCol)
+		// Red Wattle
+		c.render3DBox(pos.X+beakX, pos.Y+0.44, pos.Z+beakZ, 0.04, 0.04, 0.04, yaw, pitch, combCol, combCol, combCol)
+		// 2 Yellow Legs
+		legOffX := 0.07 * cosY
+		legOffZ := -0.07 * sinY
+		c.render3DBox(pos.X-legOffX, pos.Y+0.12, pos.Z-legOffZ, 0.03, 0.14, 0.04, yaw, -walkSwing*1.4, beakCol, beakCol, beakCol)
+		c.render3DBox(pos.X+legOffX, pos.Y+0.12, pos.Z+legOffZ, 0.03, 0.14, 0.04, yaw, walkSwing*1.4, beakCol, beakCol, beakCol)
 	}
 
 	// Health bar above mob if damaged
@@ -2469,7 +2622,30 @@ func (c *Client) drawHeldItem() {
 		return
 	}
 
-	// 4. Authentic 3D Isometric Textured Voxel Block
+	// 4. Non-block item materials (Diamond, Ingot, Coal, Redstone, Stick, Bone, etc.)
+	if !inventory.IsPlaceableBlock(selected.ItemID) {
+		ix := hx - 10
+		iy := hy - 25
+		sprite := render.GetItemSprite16x16(selected.ItemID)
+		for y := 0; y < 16; y++ {
+			for x := 0; x < 16; x++ {
+				col := sprite[y][x]
+				if (col >> 24) == 0 {
+					continue
+				}
+				sx := ix + x*3
+				sy := iy + (15-y)*3
+				c.framebuf.DrawRect(sx+1, sy+1, 3, 3, darkenColor(col, 0.65))
+				c.framebuf.DrawRect(sx, sy, 3, 3, col)
+			}
+		}
+		c.framebuf.DrawRect(ix+10, iy+32, 24, 16, skinTone)
+		c.framebuf.DrawRect(ix+16, iy+46, 32, 45, sleeveTone)
+		c.framebuf.DrawRect(ix+14, iy+44, 36, 4, cuffTone)
+		return
+	}
+
+	// 5. Authentic 3D Isometric Textured Voxel Block
 	cx := hx - 15
 	cy := hy - 18
 
@@ -2623,6 +2799,12 @@ func runGraphicalWindow(c *Client, w, h int) {
 			c.showDebugF3 = !c.showDebugF3
 		case 0x74: // F5: Toggle Perspective (First-Person, Third-Person Back, Third-Person Front)
 			c.perspectiveMode = (c.perspectiveMode + 1) % 3
+		case 0x7A: // F11: Toggle Fullscreen
+			wnd.ToggleFullscreen()
+		case 0x0D: // Enter: Alt+Enter toggles fullscreen
+			if wnd.IsKeyDown(0x12) { // VK_MENU (Alt)
+				wnd.ToggleFullscreen()
+			}
 		case 0x51: // Q: Quit immediately if in pause menu, or throw/drop held item in game
 			if c.showPauseMenu {
 				wnd.Close()

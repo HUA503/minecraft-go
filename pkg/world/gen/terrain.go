@@ -90,9 +90,26 @@ func (g *Generator) generateOverworld(c *world.Chunk, cp world.ChunkPos) {
 			wx := float64(worldStartX + lx)
 			wz := float64(worldStartZ + lz)
 
-			// 2D terrain elevation using fBm
-			elevation := g.noise.FBM2D(wx*0.015, wz*0.015, 4, 0.5, 2.0)
-			height := int32(64 + elevation*18)
+			// Multi-biome terrain determination using broad Perlin noise
+			biomeNoise := g.noise.Noise2D(wx*0.003, wz*0.003)
+			isMountain := biomeNoise > 0.45
+			isForest := biomeNoise >= -0.15 && biomeNoise <= 0.22
+			isDesert := biomeNoise < -0.55
+
+			var height int32
+			if isMountain {
+				// Rugged mountain peaks reaching Y=85..105
+				mElev := g.noise.FBM2D(wx*0.02, wz*0.02, 5, 0.55, 2.0)
+				height = int32(75 + mElev*30)
+			} else if isDesert {
+				// Gentle rolling desert dunes
+				dElev := g.noise.FBM2D(wx*0.012, wz*0.012, 3, 0.4, 2.0)
+				height = int32(65 + dElev*10)
+			} else {
+				// Plains / Forest rolling meadows
+				elevation := g.noise.FBM2D(wx*0.015, wz*0.015, 4, 0.5, 2.0)
+				height = int32(64 + elevation*18)
+			}
 
 			// Bedrock floor at -64
 			c.SetBlock(toI32(wx), -64, toI32(wz), BlockBedrock)
@@ -117,37 +134,56 @@ func (g *Generator) generateOverworld(c *world.Chunk, cp world.ChunkPos) {
 				c.SetBlock(toI32(wx), y, toI32(wz), block)
 			}
 
-			// Dirt layer
-			for y := height - 3; y < height; y++ {
-				c.SetBlock(toI32(wx), y, toI32(wz), BlockDirt)
+			// Subsurface layer (3 blocks beneath surface)
+			if isDesert {
+				for y := height - 3; y < height; y++ {
+					c.SetBlock(toI32(wx), y, toI32(wz), BlockSand)
+				}
+			} else if isMountain && height >= 90 {
+				for y := height - 3; y < height; y++ {
+					c.SetBlock(toI32(wx), y, toI32(wz), BlockStone)
+				}
+			} else {
+				for y := height - 3; y < height; y++ {
+					c.SetBlock(toI32(wx), y, toI32(wz), BlockDirt)
+				}
 			}
 
 			// Surface block
 			if height >= seaLevel {
-				c.SetBlock(toI32(wx), height, toI32(wz), BlockGrass)
-
-				// Procedural oak tree generation (roughly 1 tree every 64 blocks)
-				treeChance := g.noise.Noise2D(wx*0.5, wz*0.5)
-				if treeChance > 0.65 && lx >= 2 && lx <= 13 && lz >= 2 && lz <= 13 {
-					g.growOakTree(c, toI32(wx), height+1, toI32(wz))
+				if isDesert {
+					c.SetBlock(toI32(wx), height, toI32(wz), BlockSand)
+				} else if isMountain && height >= 90 {
+					// High mountain peak: exposed stone cliffs
+					c.SetBlock(toI32(wx), height, toI32(wz), BlockStone)
 				} else {
-					// Authentic Minecraft Java plains vegetation:
-					// Organic clustered patches with > 88% expansive clean green grass fields.
-					patchNoise := g.noise.Noise2D(wx*0.06, wz*0.06)
-					if patchNoise > 0.42 {
-						// Tall grass meadow cluster
-						detail := g.noise.Noise2D(wx*0.8+50.0, wz*0.8+50.0)
-						if detail > 0.15 {
-							c.SetBlock(toI32(wx), height+1, toI32(wz), BlockTallGrass)
-						}
-					} else if patchNoise < -0.48 {
-						// Distinct flower patches (Dandelions or Poppies in natural clusters)
-						detail := g.noise.Noise2D(wx*0.8+150.0, wz*0.8+150.0)
-						if detail > 0.22 {
-							if patchNoise < -0.60 {
-								c.SetBlock(toI32(wx), height+1, toI32(wz), BlockPoppy)
-							} else {
-								c.SetBlock(toI32(wx), height+1, toI32(wz), BlockDandelion)
+					c.SetBlock(toI32(wx), height, toI32(wz), BlockGrass)
+
+					// Forest biome: dense woodland tree distribution
+					// Plains biome: open expanses with occasional solitary trees
+					treeMinChance := 0.68
+					if isForest {
+						treeMinChance = 0.40
+					}
+					treeChance := g.noise.Noise2D(wx*0.5, wz*0.5)
+					if treeChance > treeMinChance && lx >= 2 && lx <= 13 && lz >= 2 && lz <= 13 {
+						g.growOakTree(c, toI32(wx), height+1, toI32(wz))
+					} else {
+						// Clustered tall grass and flower patches
+						patchNoise := g.noise.Noise2D(wx*0.06, wz*0.06)
+						if patchNoise > 0.42 {
+							detail := g.noise.Noise2D(wx*0.8+50.0, wz*0.8+50.0)
+							if detail > 0.15 {
+								c.SetBlock(toI32(wx), height+1, toI32(wz), BlockTallGrass)
+							}
+						} else if patchNoise < -0.48 {
+							detail := g.noise.Noise2D(wx*0.8+150.0, wz*0.8+150.0)
+							if detail > 0.22 {
+								if patchNoise < -0.60 {
+									c.SetBlock(toI32(wx), height+1, toI32(wz), BlockPoppy)
+								} else {
+									c.SetBlock(toI32(wx), height+1, toI32(wz), BlockDandelion)
+								}
 							}
 						}
 					}
@@ -164,20 +200,21 @@ func (g *Generator) generateOverworld(c *world.Chunk, cp world.ChunkPos) {
 }
 
 func (g *Generator) growOakTree(c *world.Chunk, x, baseY, z int32) {
-	// Trunk: 5 blocks high
-	for y := int32(0); y < 5; y++ {
+	// Varied trunk height based on coordinate hash: 4 to 6 blocks high
+	trunkHeight := int32(4 + int(g.noise.Noise2D(float64(x)*0.3, float64(z)*0.3)*2.0+1.0)%3)
+	for y := int32(0); y < trunkHeight; y++ {
 		c.SetBlock(x, baseY+y, z, BlockOakLog)
 	}
 
-	// Leaves canopy (5x5 layer at Y+3 and Y+4, 3x3 at Y+5)
-	for dy := int32(3); dy <= 5; dy++ {
+	// Leaves canopy (5x5 layer at trunkHeight-2 and trunkHeight-1, 3x3 at trunkHeight)
+	for dy := trunkHeight - 2; dy <= trunkHeight; dy++ {
 		radius := int32(2)
-		if dy == 5 {
+		if dy == trunkHeight {
 			radius = 1
 		}
 		for dx := -radius; dx <= radius; dx++ {
 			for dz := -radius; dz <= radius; dz++ {
-				if dx == 0 && dz == 0 && dy < 5 {
+				if dx == 0 && dz == 0 && dy < trunkHeight {
 					continue // trunk
 				}
 				c.SetBlock(x+dx, baseY+dy, z+dz, BlockOakLeaves)

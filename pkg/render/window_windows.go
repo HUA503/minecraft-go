@@ -42,13 +42,30 @@ var (
 	procEndPaint                      = user32.NewProc("EndPaint")
 	procDestroyWindow                 = user32.NewProc("DestroyWindow")
 	procGetClientRect                 = user32.NewProc("GetClientRect")
+	procGetWindowPlacement            = user32.NewProc("GetWindowPlacement")
+	procSetWindowPlacement            = user32.NewProc("SetWindowPlacement")
+	procGetWindowLongW                = user32.NewProc("GetWindowLongW")
+	procSetWindowLongW                = user32.NewProc("SetWindowLongW")
+	procSetWindowPos                  = user32.NewProc("SetWindowPos")
+	procGetSystemMetrics              = user32.NewProc("GetSystemMetrics")
 )
 
 const (
 	WS_OVERLAPPEDWINDOW = 0x00CF0000
 	WS_VISIBLE          = 0x10000000
+	WS_POPUP            = 0x80000000
+	GWL_STYLE           = 0xFFFFFFF0 // (DWORD)-16
+	HWND_TOP            = 0
+	SWP_FRAMECHANGED    = 0x0020
+	SWP_SHOWWINDOW      = 0x0040
+	SWP_NOSIZE          = 0x0001
+	SWP_NOMOVE          = 0x0002
+	SWP_NOZORDER        = 0x0004
+	SM_CXSCREEN         = 0
+	SM_CYSCREEN         = 1
 	SW_SHOW             = 5
 	PM_REMOVE           = 0x0001
+	WM_SIZE             = 0x0005
 	WM_PAINT            = 0x000F
 	WM_CLOSE            = 0x0010
 	WM_QUIT             = 0x0012
@@ -72,6 +89,15 @@ type RECT struct {
 
 type POINT struct {
 	X, Y int32
+}
+
+type WINDOWPLACEMENT struct {
+	Length           uint32
+	Flags            uint32
+	ShowCmd          uint32
+	PtMinPosition    POINT
+	PtMaxPosition    POINT
+	RcNormalPosition RECT
 }
 
 type WNDCLASSEXW struct {
@@ -135,12 +161,31 @@ type Window struct {
 	centerScreenX  int32
 	centerScreenY  int32
 	bmi            BITMAPINFO
+
+	IsFullscreen   bool
+	savedPlacement WINDOWPLACEMENT
+	savedStyle     uint32
 }
 
 var globalWnd *Window
 
 func wndProc(hwnd, msg, wparam, lparam uintptr) uintptr {
 	switch msg {
+	case WM_SIZE:
+		if globalWnd != nil {
+			var rc RECT
+			procGetClientRect.Call(hwnd, uintptr(unsafe.Pointer(&rc)))
+			cw := int(rc.Right - rc.Left)
+			ch := int(rc.Bottom - rc.Top)
+			if cw > 0 && ch > 0 {
+				globalWnd.mu.Lock()
+				globalWnd.Width = cw
+				globalWnd.Height = ch
+				globalWnd.mu.Unlock()
+				globalWnd.recenterMouse()
+			}
+		}
+		return 0
 	case WM_CLOSE:
 		if globalWnd != nil {
 			globalWnd.Closed = true
@@ -438,9 +483,11 @@ func (w *Window) PollEvents() bool {
 }
 
 func (w *Window) Present(fb *Framebuffer) {
-	if w.Closed || w.Hdc == 0 {
+	if w.Closed || w.Hdc == 0 || fb == nil || len(fb.Color) == 0 {
 		return
 	}
+	w.bmi.BmiHeader.BiWidth = int32(fb.Width)
+	w.bmi.BmiHeader.BiHeight = -int32(fb.Height)
 	procStretchDIBits.Call(
 		w.Hdc,
 		0, 0, uintptr(w.Width), uintptr(w.Height),
@@ -450,6 +497,65 @@ func (w *Window) Present(fb *Framebuffer) {
 		DIB_RGB_COLORS,
 		SRCCOPY,
 	)
+}
+
+// ToggleFullscreen toggles between standard windowed mode and seamless borderless fullscreen mode.
+func (w *Window) ToggleFullscreen() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if !w.IsFullscreen {
+		// 1. Save current window placement and window styles
+		w.savedPlacement.Length = uint32(unsafe.Sizeof(w.savedPlacement))
+		procGetWindowPlacement.Call(w.Hwnd, uintptr(unsafe.Pointer(&w.savedPlacement)))
+		style, _, _ := procGetWindowLongW.Call(w.Hwnd, uintptr(GWL_STYLE))
+		w.savedStyle = uint32(style)
+
+		// 2. Query primary screen dimensions
+		sw, _, _ := procGetSystemMetrics.Call(uintptr(SM_CXSCREEN))
+		sh, _, _ := procGetSystemMetrics.Call(uintptr(SM_CYSCREEN))
+
+		// 3. Switch window style to borderless popup
+		newStyle := (w.savedStyle &^ WS_OVERLAPPEDWINDOW) | WS_POPUP | WS_VISIBLE
+		procSetWindowLongW.Call(w.Hwnd, uintptr(GWL_STYLE), uintptr(newStyle))
+
+		// 4. Position window to cover entire desktop
+		procSetWindowPos.Call(
+			w.Hwnd,
+			uintptr(HWND_TOP),
+			0, 0, sw, sh,
+			uintptr(SWP_FRAMECHANGED|SWP_SHOWWINDOW),
+		)
+
+		w.IsFullscreen = true
+		w.Width = int(sw)
+		w.Height = int(sh)
+	} else {
+		// 1. Restore standard window style
+		procSetWindowLongW.Call(w.Hwnd, uintptr(GWL_STYLE), uintptr(w.savedStyle))
+
+		// 2. Restore previous window placement
+		procSetWindowPlacement.Call(w.Hwnd, uintptr(unsafe.Pointer(&w.savedPlacement)))
+
+		// 3. Notify Windows of frame change
+		procSetWindowPos.Call(
+			w.Hwnd,
+			0, 0, 0, 0, 0,
+			uintptr(SWP_NOMOVE|SWP_NOSIZE|SWP_NOZORDER|SWP_FRAMECHANGED),
+		)
+
+		var rc RECT
+		procGetClientRect.Call(w.Hwnd, uintptr(unsafe.Pointer(&rc)))
+		cw := int(rc.Right - rc.Left)
+		ch := int(rc.Bottom - rc.Top)
+		if cw > 0 && ch > 0 {
+			w.Width = cw
+			w.Height = ch
+		}
+
+		w.IsFullscreen = false
+	}
+	w.recenterMouse()
 }
 
 func (w *Window) Close() {

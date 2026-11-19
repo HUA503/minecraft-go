@@ -404,3 +404,66 @@ func TestFoodConsumptionAndRegeneration(t *testing.T) {
 		t.Fatalf("should not be able to eat when hunger is already full at 20")
 	}
 }
+
+func TestMobWanderingAndObstacleJump(t *testing.T) {
+	eng := NewEngine()
+	// Place flat floor at Y=64, with 1-block step at X=6, Y=65, Z=5
+	for x := int32(0); x <= 10; x++ {
+		for z := int32(0); z <= 10; z++ {
+			eng.SetBlock(x, 64, z, 1) // Stone floor
+		}
+	}
+	eng.SetBlock(6, 65, 5, 1) // 1-block elevation step obstacle
+
+	cow := eng.SpawnMob(MobCow, Vec3{X: 5.5, Y: 65.0, Z: 5.5})
+	cow.IsIdle = false
+	cow.WanderTicks = 50
+	cow.TargetYaw = 90.0 // heading in +X direction towards the step at X=6
+	cow.Yaw = 90.0
+
+	// Tick the cow simulation
+	eng.Tick()
+
+	// Since block at X=6, Y=65 is solid stone and Y=66 is air, cow must trigger 1-block jump impulse
+	if cow.Velocity.Y <= 0 {
+		t.Fatalf("expected mob to trigger 1-block jump over obstacle, got Y velocity: %f", cow.Velocity.Y)
+	}
+
+	if cow.WalkDistance <= 0 {
+		t.Fatalf("expected mob to accumulate walk distance for leg swing, got: %f", cow.WalkDistance)
+	}
+}
+
+func TestSheepAndChickenDrops(t *testing.T) {
+	eng := NewEngine()
+	sheep := eng.SpawnMob(MobSheep, Vec3{X: 10, Y: 65, Z: 10})
+	chicken := eng.SpawnMob(MobChicken, Vec3{X: 12, Y: 65, Z: 12})
+
+	dropsSheep, killedSheep := eng.DamageMob(sheep.ID, 20.0)
+	if !killedSheep || len(dropsSheep) == 0 {
+		t.Fatalf("expected sheep to be killed and drop wool and mutton, got %v", dropsSheep)
+	}
+	hasWool := false
+	for _, d := range dropsSheep {
+		if d.ItemID == 35 { // White wool
+			hasWool = true
+		}
+	}
+	if !hasWool {
+		t.Fatalf("expected sheep drops to include White Wool (ID 35)")
+	}
+
+	dropsChicken, killedChicken := eng.DamageMob(chicken.ID, 10.0)
+	if !killedChicken || len(dropsChicken) == 0 {
+		t.Fatalf("expected chicken to be killed and drop feathers, got %v", dropsChicken)
+	}
+	hasFeather := false
+	for _, d := range dropsChicken {
+		if d.ItemID == 288 { // Feather
+			hasFeather = true
+		}
+	}
+	if !hasFeather {
+		t.Fatalf("expected chicken drops to include Feathers (ID 288)")
+	}
+}

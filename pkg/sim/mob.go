@@ -15,6 +15,8 @@ const (
 	MobCreeper
 	MobCow
 	MobPig
+	MobSheep
+	MobChicken
 )
 
 func (m MobType) String() string {
@@ -29,6 +31,10 @@ func (m MobType) String() string {
 		return "Cow"
 	case MobPig:
 		return "Pig"
+	case MobSheep:
+		return "Sheep"
+	case MobChicken:
+		return "Chicken"
 	default:
 		return "Unknown"
 	}
@@ -48,6 +54,13 @@ type MobEntity struct {
 	AttackCooldown int
 	FuseTicks      int // Creeper ignition timer
 	IsAlive        bool
+
+	// Dynamic authentic AI & Animation states
+	WalkDistance float64 // Continuous walking distance for leg-swing animations
+	IsMoving     bool
+	WanderTicks  int     // Countdown for current wander or idle action
+	IsIdle       bool    // Idle/grazing vs active walking
+	TargetYaw    float32 // Target heading towards which animal smoothly steers
 }
 
 // NewMobEntity creates an initialized mob.
@@ -55,6 +68,10 @@ func NewMobEntity(id int32, mobType MobType, pos Vec3) *MobEntity {
 	maxHP := float32(20.0)
 	if mobType == MobCow || mobType == MobPig {
 		maxHP = 10.0
+	} else if mobType == MobSheep {
+		maxHP = 8.0
+	} else if mobType == MobChicken {
+		maxHP = 4.0
 	}
 	return &MobEntity{
 		ID:        id,
@@ -63,6 +80,8 @@ func NewMobEntity(id int32, mobType MobType, pos Vec3) *MobEntity {
 		Health:    maxHP,
 		MaxHealth: maxHP,
 		IsAlive:   true,
+		IsIdle:    true,
+		WanderTicks: 20 + int(id*11)%40,
 	}
 }
 
@@ -116,7 +135,7 @@ func (m *MobEntity) TickMob(engine *Engine) {
 		m.tickSkeletonAI(engine, closestPlayer, math.Sqrt(closestDistSq))
 	case MobCreeper:
 		m.tickCreeperAI(engine, closestPlayer, math.Sqrt(closestDistSq))
-	case MobCow, MobPig:
+	case MobCow, MobPig, MobSheep, MobChicken:
 		m.tickPassiveAI(engine)
 	}
 
@@ -140,6 +159,18 @@ func (m *MobEntity) tickZombieAI(engine *Engine, player *PlayerEntity, dist floa
 	speed := 0.12
 	m.Velocity.X = (dx / dist) * speed
 	m.Velocity.Z = (dz / dist) * speed
+	m.WalkDistance += speed
+	m.IsMoving = true
+
+	// Hill climbing / 1-block step jump AI
+	aheadX := int32(math.Floor(m.Position.X + (dx/dist)*0.6))
+	footY := int32(math.Floor(m.Position.Y + 0.1))
+	aheadZ := int32(math.Floor(m.Position.Z + (dz/dist)*0.6))
+	blockAhead := engine.GetBlock(aheadX, footY, aheadZ)
+	blockAbove1 := engine.GetBlock(aheadX, footY+1, aheadZ)
+	if IsSolidBlock(blockAhead) && !IsSolidBlock(blockAbove1) && m.Velocity.Y <= 0 {
+		m.Velocity.Y = 0.38
+	}
 
 	// Melee attack: within 1.5 blocks
 	if dist <= 1.5 && m.AttackCooldown <= 0 {
@@ -150,6 +181,7 @@ func (m *MobEntity) tickZombieAI(engine *Engine, player *PlayerEntity, dist floa
 
 func (m *MobEntity) tickSkeletonAI(engine *Engine, player *PlayerEntity, dist float64) {
 	if player == nil || dist > 16.0 {
+		m.IsMoving = false
 		return
 	}
 
@@ -162,10 +194,26 @@ func (m *MobEntity) tickSkeletonAI(engine *Engine, player *PlayerEntity, dist fl
 		// Back up
 		m.Velocity.X = -(dx / dist) * 0.1
 		m.Velocity.Z = -(dz / dist) * 0.1
+		m.WalkDistance += 0.1
+		m.IsMoving = true
 	} else if dist > 10.0 {
 		// Approach
 		m.Velocity.X = (dx / dist) * 0.1
 		m.Velocity.Z = (dz / dist) * 0.1
+		m.WalkDistance += 0.1
+		m.IsMoving = true
+	} else {
+		m.IsMoving = false
+	}
+
+	// Hill climbing / 1-block step jump AI
+	aheadX := int32(math.Floor(m.Position.X + m.Velocity.X*3.0))
+	footY := int32(math.Floor(m.Position.Y + 0.1))
+	aheadZ := int32(math.Floor(m.Position.Z + m.Velocity.Z*3.0))
+	blockAhead := engine.GetBlock(aheadX, footY, aheadZ)
+	blockAbove1 := engine.GetBlock(aheadX, footY+1, aheadZ)
+	if IsSolidBlock(blockAhead) && !IsSolidBlock(blockAbove1) && m.Velocity.Y <= 0 {
+		m.Velocity.Y = 0.38
 	}
 
 	// Shoot arrow every 30 ticks (1.5 seconds)
@@ -178,6 +226,7 @@ func (m *MobEntity) tickSkeletonAI(engine *Engine, player *PlayerEntity, dist fl
 func (m *MobEntity) tickCreeperAI(engine *Engine, player *PlayerEntity, dist float64) {
 	if player == nil || dist > 16.0 {
 		m.FuseTicks = 0
+		m.IsMoving = false
 		return
 	}
 
@@ -189,6 +238,19 @@ func (m *MobEntity) tickCreeperAI(engine *Engine, player *PlayerEntity, dist flo
 		// Approach player
 		m.Velocity.X = (dx / dist) * 0.14
 		m.Velocity.Z = (dz / dist) * 0.14
+		m.WalkDistance += 0.14
+		m.IsMoving = true
+
+		// Hill climbing / 1-block step jump AI
+		aheadX := int32(math.Floor(m.Position.X + (dx/dist)*0.6))
+		footY := int32(math.Floor(m.Position.Y + 0.1))
+		aheadZ := int32(math.Floor(m.Position.Z + (dz/dist)*0.6))
+		blockAhead := engine.GetBlock(aheadX, footY, aheadZ)
+		blockAbove1 := engine.GetBlock(aheadX, footY+1, aheadZ)
+		if IsSolidBlock(blockAhead) && !IsSolidBlock(blockAbove1) && m.Velocity.Y <= 0 {
+			m.Velocity.Y = 0.38
+		}
+
 		if m.FuseTicks > 0 {
 			m.FuseTicks--
 		}
@@ -196,6 +258,7 @@ func (m *MobEntity) tickCreeperAI(engine *Engine, player *PlayerEntity, dist flo
 		// Stop and charge fuse! (30 ticks = 1.5s countdown)
 		m.Velocity.X = 0
 		m.Velocity.Z = 0
+		m.IsMoving = false
 		m.FuseTicks++
 		if m.FuseTicks >= 30 {
 			// BOOM! Explode
@@ -220,13 +283,102 @@ func (m *MobEntity) tickCreeperAI(engine *Engine, player *PlayerEntity, dist flo
 }
 
 func (m *MobEntity) tickPassiveAI(engine *Engine) {
-	// Passive wandering motion
-	if m.AttackCooldown <= 0 {
-		m.AttackCooldown = 40 + int(m.ID*7)%30
-		angle := float64(m.ID*37%360) * math.Pi / 180.0
-		m.Velocity.X = math.Cos(angle) * 0.05
-		m.Velocity.Z = math.Sin(angle) * 0.05
-		m.Yaw = float32(angle * 180.0 / math.Pi)
+	// 1. Check if nearby player exists to look at
+	var nearbyPlayer *PlayerEntity
+	for _, p := range engine.Players {
+		if p.IsAlive {
+			dx := p.Position.X - m.Position.X
+			dz := p.Position.Z - m.Position.Z
+			if dx*dx+dz*dz < 25.0 {
+				nearbyPlayer = p
+				break
+			}
+		}
+	}
+
+	if m.WanderTicks <= 0 {
+		// Switch between Idle (40-90 ticks) and Walking (50-120 ticks)
+		m.IsIdle = !m.IsIdle
+		if m.IsIdle {
+			m.WanderTicks = 40 + int(m.ID*17)%50
+			m.IsMoving = false
+			m.Velocity.X = 0
+			m.Velocity.Z = 0
+			if m.Type == MobCow || m.Type == MobSheep {
+				m.Pitch = 25.0 // Head down to graze grass
+			}
+		} else {
+			m.WanderTicks = 50 + int(m.ID*31)%70
+			m.IsMoving = true
+			m.Pitch = 0
+			// Pick a new random wandering target angle
+			m.TargetYaw = float32((int(m.ID*47) + m.WanderTicks*13) % 360)
+		}
+	} else {
+		m.WanderTicks--
+	}
+
+	if nearbyPlayer != nil && m.IsIdle {
+		// Look at nearby player
+		dx := nearbyPlayer.Position.X - m.Position.X
+		dz := nearbyPlayer.Position.Z - m.Position.Z
+		m.Yaw = float32(math.Atan2(dx, dz) * 180.0 / math.Pi)
+		m.Pitch = 0
+		return
+	}
+
+	if m.IsIdle {
+		m.Velocity.X = 0
+		m.Velocity.Z = 0
+		return
+	}
+
+	// Active wandering: smoothly interpolate Yaw towards TargetYaw
+	diffYaw := m.TargetYaw - m.Yaw
+	for diffYaw < -180 {
+		diffYaw += 360
+	}
+	for diffYaw > 180 {
+		diffYaw -= 360
+	}
+	if diffYaw > 8.0 {
+		m.Yaw += 8.0
+	} else if diffYaw < -8.0 {
+		m.Yaw -= 8.0
+	} else {
+		m.Yaw = m.TargetYaw
+	}
+
+	rad := float64(m.Yaw) * math.Pi / 180.0
+	fwdX := math.Sin(rad)
+	fwdZ := math.Cos(rad)
+
+	speed := 0.05
+	if m.Type == MobChicken {
+		speed = 0.04
+	}
+	m.Velocity.X = fwdX * speed
+	m.Velocity.Z = fwdZ * speed
+	m.WalkDistance += speed
+
+	// Hill climbing / 1-block step jump AI
+	aheadX := int32(math.Floor(m.Position.X + fwdX*0.8))
+	footY := int32(math.Floor(m.Position.Y + 0.1))
+	aheadZ := int32(math.Floor(m.Position.Z + fwdZ*0.8))
+
+	blockAhead := engine.GetBlock(aheadX, footY, aheadZ)
+	blockAbove1 := engine.GetBlock(aheadX, footY+1, aheadZ)
+	blockAbove2 := engine.GetBlock(aheadX, footY+2, aheadZ)
+
+	// If block ahead is solid and above is open air: jump up the 1-block hill!
+	if IsSolidBlock(blockAhead) && !IsSolidBlock(blockAbove1) && !IsSolidBlock(blockAbove2) {
+		if m.Velocity.Y <= 0 {
+			m.Velocity.Y = 0.38 // Standard 1-block jump
+		}
+	} else if IsSolidBlock(blockAhead) && IsSolidBlock(blockAbove1) {
+		// Blocked by a high wall: turn around!
+		m.TargetYaw = float32(int(m.Yaw+120+float32(m.ID%60)) % 360)
+		m.WanderTicks = 40
 	}
 }
 
@@ -254,6 +406,16 @@ func (m *MobEntity) DeathDrops() []inventory.ItemStack {
 	case MobPig:
 		return []inventory.ItemStack{
 			{ItemID: 319, Count: 2}, // Raw Porkchop
+		}
+	case MobSheep:
+		return []inventory.ItemStack{
+			{ItemID: 35, Count: 1},  // White Wool
+			{ItemID: 363, Count: 2}, // Raw Mutton / Beef
+		}
+	case MobChicken:
+		return []inventory.ItemStack{
+			{ItemID: 288, Count: 2}, // Feathers
+			{ItemID: 363, Count: 1}, // Raw Chicken Meat
 		}
 	default:
 		return nil
