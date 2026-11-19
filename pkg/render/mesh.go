@@ -113,8 +113,10 @@ func BuildSectionMesh(getBlock func(x, y, z int32) int32, originX, originY, orig
 					if IsOpaqueCube(neighborID) {
 						continue
 					}
-					// Internal face culling between identical transparent/translucent blocks
-					if blockID == neighborID && (blockID == 8 || blockID == 9 || blockID == 18 || blockID == 20) {
+					// Internal face culling between transparent/translucent blocks (both water blocks 8 and 9 cull mutually)
+					isWaterA := (blockID == 8 || blockID == 9)
+					isWaterB := (neighborID == 8 || neighborID == 9)
+					if (isWaterA && isWaterB) || (blockID == neighborID && (blockID == 18 || blockID == 20)) {
 						continue
 					}
 					addFaceQuad(mesh, originX+x, originY+y, originZ+z, face, blockID, getBlock)

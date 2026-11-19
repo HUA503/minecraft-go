@@ -565,6 +565,7 @@ func (fb *Framebuffer) DrawVoxelTrianglePerspective(v0, v1, v2 ScreenVertex) {
 						outG := uint32(float32(pg)*aNorm + float32(bgg)*(1-aNorm))
 						outB := uint32(float32(pb)*aNorm + float32(bgb)*(1-aNorm))
 						fb.Color[idx] = 0xFF000000 | (outR << 16) | (outG << 8) | outB
+						fb.Depth[idx] = depth
 					}
 				}
 			}

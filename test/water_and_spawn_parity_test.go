@@ -138,7 +138,7 @@ func TestContinuousWaterSwimming(t *testing.T) {
 		}
 
 		dy := player.Velocity.Y * dt
-		resPos, _ := eng.MovePlayerRelative(player.ID, sim.Vec3{X: 0, Y: dy, Z: 0}, 0, 0)
+		resPos, _, _ := eng.MovePlayerRelative(player.ID, sim.Vec3{X: 0, Y: dy, Z: 0}, 0, 0)
 		player.Position = resPos
 	}
 
@@ -155,7 +155,7 @@ func TestContinuousWaterSwimming(t *testing.T) {
 			player.Velocity.Y = -3.0
 		}
 		dy := player.Velocity.Y * dt
-		resPos, _ := eng.MovePlayerRelative(player.ID, sim.Vec3{X: 0, Y: dy, Z: 0}, 0, 0)
+		resPos, _, _ := eng.MovePlayerRelative(player.ID, sim.Vec3{X: 0, Y: dy, Z: 0}, 0, 0)
 		player.Position = resPos
 	}
 	if player.Position.Y >= prevY {
@@ -189,7 +189,7 @@ func TestWaterSurfaceLeapBreach(t *testing.T) {
 	// Pressing space at surface imparts vanilla water leap (Velocity.Y = 6.2 m/s)
 	player.Velocity.Y = 6.2
 	dy := player.Velocity.Y * 0.1
-	resPos, _ := eng.MovePlayerRelative(player.ID, sim.Vec3{X: 0.2, Y: dy, Z: 0}, 0, 0)
+	resPos, _, _ := eng.MovePlayerRelative(player.ID, sim.Vec3{X: 0.2, Y: dy, Z: 0}, 0, 0)
 	if resPos.Y < 62.7 {
 		t.Fatalf("surface leap should propel player above water surface, reached Y=%f", resPos.Y)
 	}
@@ -228,7 +228,7 @@ func TestLandJumpAndBunnyHop(t *testing.T) {
 		// Air gravity
 		player.Velocity.Y -= 32.0 * dt
 		dy := player.Velocity.Y * dt
-		resPos, onGround := eng.MovePlayerRelative(player.ID, sim.Vec3{X: 0, Y: dy, Z: 0}, 0, 0)
+		resPos, onGround, _ := eng.MovePlayerRelative(player.ID, sim.Vec3{X: 0, Y: dy, Z: 0}, 0, 0)
 		player.Position = resPos
 		player.OnGround = onGround
 	}
@@ -245,7 +245,7 @@ func TestLandJumpAndBunnyHop(t *testing.T) {
 		}
 		player.Velocity.Y -= 32.0 * dt
 		dy := player.Velocity.Y * dt
-		resPos, onGround := eng.MovePlayerRelative(player.ID, sim.Vec3{X: 0, Y: dy, Z: 0}, 0, 0)
+		resPos, onGround, _ := eng.MovePlayerRelative(player.ID, sim.Vec3{X: 0, Y: dy, Z: 0}, 0, 0)
 		player.Position = resPos
 		player.OnGround = onGround
 	}

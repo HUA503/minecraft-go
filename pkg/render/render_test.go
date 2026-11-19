@@ -459,3 +459,61 @@ func TestFoliageCrossedQuadsAndOpaqueExposure(t *testing.T) {
 		t.Fatalf("grass block top face (+Y) was incorrectly culled by tall grass above it")
 	}
 }
+
+func TestWaterInternalFaceCullingAndDepthStability(t *testing.T) {
+	// 1. Two adjacent water blocks (ID 8 and ID 9)
+	world := map[[3]int32]int32{
+		{0, 0, 0}: 8,
+		{1, 0, 0}: 9,
+	}
+	getBlock := func(x, y, z int32) int32 {
+		return world[[3]int32{x, y, z}]
+	}
+
+	mesh := BuildSectionMesh(getBlock, 0, 0, 0)
+	// Two cubes with 1 shared culled face = 10 faces = 40 vertices
+	if len(mesh.Vertices) != 40 {
+		t.Fatalf("expected 40 vertices for two adjacent water blocks with internal face culled, got %d", len(mesh.Vertices))
+	}
+
+	// 2. Translucent water depth buffer test
+	fb := NewFramebuffer(64, 64)
+	fb.ClearSky()
+
+	// Step 1: Draw opaque stone floor at depth 15.0
+	// Pixel (32, 32): depth 15.0
+	v0 := NewScreenVertex(ScreenPoint{X: 10, Y: 10, Depth: 15.0}, 0, 0, 1, 2, 1.0)
+	v1 := NewScreenVertex(ScreenPoint{X: 50, Y: 10, Depth: 15.0}, 1, 0, 1, 2, 1.0)
+	v2 := NewScreenVertex(ScreenPoint{X: 10, Y: 50, Depth: 15.0}, 0, 1, 1, 2, 1.0)
+	fb.DrawVoxelTrianglePerspective(v0, v1, v2)
+
+	idx := 20*fb.Width + 20
+	if math.Abs(float64(fb.Depth[idx]-15.0)) > 1e-3 {
+		t.Fatalf("expected stone depth 15.0, got %f", fb.Depth[idx])
+	}
+	stoneCol := fb.Color[idx]
+
+	// Step 2: Draw translucent water surface at depth 12.0
+	wv0 := NewScreenVertex(ScreenPoint{X: 10, Y: 10, Depth: 12.0}, 0, 0, 8, 2, 1.0)
+	wv1 := NewScreenVertex(ScreenPoint{X: 50, Y: 10, Depth: 12.0}, 1, 0, 8, 2, 1.0)
+	wv2 := NewScreenVertex(ScreenPoint{X: 10, Y: 50, Depth: 12.0}, 0, 1, 8, 2, 1.0)
+	fb.DrawVoxelTrianglePerspective(wv0, wv1, wv2)
+
+	if math.Abs(float64(fb.Depth[idx]-12.0)) > 1e-3 {
+		t.Fatalf("expected water depth 12.0 to be written to depth buffer, got %f", fb.Depth[idx])
+	}
+	waterBlendedCol := fb.Color[idx]
+	if waterBlendedCol == stoneCol {
+		t.Fatalf("water did not blend with stone background")
+	}
+
+	// Step 3: Draw a quad behind water at depth 16.0: MUST be culled and NOT overwrite water
+	bv0 := NewScreenVertex(ScreenPoint{X: 10, Y: 10, Depth: 16.0}, 0, 0, 3, 2, 1.0)
+	bv1 := NewScreenVertex(ScreenPoint{X: 50, Y: 10, Depth: 16.0}, 1, 0, 3, 2, 1.0)
+	bv2 := NewScreenVertex(ScreenPoint{X: 10, Y: 50, Depth: 16.0}, 0, 1, 3, 2, 1.0)
+	fb.DrawVoxelTrianglePerspective(bv0, bv1, bv2)
+
+	if fb.Color[idx] != waterBlendedCol {
+		t.Fatalf("geometry behind water at depth 16.0 improperly overwrote water! Got color %X, expected %X", fb.Color[idx], waterBlendedCol)
+	}
+}

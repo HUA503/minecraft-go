@@ -570,7 +570,7 @@ func (e *Engine) MovePlayer(id int32, pos Vec3, yaw, pitch float32, onGround boo
 
 // MovePlayerRelative handles movement inputs with authentic AABB voxel collision resolution.
 // Prevents any wall or floor clipping, and supports smooth sliding along solid voxel faces.
-func (e *Engine) MovePlayerRelative(id int32, delta Vec3, yaw, pitch float32) (Vec3, bool) {
+func (e *Engine) MovePlayerRelative(id int32, delta Vec3, yaw, pitch float32) (Vec3, bool, bool) {
 	e.mu.Lock()
 	p, ok := e.Players[id]
 	if !ok || !p.IsAlive {
@@ -589,10 +589,10 @@ func (e *Engine) MovePlayerRelative(id int32, delta Vec3, yaw, pitch float32) (V
 			p.OnGround = true
 			p.ClientDriven = true
 			e.mu.Unlock()
-			return p.Position, true
+			return p.Position, true, false
 		}
 		e.mu.Unlock()
-		return Vec3{X: 8.0, Y: 66.0, Z: 8.0}, false
+		return Vec3{X: 8.0, Y: 66.0, Z: 8.0}, false, false
 	}
 	p.ClientDriven = true
 	oldPos := p.Position
@@ -640,7 +640,7 @@ func (e *Engine) MovePlayerRelative(id int32, delta Vec3, yaw, pitch float32) (V
 	default:
 	}
 
-	return resolvedPos, ground
+	return resolvedPos, ground, hitCeiling
 }
 
 // Tick executes a single 50ms simulation step.

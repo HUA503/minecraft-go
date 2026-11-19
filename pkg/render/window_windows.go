@@ -414,13 +414,7 @@ func (w *Window) IsKeyDown(vkCode int) bool {
 
 	// 2. Real-time physical hardware key press state
 	ret, _, _ := procGetAsyncKeyState.Call(uintptr(vkCode))
-	if (ret & 0x8000) != 0 {
-		fg, _, _ := procGetForegroundWindow.Call()
-		if fg == w.Hwnd || fg == 0 {
-			return true
-		}
-	}
-	return false
+	return (ret & 0x8000) != 0
 }
 
 func (w *Window) PollEvents() bool {

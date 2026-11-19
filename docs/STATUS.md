@@ -351,6 +351,25 @@
 - [x] **P23-4 起跳与稳定性专属集成测试 (`test/land_jump_test.go`)**:
   - 新增 `TestPlayerJumpFromGroundDoesNotHitCeiling`（地面起跳不碰顶且位移正常）与 `TestGroundRestingPositionStabilityNoJitter`（连续 10 帧重力下 Y 坐标绝对零颤动稳定），均 100% PASS。
 
+### ✅ P24 双通道分层渲染根除水面闪烁、彻底解决空格跳跃失效 (100% 通过)
+- [x] **P24-1 根除空格起跳被意外截断为 0 严重缺陷 (`pkg/sim/sim.go`, `cmd/client/main.go`)**:
+  - 深度排查发现：`MovePlayerRelative` 内部直接更新了 `p.Position = resolvedPos`，而客户端主循环此前在调用后比对了 `resolvedPos.Y < c.player.Position.Y + delta.Y - 1e-4`。由于 `c.player.Position` 已经是指向同一个对象的指针，在任何向上跳跃移动帧（$\Delta Y > 0$）该条件在数学上等价于 `0 < delta.Y - 1e-4` 恒真，导致刚按空格起跳的第一帧垂直速度就被直接清零！
+  - 重构 `MovePlayerRelative` 返回三元组 `(resolvedPos Vec3, onGround bool, hitCeiling bool)`，由碰撞系统原生提供权威天花板阻挡状态；仅当 `hitCeiling && c.player.Velocity.Y > 0` 时才清空向上冲量，起跳在无遮挡陆地上拥有纯正 $8.4\text{ m/s}$ 初始速度，自然冲至约 1.25 格顶点并平稳下落，长按空格顺畅连跳（Bunny Hopping）。
+- [x] **P24-2 两阶段深度分层渲染 (Two-Pass Rendering) 根除水面闪烁 (`cmd/client/main.go`, `pkg/render/rasterizer.go`)**:
+  - 深度发现水面闪烁两大成因：
+    1. Go map 遍历顺序随机化：单阶段渲染下，各区块遍历顺序每帧随机变动。当半透明水面先于河床方块渲染且水面未写深度时，后绘制的河床方块深度测试通过，直接将水面暴力覆盖为不透明泥沙，形成水与泥沙的高频闪烁交替！
+    2. 视平线背面剔除误杀：当摄像机在水面附近（Y=63）游泳起伏时，视平线法向剔除将水面顶面剔除导致水面突然消失。
+  - **实现对齐 Minecraft 原版的两阶段通道渲染体系**：
+    - **通道一（不透明实体通道）**：先绘制所有不透明地形方块（石头、泥土、沙子、树木）、掉落物及生物，将河床坚固底色与深度严格写入深度缓冲 `fb.Depth`。
+    - **通道二（半透明水体通道）**：提取所有水体方块，由远及近（Back-to-Front）稳定排序，水面进行半透明 Alpha 混合后将自身深度确立至 `fb.Depth`，绝对杜绝任何背景方块越权覆写水面。
+    - 水体方块豁免单向背面剔除（无论从水下仰望还是水上俯瞰均稳定可见）。
+    - 优化水下暗蓝全屏滤镜触发防抖（需下潜深于 25cm 或浸没水柱方触发），杜绝贴近水面时全屏频闪。
+- [x] **P24-3 水体内部共面消除优化 (`pkg/render/mesh.go`)**:
+  - 完善静态水（ID 8）与流动水（ID 9）之间的互相剔除，水体内部彻底消除重叠面与 Z-Fighting。
+- [x] **P24-4 全自动化验证与回归测试 (`test/land_jump_test.go`, `pkg/render/render_test.go`)**:
+  - 新增 `TestFullJumpArcAndBunnyHopCycle`：模拟完整起跳抛物线上升、达到 1.25 格顶点、下落着陆、长按空格即刻触发连跳全流程，100% PASS。
+  - 新增 `TestWaterInternalFaceCullingAndDepthStability`：验证水体双向内部面剔除、两阶段渲染下水面深度正确写入且后方几何体无法穿透覆写水面，100% PASS。
+
 ---
 
 ## 验证与复现命令 (Reproduction Commands)

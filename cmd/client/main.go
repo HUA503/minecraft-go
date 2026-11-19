@@ -11,6 +11,7 @@ import (
 	"net"
 	"os"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -604,14 +605,14 @@ func (c *Client) PhysicsStep(fwdInput, strafeInput float64, jumpRequested bool, 
 	}
 
 	delta := sim.Vec3{X: dx, Y: dy, Z: dz}
-	resolvedPos, onGround := c.engine.MovePlayerRelative(c.player.ID, delta, float32(c.camera.Yaw), float32(c.camera.Pitch))
+	resolvedPos, onGround, hitCeiling := c.engine.MovePlayerRelative(c.player.ID, delta, float32(c.camera.Yaw), float32(c.camera.Pitch))
 
 	c.player.OnGround = onGround
 	if onGround {
 		if !inWater || !jumpRequested {
 			c.player.Velocity.Y = 0
 		}
-	} else if delta.Y > 0 && resolvedPos.Y < c.player.Position.Y+delta.Y-1e-4 {
+	} else if hitCeiling && c.player.Velocity.Y > 0 {
 		// Hit ceiling! Stop upward vertical momentum immediately
 		c.player.Velocity.Y = 0
 	}
@@ -1283,11 +1284,16 @@ func (c *Client) RenderFrame() {
 	c.framebuf.ClearSkyWithCamera(worldTime, c.camera)
 	c.framebuf.DrawCelestialBodies(c.camera, worldTime)
 
-	// 2. Render cached 3D chunk meshes with perspective-correct texturing & distance fog
+	// 2. Render cached 3D chunk meshes with authentic two-pass rendering (Pass 1: Opaque, Pass 2: Translucent Water)
 	c.meshMu.RLock()
 	lx, ly, lz := c.camera.GetLookVector()
 	camX, camY, camZ := c.camera.X, c.camera.Y, c.camera.Z
 
+	type visibleSection struct {
+		mesh        *render.Mesh
+		distForward float64
+	}
+	visibleSections := make([]visibleSection, 0, len(c.meshCache))
 	for key, mesh := range c.meshCache {
 		if mesh == nil {
 			continue
@@ -1302,13 +1308,22 @@ func (c *Client) RenderFrame() {
 			// Entire section is safely behind camera plane, skip!
 			continue
 		}
+		visibleSections = append(visibleSections, visibleSection{mesh: mesh, distForward: distForward})
+	}
+	c.meshMu.RUnlock()
 
+	// Pass 1: Render all OPAQUE solid/cutout terrain blocks first (Stone, Dirt, Sand, Wood, Leaves, etc.)
+	for _, sec := range visibleSections {
+		mesh := sec.mesh
 		for i := 0; i < len(mesh.Indices); i += 3 {
 			v0 := mesh.Vertices[mesh.Indices[i]]
+			if v0.BlockID == 8 || v0.BlockID == 9 {
+				continue // Deferred to translucent Pass 2 to eliminate all water flickering
+			}
 			v1 := mesh.Vertices[mesh.Indices[i+1]]
 			v2 := mesh.Vertices[mesh.Indices[i+2]]
 
-			// World-space exact normal culling for planar voxel face (zero arbitrary epsilon to prevent flickering)
+			// World-space exact normal culling for planar voxel face
 			switch v0.FaceIndex {
 			case 0: // +X face (visible only if camX > v0.X)
 				if camX <= float64(v0.X) {
@@ -1359,7 +1374,6 @@ func (c *Client) RenderFrame() {
 			}
 		}
 	}
-	c.meshMu.RUnlock()
 
 	// 3. Draw targeted block wireframe outline and progressive destruction cracks
 	if c.hasTarget {
@@ -1413,6 +1427,44 @@ func (c *Client) RenderFrame() {
 		}
 	}
 
+	// 3.8 Pass 2: Render TRANSLUCENT water blocks (back-to-front sorting for smooth blending & zero flicker)
+	sort.Slice(visibleSections, func(a, b int) bool {
+		return visibleSections[a].distForward > visibleSections[b].distForward
+	})
+	for _, sec := range visibleSections {
+		mesh := sec.mesh
+		for i := 0; i < len(mesh.Indices); i += 3 {
+			v0 := mesh.Vertices[mesh.Indices[i]]
+			if v0.BlockID != 8 && v0.BlockID != 9 {
+				continue
+			}
+			v1 := mesh.Vertices[mesh.Indices[i+1]]
+			v2 := mesh.Vertices[mesh.Indices[i+2]]
+
+			vx0, vy0, vz0 := c.camera.ToViewSpace(float64(v0.X), float64(v0.Y), float64(v0.Z))
+			vx1, vy1, vz1 := c.camera.ToViewSpace(float64(v1.X), float64(v1.Y), float64(v1.Z))
+			vx2, vy2, vz2 := c.camera.ToViewSpace(float64(v2.X), float64(v2.Y), float64(v2.Z))
+
+			vv0 := render.ViewVertex{X: vx0, Y: vy0, Z: vz0, U: v0.U, V: v0.V, BlockID: v0.BlockID, FaceIndex: v0.FaceIndex, LightingMult: v0.LightingMult}
+			vv1 := render.ViewVertex{X: vx1, Y: vy1, Z: vz1, U: v1.U, V: v1.V, BlockID: v1.BlockID, FaceIndex: v1.FaceIndex, LightingMult: v1.LightingMult}
+			vv2 := render.ViewVertex{X: vx2, Y: vy2, Z: vz2, U: v2.U, V: v2.V, BlockID: v2.BlockID, FaceIndex: v2.FaceIndex, LightingMult: v2.LightingMult}
+
+			clipped, count := render.ClipTriangleNear(vv0, vv1, vv2, 0.10)
+			for ci := 0; ci < count; ci++ {
+				tri := clipped[ci]
+				p0 := c.camera.ProjectViewToScreen(tri.V0.X, tri.V0.Y, tri.V0.Z, c.framebuf.Width, c.framebuf.Height)
+				p1 := c.camera.ProjectViewToScreen(tri.V1.X, tri.V1.Y, tri.V1.Z, c.framebuf.Width, c.framebuf.Height)
+				p2 := c.camera.ProjectViewToScreen(tri.V2.X, tri.V2.Y, tri.V2.Z, c.framebuf.Width, c.framebuf.Height)
+
+				sv0 := render.NewScreenVertex(p0, tri.V0.U, tri.V0.V, tri.V0.BlockID, tri.V0.FaceIndex, tri.V0.LightingMult)
+				sv1 := render.NewScreenVertex(p1, tri.V1.U, tri.V1.V, tri.V1.BlockID, tri.V1.FaceIndex, tri.V1.LightingMult)
+				sv2 := render.NewScreenVertex(p2, tri.V2.U, tri.V2.V, tri.V2.BlockID, tri.V2.FaceIndex, tri.V2.LightingMult)
+
+				c.framebuf.DrawVoxelTrianglePerspective(sv0, sv1, sv2)
+			}
+		}
+	}
+
 	// 4. Draw player model in third person or held item in first person
 	if c.perspectiveMode != 0 {
 		c.drawPlayerModel()
@@ -1425,10 +1477,15 @@ func (c *Client) RenderFrame() {
 		c.framebuf.DrawHurtVignette(float32(c.hurtFlashTimer * 2.5))
 	}
 
-	// 4.6 Draw underwater aquatic blue overlay if camera is submerged in water
+	// 4.6 Draw underwater aquatic blue overlay only when camera is truly submerged under water
 	if c.engine != nil {
-		camEyeBlock := c.engine.GetBlock(int32(math.Floor(c.camera.X)), int32(math.Floor(c.camera.Y)), int32(math.Floor(c.camera.Z)))
-		if camEyeBlock == 8 || camEyeBlock == 9 {
+		bx := int32(math.Floor(c.camera.X))
+		by := int32(math.Floor(c.camera.Y))
+		bz := int32(math.Floor(c.camera.Z))
+		camEyeBlock := c.engine.GetBlock(bx, by, bz)
+		aboveEyeBlock := c.engine.GetBlock(bx, by+1, bz)
+		// Truly submerged: block at eye is water AND block above eye is water, or eye is deeply submerged (not skimming air surface)
+		if (camEyeBlock == 8 || camEyeBlock == 9) && (aboveEyeBlock == 8 || aboveEyeBlock == 9 || c.camera.Y-float64(by) < 0.75) {
 			c.framebuf.DrawUnderwaterOverlay()
 		}
 	}

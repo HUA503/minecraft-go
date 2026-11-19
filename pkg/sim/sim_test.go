@@ -225,7 +225,7 @@ func TestMovementCollisionNoClipping(t *testing.T) {
 	player := eng.AddPlayer("Steve", [16]byte{5}, Vec3{X: 10.0, Y: 64.0, Z: 10.0})
 
 	// 1. Try to walk into the stone wall by delta X = +2.0
-	resPos, _ := eng.MovePlayerRelative(player.ID, Vec3{X: 2.0, Y: 0, Z: 0}, 0, 0)
+	resPos, _, _ := eng.MovePlayerRelative(player.ID, Vec3{X: 2.0, Y: 0, Z: 0}, 0, 0)
 
 	// Wall is at X=11. Player has half-width 0.3. Max X allowed is 11.0 - 0.3 = 10.7
 	if resPos.X > 10.701 {
@@ -236,7 +236,7 @@ func TestMovementCollisionNoClipping(t *testing.T) {
 	}
 
 	// 2. Try to fall through solid stone floor (Y=63)
-	resPos, ground := eng.MovePlayerRelative(player.ID, Vec3{X: 0, Y: -2.0, Z: 0}, 0, 0)
+	resPos, ground, _ := eng.MovePlayerRelative(player.ID, Vec3{X: 0, Y: -2.0, Z: 0}, 0, 0)
 	if !ground {
 		t.Fatalf("player should be flagged onGround after landing on floor")
 	}
@@ -355,7 +355,7 @@ func TestDropSpawningAndAutoRespawn(t *testing.T) {
 	}
 
 	// Next client movement must auto-respawn and return valid world position, never {0, 0, 0}
-	newPos, ok := eng.MovePlayerRelative(player.ID, Vec3{X: 0, Y: 0, Z: 0}, 0, 0)
+	newPos, ok, _ := eng.MovePlayerRelative(player.ID, Vec3{X: 0, Y: 0, Z: 0}, 0, 0)
 	if !ok || newPos.Y < 60.0 {
 		t.Fatalf("expected safe auto-respawn position, got %+v, ok=%v", newPos, ok)
 	}
