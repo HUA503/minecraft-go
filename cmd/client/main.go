@@ -374,17 +374,36 @@ func (c *Client) PhysicsStep(fwdInput, strafeInput float64, jumpRequested bool, 
 		c.player.OnGround = false
 	}
 
-	// 2. Gravity: Authentic Minecraft 32.0 m/s^2 (0.08 blocks/tick^2 * 400), terminal velocity -78.4 m/s
-	if !c.player.OnGround {
+	// 2. Water Buoyancy vs Air Gravity
+	bx := int32(math.Floor(c.player.Position.X))
+	by := int32(math.Floor(c.player.Position.Y))
+	bz := int32(math.Floor(c.player.Position.Z))
+	blockUnder := c.engine.GetBlock(bx, by, bz)
+	inWater := (blockUnder == 8 || blockUnder == 9)
+
+	if inWater {
+		// Water buoyant physics: gentle downward drift, swimming upward on jump/space
+		c.player.Velocity.Y -= 6.0 * dt
+		if c.player.Velocity.Y < -3.5 {
+			c.player.Velocity.Y = -3.5
+		}
+		if jumpRequested {
+			c.player.Velocity.Y = 4.0 // Swim upward
+		}
+		c.player.FallDistance = 0 // No fall damage in water
+	} else if !c.player.OnGround {
+		// Air Gravity: Authentic Minecraft 32.0 m/s^2 (0.08 blocks/tick^2 * 400), terminal velocity -78.4 m/s
 		c.player.Velocity.Y -= 32.0 * dt
 		if c.player.Velocity.Y < -78.4 {
 			c.player.Velocity.Y = -78.4
 		}
 	}
 
-	// 3. Horizontal Speeds: Walk 4.317 m/s, Sprint 5.612 m/s, Sneak/Eat 1.295 m/s
+	// 3. Horizontal Speeds: Walk 4.317 m/s, Sprint 5.612 m/s, Sneak/Eat 1.295 m/s, Swimming 2.2 m/s
 	speed := 4.317
-	if c.isSneaking || c.isEating {
+	if inWater {
+		speed = 2.2
+	} else if c.isSneaking || c.isEating {
 		speed = 1.295
 	} else if c.isSprinting {
 		speed = 5.612
@@ -1203,6 +1222,14 @@ func (c *Client) RenderFrame() {
 		c.framebuf.DrawHurtVignette(float32(c.hurtFlashTimer * 2.5))
 	}
 
+	// 4.6 Draw underwater aquatic blue overlay if camera is submerged in water
+	if c.engine != nil {
+		camEyeBlock := c.engine.GetBlock(int32(math.Floor(c.camera.X)), int32(math.Floor(c.camera.Y)), int32(math.Floor(c.camera.Z)))
+		if camEyeBlock == 8 || camEyeBlock == 9 {
+			c.framebuf.DrawUnderwaterOverlay()
+		}
+	}
+
 	// 5. Draw 2D HUD (Centered crosshair, 20 HP hearts, 20 hunger drumsticks, 9 hotbar slots with item icons & counts)
 	health := float32(20.0)
 	hunger := 20
@@ -1325,111 +1352,170 @@ func (c *Client) RenderFrame() {
 }
 
 func (c *Client) drawMob(m *sim.MobEntity) {
-	// Center of mob body at Y+0.85
-	sp, ok := c.camera.ProjectToScreen(m.Position.X, m.Position.Y+0.85, m.Position.Z, c.framebuf.Width, c.framebuf.Height)
-	if !ok || sp.Depth <= 0.2 || sp.Depth > 64.0 {
+	pos := m.Position
+	dist := math.Hypot(math.Hypot(c.camera.X-pos.X, c.camera.Y-pos.Y), c.camera.Z-pos.Z)
+	if dist > 64.0 {
 		return
 	}
 
-	// Calculate size based on distance
-	baseScale := 42.0 / sp.Depth
-	bw := int(baseScale * 0.45)
-	bh := int(baseScale * 0.95)
-	if bw < 3 {
-		bw = 3
-	} else if bw > 60 {
-		bw = 60
-	}
-	if bh < 6 {
-		bh = 6
-	} else if bh > 120 {
-		bh = 120
-	}
-
-	sx := int(sp.X) - bw/2
-	sy := int(sp.Y) - bh/2
-
-	// Flashing red if recently hurt
+	yaw := float64(m.Yaw)
+	pitch := float64(m.Pitch)
 	hurtFlash := m.Health < m.MaxHealth && (int(m.Health*10)%2 == 0)
-
-	headCol := uint32(0xFF4C7838) // Zombie green
-	bodyCol := uint32(0xFF2E8690) // Cyan shirt
-	legCol := uint32(0xFF2A3663)  // Dark blue pants
 
 	switch m.Type {
 	case sim.MobZombie:
-		headCol = 0xFF4C7838
-		bodyCol = 0xFF2E8690
-		legCol = 0xFF2A3663
+		headCol := uint32(0xFF4C7838)  // Zombie green
+		torsoCol := uint32(0xFF2E8690) // Cyan shirt
+		pantsCol := uint32(0xFF2A3663) // Indigo pants
+		if hurtFlash {
+			headCol = 0xFFFF3333
+			torsoCol = 0xFFFF2222
+			pantsCol = 0xFFFF1111
+		}
+		// Head (facing yaw & pitch)
+		c.render3DBox(pos.X, pos.Y+1.45, pos.Z, 0.22, 0.22, 0.22, yaw, pitch, headCol, headCol, headCol)
+		// Torso
+		c.render3DBox(pos.X, pos.Y+0.88, pos.Z, 0.24, 0.35, 0.12, yaw, 0, torsoCol, torsoCol, torsoCol)
+		// Arms outstretched forward (Minecraft classic Zombie pose: 90 deg pitch)
+		radY := yaw * math.Pi / 180.0
+		cosY, sinY := math.Cos(radY), math.Sin(radY)
+		armOffX := 0.35 * cosY
+		armOffZ := -0.35 * sinY
+		forwardX := 0.25 * sinY
+		forwardZ := 0.25 * cosY
+		c.render3DBox(pos.X-armOffX+forwardX, pos.Y+0.88, pos.Z-armOffZ+forwardZ, 0.11, 0.12, 0.35, yaw, 0, torsoCol, headCol, torsoCol)
+		c.render3DBox(pos.X+armOffX+forwardX, pos.Y+0.88, pos.Z+armOffZ+forwardZ, 0.11, 0.12, 0.35, yaw, 0, torsoCol, headCol, torsoCol)
+		// Legs
+		legOffX := 0.12 * cosY
+		legOffZ := -0.12 * sinY
+		c.render3DBox(pos.X-legOffX, pos.Y+0.36, pos.Z-legOffZ, 0.11, 0.35, 0.12, yaw, 0, pantsCol, pantsCol, pantsCol)
+		c.render3DBox(pos.X+legOffX, pos.Y+0.36, pos.Z+legOffZ, 0.11, 0.35, 0.12, yaw, 0, pantsCol, pantsCol, pantsCol)
+
 	case sim.MobCreeper:
-		headCol = 0xFF48B33B
-		bodyCol = 0xFF3DA330
-		legCol = 0xFF359428
+		headCol := uint32(0xFF48B33B) // Creeper green
+		bodyCol := uint32(0xFF3DA330)
+		legCol := uint32(0xFF359428)
 		if m.FuseTicks > 0 && (m.FuseTicks%4 < 2) {
 			headCol = 0xFFFFFFFF // Flashing fuse white
 			bodyCol = 0xFFEEEEEE
+			legCol = 0xFFDDDDDD
+		} else if hurtFlash {
+			headCol = 0xFFFF3333
+			bodyCol = 0xFFFF2222
+			legCol = 0xFFFF1111
 		}
+		// Creeper Head
+		c.render3DBox(pos.X, pos.Y+1.35, pos.Z, 0.22, 0.22, 0.22, yaw, pitch, headCol, headCol, headCol)
+		// Creeper Body
+		c.render3DBox(pos.X, pos.Y+0.75, pos.Z, 0.20, 0.38, 0.12, yaw, 0, bodyCol, bodyCol, bodyCol)
+		// Creeper 4 Feet
+		radY := yaw * math.Pi / 180.0
+		cosY, sinY := math.Cos(radY), math.Sin(radY)
+		for _, f := range [][2]float64{{-0.12, -0.12}, {0.12, -0.12}, {-0.12, 0.12}, {0.12, 0.12}} {
+			fx := f[0]*cosY + f[1]*sinY
+			fz := -f[0]*sinY + f[1]*cosY
+			c.render3DBox(pos.X+fx, pos.Y+0.18, pos.Z+fz, 0.08, 0.18, 0.08, yaw, 0, legCol, legCol, legCol)
+		}
+
 	case sim.MobPig:
-		headCol = 0xFFF0A0A0 // Pig pink
-		bodyCol = 0xFFF0A0A0
-		legCol = 0xFFE08E8E
-		bh = int(baseScale * 0.6) // Shorter quadruped body
-		sy = int(sp.Y) - bh/2
-	case sim.MobCow:
-		headCol = 0xFF46382E // Cow dark brown
-		bodyCol = 0xFFECECEC // Cow spotted white
-		legCol = 0xFF33271F
-		bh = int(baseScale * 0.75)
-		sy = int(sp.Y) - bh/2
-	case sim.MobSkeleton:
-		headCol = 0xFFDCDCDC // Bone white
-		bodyCol = 0xFFDCDCDC
-		legCol = 0xFFC0C0C0
-	}
-
-	if hurtFlash {
-		headCol = 0xFFFF3333
-		bodyCol = 0xFFFF2222
-		legCol = 0xFFFF1111
-	}
-
-	// Rasterize mob billboard with depth testing
-	headH := bh / 3
-	bodyH := bh * 2 / 5
-
-	for dy := 0; dy < bh; dy++ {
-		py := sy + dy
-		for dx := 0; dx < bw; dx++ {
-			px := sx + dx
-			col := bodyCol
-			if dy < headH {
-				col = headCol
-				// Draw eye spots on mob face
-				if dy > headH/3 && dy < headH*2/3 {
-					if dx == bw/3 || dx == bw*2/3 {
-						col = 0xFF000000 // Black eyes
-					}
-				}
-			} else if dy > headH+bodyH {
-				col = legCol
-			}
-			c.framebuf.SetPixel(px, py, sp.Depth, col)
+		bodyCol := uint32(0xFFF0A0A0) // Pig pink
+		headCol := uint32(0xFFF0A0A0)
+		snoutCol := uint32(0xFFE88A8A)
+		legCol := uint32(0xFFE08E8E)
+		if hurtFlash {
+			bodyCol = 0xFFFF3333
+			headCol = 0xFFFF3333
+			legCol = 0xFFFF2222
 		}
+		radY := yaw * math.Pi / 180.0
+		cosY, sinY := math.Cos(radY), math.Sin(radY)
+		// Horizontal Quadruped Body
+		c.render3DBox(pos.X, pos.Y+0.55, pos.Z, 0.26, 0.22, 0.38, yaw, 0, bodyCol, bodyCol, bodyCol)
+		// Head
+		frontX := 0.42 * sinY
+		frontZ := 0.42 * cosY
+		c.render3DBox(pos.X+frontX, pos.Y+0.65, pos.Z+frontZ, 0.20, 0.20, 0.20, yaw, pitch, headCol, headCol, headCol)
+		// Snout
+		snoutX := 0.58 * sinY
+		snoutZ := 0.58 * cosY
+		c.render3DBox(pos.X+snoutX, pos.Y+0.60, pos.Z+snoutZ, 0.10, 0.08, 0.06, yaw, pitch, snoutCol, snoutCol, snoutCol)
+		// 4 Legs
+		for _, f := range [][2]float64{{-0.15, -0.22}, {0.15, -0.22}, {-0.15, 0.22}, {0.15, 0.22}} {
+			lx := f[0]*cosY + f[1]*sinY
+			lz := -f[0]*sinY + f[1]*cosY
+			c.render3DBox(pos.X+lx, pos.Y+0.20, pos.Z+lz, 0.08, 0.20, 0.08, yaw, 0, legCol, legCol, legCol)
+		}
+
+	case sim.MobCow:
+		bodyCol := uint32(0xFF5A4432)    // Brown cow body
+		spottedCol := uint32(0xFFE5E5E5) // White spots
+		headCol := uint32(0xFF5A4432)
+		hornCol := uint32(0xFFCCCCCC)
+		legCol := uint32(0xFF423225)
+		if hurtFlash {
+			bodyCol = 0xFFFF3333
+			headCol = 0xFFFF3333
+			legCol = 0xFFFF2222
+		}
+		radY := yaw * math.Pi / 180.0
+		cosY, sinY := math.Cos(radY), math.Sin(radY)
+		// Body
+		c.render3DBox(pos.X, pos.Y+0.75, pos.Z, 0.30, 0.28, 0.45, yaw, 0, spottedCol, bodyCol, bodyCol)
+		// Head
+		frontX := 0.50 * sinY
+		frontZ := 0.50 * cosY
+		c.render3DBox(pos.X+frontX, pos.Y+0.90, pos.Z+frontZ, 0.22, 0.22, 0.22, yaw, pitch, headCol, headCol, headCol)
+		// Horns
+		c.render3DBox(pos.X+frontX-0.18*cosY, pos.Y+1.08, pos.Z+frontZ+0.18*sinY, 0.04, 0.08, 0.04, yaw, 0, hornCol, hornCol, hornCol)
+		c.render3DBox(pos.X+frontX+0.18*cosY, pos.Y+1.08, pos.Z+frontZ-0.18*sinY, 0.04, 0.08, 0.04, yaw, 0, hornCol, hornCol, hornCol)
+		// 4 Legs
+		for _, f := range [][2]float64{{-0.18, -0.28}, {0.18, -0.28}, {-0.18, 0.28}, {0.18, 0.28}} {
+			lx := f[0]*cosY + f[1]*sinY
+			lz := -f[0]*sinY + f[1]*cosY
+			c.render3DBox(pos.X+lx, pos.Y+0.28, pos.Z+lz, 0.09, 0.28, 0.09, yaw, 0, legCol, legCol, legCol)
+		}
+
+	case sim.MobSkeleton:
+		boneCol := uint32(0xFFE8E8E8) // Bone white
+		if hurtFlash {
+			boneCol = 0xFFFF3333
+		}
+		// Head
+		c.render3DBox(pos.X, pos.Y+1.45, pos.Z, 0.20, 0.20, 0.20, yaw, pitch, boneCol, boneCol, boneCol)
+		// Ribcage / Torso
+		c.render3DBox(pos.X, pos.Y+0.88, pos.Z, 0.20, 0.35, 0.10, yaw, 0, boneCol, boneCol, boneCol)
+		// Arms holding bow forward
+		radY := yaw * math.Pi / 180.0
+		cosY, sinY := math.Cos(radY), math.Sin(radY)
+		armOffX := 0.30 * cosY
+		armOffZ := -0.30 * sinY
+		forwardX := 0.20 * sinY
+		forwardZ := 0.20 * cosY
+		c.render3DBox(pos.X-armOffX+forwardX, pos.Y+0.88, pos.Z-armOffZ+forwardZ, 0.08, 0.08, 0.35, yaw, 0, boneCol, boneCol, boneCol)
+		c.render3DBox(pos.X+armOffX+forwardX, pos.Y+0.88, pos.Z+armOffZ+forwardZ, 0.08, 0.08, 0.35, yaw, 0, boneCol, boneCol, boneCol)
+		// Legs
+		legOffX := 0.10 * cosY
+		legOffZ := -0.10 * sinY
+		c.render3DBox(pos.X-legOffX, pos.Y+0.36, pos.Z-legOffZ, 0.08, 0.35, 0.08, yaw, 0, boneCol, boneCol, boneCol)
+		c.render3DBox(pos.X+legOffX, pos.Y+0.36, pos.Z+legOffZ, 0.08, 0.35, 0.08, yaw, 0, boneCol, boneCol, boneCol)
 	}
 
 	// Health bar above mob if damaged
 	if m.Health < m.MaxHealth {
-		barW := bw + 4
-		barH := 3
-		barX := sx - 2
-		barY := sy - 6
-		c.framebuf.DrawRect(barX, barY, barW, barH, 0xFF000000)
-		hpFrac := m.Health / m.MaxHealth
-		if hpFrac < 0 {
-			hpFrac = 0
+		sp, ok := c.camera.ProjectToScreen(pos.X, pos.Y+1.9, pos.Z, c.framebuf.Width, c.framebuf.Height)
+		if ok && sp.Depth > 0.2 {
+			barW := 36
+			barH := 3
+			barX := int(sp.X) - barW/2
+			barY := int(sp.Y)
+			c.framebuf.DrawRect(barX, barY, barW, barH, 0xFF000000)
+			hpFrac := m.Health / m.MaxHealth
+			if hpFrac < 0 {
+				hpFrac = 0
+			}
+			fillW := int(float32(barW-2) * hpFrac)
+			c.framebuf.DrawRect(barX+1, barY+1, fillW, barH-2, 0xFF00FF00)
 		}
-		fillW := int(float32(barW-2) * hpFrac)
-		c.framebuf.DrawRect(barX+1, barY+1, fillW, barH-2, 0xFF00FF00)
 	}
 }
 
@@ -1786,41 +1872,17 @@ func (c *Client) TryQuickCraft(recipeIndex int) bool {
 	return false
 }
 
+// drawItemDrop renders a rotating, bobbing 3D voxel item entity floating in the world.
 func (c *Client) drawItemDrop(drop sim.ItemDrop) {
-	bobY := math.Sin(drop.Age*4.0) * 0.08
-	cx, cy, cz := drop.Position.X, drop.Position.Y+bobY+0.15, drop.Position.Z
-	sp, ok := c.camera.ProjectToScreen(cx, cy, cz, c.framebuf.Width, c.framebuf.Height)
-	if !ok || sp.Depth <= 0.05 {
-		return
-	}
-	// Scale drop on screen based on distance
-	sz := int(24.0 / sp.Depth)
-	if sz < 4 {
-		sz = 4
-	} else if sz > 28 {
-		sz = 28
-	}
-	sx := int(sp.X) - sz/2
-	sy := int(sp.Y) - sz/2
-
+	bobY := math.Sin(drop.Age*3.5) * 0.08
+	cx, cy, cz := drop.Position.X, drop.Position.Y+bobY+0.20, drop.Position.Z
 	topCol := render.SampleBlockColor(drop.ItemID, 2, 0.5, 0.5, 1.0)
-	sideCol := render.SampleBlockColor(drop.ItemID, 0, 0.5, 0.5, 0.75)
-	darkCol := render.SampleBlockColor(drop.ItemID, 1, 0.5, 0.5, 0.55)
+	sideCol := render.SampleBlockColor(drop.ItemID, 0, 0.5, 0.5, 0.80)
+	darkCol := render.SampleBlockColor(drop.ItemID, 1, 0.5, 0.5, 0.60)
 
-	halfH := sz / 2
-	for dy := 0; dy < sz; dy++ {
-		py := sy + dy
-		for dx := 0; dx < sz; dx++ {
-			px := sx + dx
-			col := sideCol
-			if dy < halfH/2 {
-				col = topCol
-			} else if dx < sz/2 {
-				col = darkCol
-			}
-			c.framebuf.SetPixel(px, py, sp.Depth, col)
-		}
-	}
+	// Authentic Minecraft item rotation: continuous 90 deg/s around Y axis
+	spinYaw := drop.Age * 90.0
+	c.render3DBox(cx, cy, cz, 0.12, 0.12, 0.12, spinYaw, 15.0, topCol, darkCol, sideCol)
 }
 
 func (c *Client) drawHeldItem() {

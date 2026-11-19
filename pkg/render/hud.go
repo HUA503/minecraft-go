@@ -826,3 +826,18 @@ func (fb *Framebuffer) DrawHurtVignette(intensity float32) {
 		}
 	}
 }
+
+// DrawUnderwaterOverlay tints the screen with authentic deep aquatic blue when camera is submerged in water.
+func (fb *Framebuffer) DrawUnderwaterOverlay() {
+	for i := 0; i < len(fb.Color); i++ {
+		c := fb.Color[i]
+		r := (c >> 16) & 0xFF
+		g := (c >> 8) & 0xFF
+		b := c & 0xFF
+		// Blend with deep aquatic blue (35% tint)
+		nr := (r*65 + 10*35) / 100
+		ng := (g*65 + 56*35) / 100
+		nb := (b*65 + 112*35) / 100
+		fb.Color[i] = 0xFF000000 | (nr << 16) | (ng << 8) | nb
+	}
+}
