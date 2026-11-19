@@ -145,3 +145,86 @@ func TestFullPlayableSurvivalLoop(t *testing.T) {
 		t.Fatalf("midnight sky should not be daytime blue")
 	}
 }
+
+// TestItemDropAndPickupDelay verifies authentic Minecraft item dropping with initial velocity
+// and pickup delay to prevent immediate self-pickup.
+func TestItemDropAndPickupDelay(t *testing.T) {
+	engine := sim.NewEngine()
+	drop := engine.SpawnItemDropWithDelay(inventory.ItemOakPlanks, 5, sim.Vec3{X: 10, Y: 65, Z: 10}, sim.Vec3{X: 0.3, Y: 0.2, Z: 0}, 1.2)
+	if drop.PickupDelay != 1.2 {
+		t.Fatalf("expected 1.2s pickup delay, got %.2f", drop.PickupDelay)
+	}
+	if drop.Count != 5 || drop.ItemID != inventory.ItemOakPlanks {
+		t.Fatalf("item drop parameters mismatch: %+v", drop)
+	}
+
+	drops := engine.GetItemDrops()
+	if len(drops) != 1 {
+		t.Fatalf("expected 1 item drop in world, got %d", len(drops))
+	}
+}
+
+// TestWorldTimeCycle verifies standard 24,000 tick day-night cycle and command set.
+func TestWorldTimeCycle(t *testing.T) {
+	engine := sim.NewEngine()
+	if engine.GetWorldTime() != 6000 {
+		t.Fatalf("expected default world time 6000 (noon), got %d", engine.GetWorldTime())
+	}
+
+	engine.SetWorldTime(1000)
+	if engine.GetWorldTime() != 1000 {
+		t.Fatalf("expected 1000 after set, got %d", engine.GetWorldTime())
+	}
+
+	engine.SetWorldTime(13000)
+	if engine.GetWorldTime() != 13000 {
+		t.Fatalf("expected 13000 after set, got %d", engine.GetWorldTime())
+	}
+
+	// Test 24000 tick wraparound
+	engine.SetWorldTime(24500)
+	if engine.GetWorldTime() != 500 {
+		t.Fatalf("expected 500 after modulo wraparound, got %d", engine.GetWorldTime())
+	}
+}
+
+// TestReplaceableBlockPlacement verifies blocks can be placed over grass foliage and flowers.
+func TestReplaceableBlockPlacement(t *testing.T) {
+	engine := sim.NewEngine()
+	player := engine.AddPlayer("Tester", [16]byte{}, sim.Vec3{X: 10.0, Y: 65.0, Z: 10.0})
+
+	// Plant tall grass at (15, 65, 15)
+	engine.SetBlock(15, 65, 15, 31) // Tall Grass
+	if engine.GetBlock(15, 65, 15) != 31 {
+		t.Fatalf("expected tall grass at (15, 65, 15)")
+	}
+
+	// Place Cobblestone directly over tall grass without mining it first
+	ok := engine.PlaceBlock(player.ID, world.BlockPos{X: 15, Y: 65, Z: 15}, inventory.ItemCobblestone)
+	if !ok {
+		t.Fatalf("placing block over replaceable tall grass should succeed")
+	}
+	if engine.GetBlock(15, 65, 15) != inventory.ItemCobblestone {
+		t.Fatalf("block should now be Cobblestone, got %d", engine.GetBlock(15, 65, 15))
+	}
+}
+
+// TestCameraPitchSkyDomeRotation verifies the sky dome rotates when looking up vs down.
+func TestCameraPitchSkyDomeRotation(t *testing.T) {
+	fb := render.NewFramebuffer(320, 240)
+	camUp := render.NewCamera(0, 65, 0)
+	camUp.Pitch = 60.0 // Looking up at sky dome
+
+	fb.ClearSkyWithCamera(6000, camUp)
+	centerColorUp := fb.Color[120*320+160]
+
+	camDown := render.NewCamera(0, 65, 0)
+	camDown.Pitch = -45.0 // Looking down at ground
+
+	fb.ClearSkyWithCamera(6000, camDown)
+	centerColorDown := fb.Color[120*320+160]
+
+	if centerColorUp == centerColorDown {
+		t.Fatalf("sky dome pixel color should differ when camera is pitched up vs down")
+	}
+}

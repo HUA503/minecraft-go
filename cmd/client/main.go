@@ -81,6 +81,10 @@ type Client struct {
 	perspectiveMode  int // 0: 1st person, 1: 3rd person back, 2: 3rd person front
 	lastPlayerHealth float32
 	hurtFlashTimer   float64
+	currentEyeHeight float64
+	targetFov        float64
+	equipProgress    float64
+	lastSelectedSlot int
 }
 
 func NewClient(serverAddr, username string, isSingleplayer bool, width, height int) *Client {
@@ -88,18 +92,22 @@ func NewClient(serverAddr, username string, isSingleplayer bool, width, height i
 	rand.Read(u[:])
 
 	cli := &Client{
-		serverAddr:   serverAddr,
-		username:     username,
-		uuid:         u,
-		state:        protocol.StateHandshake,
-		framebuf:     render.NewFramebuffer(width, height),
-		camera:       render.NewCamera(8.0, 66.62, 8.0),
-		craftingMgr:  inventory.NewCraftingManager(),
-		isLocal:      isSingleplayer,
-		meshCache:    make(map[[3]int32]*render.Mesh),
-		loadedChunks: make(map[world.ChunkPos]bool),
-		lastChunkX:   -999,
-		lastChunkZ:   -999,
+		serverAddr:       serverAddr,
+		username:         username,
+		uuid:             u,
+		state:            protocol.StateHandshake,
+		framebuf:         render.NewFramebuffer(width, height),
+		camera:           render.NewCamera(8.0, 66.62, 8.0),
+		craftingMgr:      inventory.NewCraftingManager(),
+		isLocal:          isSingleplayer,
+		meshCache:        make(map[[3]int32]*render.Mesh),
+		loadedChunks:     make(map[world.ChunkPos]bool),
+		lastChunkX:       -999,
+		lastChunkZ:       -999,
+		currentEyeHeight: 1.62,
+		targetFov:        70.0,
+		equipProgress:    1.0,
+		lastSelectedSlot: 1,
 	}
 
 	if isSingleplayer {
@@ -397,6 +405,31 @@ func (c *Client) PhysicsStep(fwdInput, strafeInput float64, jumpRequested bool, 
 	dz := math.Cos(radYaw)*fwd - math.Sin(radYaw)*strafe
 	dy := c.player.Velocity.Y * dt
 
+	// Sneak Cliff Edge Safeguard: prevent stepping off ledges when sneaking on ground
+	if c.isSneaking && c.player.OnGround {
+		checkGroundAt := func(px, pz float64) bool {
+			feetY := int32(math.Floor(c.player.Position.Y - 0.5))
+			minBX := int32(math.Floor(px - 0.25))
+			maxBX := int32(math.Floor(px + 0.25))
+			minBZ := int32(math.Floor(pz - 0.25))
+			maxBZ := int32(math.Floor(pz + 0.25))
+			for bx := minBX; bx <= maxBX; bx++ {
+				for bz := minBZ; bz <= maxBZ; bz++ {
+					if c.engine.GetBlock(bx, feetY, bz) != 0 {
+						return true
+					}
+				}
+			}
+			return false
+		}
+		if !checkGroundAt(c.player.Position.X+dx, c.player.Position.Z) {
+			dx = 0
+		}
+		if !checkGroundAt(c.player.Position.X, c.player.Position.Z+dz) {
+			dz = 0
+		}
+	}
+
 	delta := sim.Vec3{X: dx, Y: dy, Z: dz}
 	resolvedPos, onGround := c.engine.MovePlayerRelative(c.player.ID, delta, float32(c.camera.Yaw), float32(c.camera.Pitch))
 
@@ -443,21 +476,52 @@ func (c *Client) PhysicsStep(fwdInput, strafeInput float64, jumpRequested bool, 
 		bobX = math.Cos(c.walkCycle*0.5) * 0.02
 	}
 
+	// Dynamic Sneak Eye-Height transition (1.62m walking -> 1.27m sneaking)
+	targetEye := 1.62
+	if c.isSneaking {
+		targetEye = 1.27
+	}
+	c.currentEyeHeight += (targetEye - c.currentEyeHeight) * math.Min(1.0, dt*14.0)
+
 	eyeX := resolvedPos.X + bobX
-	eyeY := resolvedPos.Y + 1.62 + bobY // Eye level = 1.62 blocks above ground
+	eyeY := resolvedPos.Y + c.currentEyeHeight + bobY
 	eyeZ := resolvedPos.Z
 
-	// Perspective camera positioning (F5 toggle: 0=First Person, 1=Third Person Back, 2=Third Person Front)
+	// Dynamic FOV for sprint speed rush feel
+	if c.isSprinting && c.isMoving && onGround {
+		c.targetFov = 82.0
+	} else {
+		c.targetFov = 70.0
+	}
+	c.camera.Fov += (c.targetFov - c.camera.Fov) * math.Min(1.0, dt*8.0)
+
+	// Perspective camera positioning with obstacle raycast clipping (F5)
 	lx, ly, lz := c.camera.GetLookVector()
 	switch c.perspectiveMode {
-	case 1: // Third-person back: 3.5 blocks behind
-		c.camera.X = eyeX - lx*3.5
-		c.camera.Y = eyeY - ly*3.5 + 0.2
-		c.camera.Z = eyeZ - lz*3.5
-	case 2: // Third-person front: 3.5 blocks in front
-		c.camera.X = eyeX + lx*3.5
-		c.camera.Y = eyeY + ly*3.5 + 0.2
-		c.camera.Z = eyeZ + lz*3.5
+	case 1: // Third-person back: 3.5 blocks behind with obstacle raycast clipping
+		camDist := 3.5
+		ray := sim.Raycast(sim.Vec3{X: eyeX, Y: eyeY, Z: eyeZ}, sim.Vec3{X: -lx, Y: -ly, Z: -lz}, 3.5, func(x, y, z int32) bool {
+			return c.engine.GetBlock(x, y, z) != 0
+		})
+		if ray.Hit {
+			hitDist := math.Hypot(math.Hypot(float64(ray.BlockX)-eyeX, float64(ray.BlockY)-eyeY), float64(ray.BlockZ)-eyeZ)
+			camDist = math.Max(0.35, hitDist-0.35)
+		}
+		c.camera.X = eyeX - lx*camDist
+		c.camera.Y = eyeY - ly*camDist + 0.15*(camDist/3.5)
+		c.camera.Z = eyeZ - lz*camDist
+	case 2: // Third-person front: 3.5 blocks in front with obstacle raycast clipping
+		camDist := 3.5
+		ray := sim.Raycast(sim.Vec3{X: eyeX, Y: eyeY, Z: eyeZ}, sim.Vec3{X: lx, Y: ly, Z: lz}, 3.5, func(x, y, z int32) bool {
+			return c.engine.GetBlock(x, y, z) != 0
+		})
+		if ray.Hit {
+			hitDist := math.Hypot(math.Hypot(float64(ray.BlockX)-eyeX, float64(ray.BlockY)-eyeY), float64(ray.BlockZ)-eyeZ)
+			camDist = math.Max(0.35, hitDist-0.35)
+		}
+		c.camera.X = eyeX + lx*camDist
+		c.camera.Y = eyeY + ly*camDist + 0.15*(camDist/3.5)
+		c.camera.Z = eyeZ + lz*camDist
 	default: // First-person
 		c.camera.X = eyeX
 		c.camera.Y = eyeY
@@ -739,26 +803,32 @@ func (c *Client) ExecuteCommand(input string) {
 			if c.engine != nil {
 				switch val {
 				case "day":
-					c.engine.TickCount = 100
-					c.AddChatMessage("[Time] Set the time to 1000")
+					c.engine.SetWorldTime(1000)
+					c.AddChatMessage("[Time] Set the time to 1000 (Day)")
 				case "noon":
-					c.engine.TickCount = 600
-					c.AddChatMessage("[Time] Set the time to 6000")
+					c.engine.SetWorldTime(6000)
+					c.AddChatMessage("[Time] Set the time to 6000 (Noon)")
+				case "sunset":
+					c.engine.SetWorldTime(12000)
+					c.AddChatMessage("[Time] Set the time to 12000 (Sunset)")
 				case "night":
-					c.engine.TickCount = 1300
-					c.AddChatMessage("[Time] Set the time to 13000")
+					c.engine.SetWorldTime(13000)
+					c.AddChatMessage("[Time] Set the time to 13000 (Night)")
 				case "midnight":
-					c.engine.TickCount = 1800
-					c.AddChatMessage("[Time] Set the time to 18000")
+					c.engine.SetWorldTime(18000)
+					c.AddChatMessage("[Time] Set the time to 18000 (Midnight)")
 				default:
 					if t, err := strconv.ParseInt(val, 10, 64); err == nil {
-						c.engine.TickCount = t / 10
+						c.engine.SetWorldTime(t)
 						c.AddChatMessage(fmt.Sprintf("[Time] Set the time to %d", t))
+					} else {
+						c.AddChatMessage("Usage: /time set <day|noon|sunset|night|midnight|<ticks>>")
 					}
 				}
 			}
+			return
 		} else {
-			c.AddChatMessage("Usage: /time set <day|noon|night|midnight|ticks>")
+			c.AddChatMessage("Usage: /time set <day|noon|sunset|night|midnight|<ticks>>")
 		}
 
 	case "/give":
@@ -981,12 +1051,20 @@ func (c *Client) UpdateRightClick(isRightDown bool, dt float64) {
 func (c *Client) RenderFrame() {
 	c.UpdateRaycastTarget()
 
+	// Hotbar equip animation trigger on slot change
+	if c.player != nil && c.player.Inventory != nil {
+		if c.player.Inventory.SelectedHotbar != c.lastSelectedSlot {
+			c.lastSelectedSlot = c.player.Inventory.SelectedHotbar
+			c.equipProgress = 0.0
+		}
+	}
+
 	// 1. Sky gradient background with dynamic day/night celestial simulation & distance fog
 	worldTime := int64(6000)
 	if c.engine != nil {
-		worldTime = c.engine.TickCount * 10
+		worldTime = c.engine.GetWorldTime()
 	}
-	c.framebuf.ClearSkyWithTime(worldTime)
+	c.framebuf.ClearSkyWithCamera(worldTime, c.camera)
 	c.framebuf.DrawCelestialBodies(c.camera, worldTime)
 
 	// 2. Render cached 3D chunk meshes with perspective-correct texturing & distance fog
@@ -1460,11 +1538,18 @@ func (c *Client) drawPlayerModel() {
 		armSwing = math.Sin(math.Sqrt(c.swingProgress)*math.Pi) * 65.0
 	}
 
-	// 1. Head (rotates with camera yaw & pitch)
-	c.render3DBox(pos.X, pos.Y+1.45, pos.Z, 0.22, 0.22, 0.22, yaw, pitch, headHair, headSkin, headSkin)
+	yOffset := 0.0
+	torsoPitch := 0.0
+	if c.isSneaking {
+		yOffset = -0.20
+		torsoPitch = 12.0
+	}
 
-	// 2. Torso (rotates with body yaw)
-	c.render3DBox(pos.X, pos.Y+0.88, pos.Z, 0.24, 0.35, 0.12, yaw, 0, torsoCol, torsoCol, torsoCol)
+	// 1. Head (rotates with camera yaw & pitch)
+	c.render3DBox(pos.X, pos.Y+1.45+yOffset, pos.Z, 0.22, 0.22, 0.22, yaw, pitch, headHair, headSkin, headSkin)
+
+	// 2. Torso (rotates with body yaw & sneak pitch)
+	c.render3DBox(pos.X, pos.Y+0.88+yOffset, pos.Z, 0.24, 0.35, 0.12, yaw, torsoPitch, torsoCol, torsoCol, torsoCol)
 
 	// Compute shoulder offsets relative to body yaw
 	radY := yaw * math.Pi / 180.0
@@ -1473,10 +1558,10 @@ func (c *Client) drawPlayerModel() {
 	armOffZ := -0.35 * sinY
 
 	// 3. Left Arm (swings opposite)
-	c.render3DBox(pos.X-armOffX, pos.Y+0.88, pos.Z-armOffZ, 0.11, 0.35, 0.12, yaw, walkSwing, torsoCol, headSkin, torsoCol)
+	c.render3DBox(pos.X-armOffX, pos.Y+0.88+yOffset, pos.Z-armOffZ, 0.11, 0.35, 0.12, yaw, walkSwing, torsoCol, headSkin, torsoCol)
 
 	// 4. Right Arm (swings with walk cycle + chopping attack arc)
-	c.render3DBox(pos.X+armOffX, pos.Y+0.88, pos.Z+armOffZ, 0.11, 0.35, 0.12, yaw, -walkSwing+armSwing, torsoCol, headSkin, torsoCol)
+	c.render3DBox(pos.X+armOffX, pos.Y+0.88+yOffset, pos.Z+armOffZ, 0.11, 0.35, 0.12, yaw, -walkSwing+armSwing, torsoCol, headSkin, torsoCol)
 
 	// Hip offsets relative to body yaw
 	legOffX := 0.12 * cosY
@@ -1487,6 +1572,71 @@ func (c *Client) drawPlayerModel() {
 
 	// 6. Right Leg (swings opposite)
 	c.render3DBox(pos.X+legOffX, pos.Y+0.36, pos.Z+legOffZ, 0.11, 0.35, 0.12, yaw, walkSwing, pantsCol, shoesCol, pantsCol)
+
+	// 7. Render Held Item/Block in Steve's right hand in 3D
+	sel := c.player.Inventory.GetSelectedItem()
+	if !sel.IsEmpty() {
+		rightArmPitch := (-walkSwing + armSwing) * math.Pi / 180.0
+		handForward := math.Sin(rightArmPitch) * 0.35
+		handDown := math.Cos(rightArmPitch) * 0.35
+
+		hx := pos.X + armOffX + math.Sin(radY)*handForward
+		hy := pos.Y + 0.88 + yOffset - handDown
+		hz := pos.Z + armOffZ + math.Cos(radY)*handForward
+
+		if inventory.IsPlaceableBlock(sel.ItemID) {
+			blockCol := render.SampleBlockColor(sel.ItemID, 2, 0.5, 0.5, 1.0)
+			c.render3DBox(hx, hy, hz, 0.14, 0.14, 0.14, yaw, 0, blockCol, blockCol, blockCol)
+		} else {
+			toolCol := uint32(0xFFB8945F)
+			if props, ok := inventory.GetToolProperties(sel.ItemID); ok {
+				switch props.Tier {
+				case inventory.TierStone:
+					toolCol = 0xFF7D7D7D
+				case inventory.TierIron:
+					toolCol = 0xFFD8D8D8
+				case inventory.TierDiamond:
+					toolCol = 0xFF2CCCCC
+				}
+			}
+			c.render3DBox(hx, hy, hz, 0.08, 0.20, 0.08, yaw, -walkSwing+armSwing, toolCol, 0xFF6F4F37, toolCol)
+		}
+	}
+}
+
+// DropHeldItem throws 1 item (or full stack if dropAll is true) from active hotbar slot into the world.
+func (c *Client) DropHeldItem(dropAll bool) {
+	if c.player == nil || c.engine == nil || c.player.Inventory == nil {
+		return
+	}
+	sel := c.player.Inventory.GetSelectedItem()
+	if sel.IsEmpty() {
+		return
+	}
+
+	dropCount := 1
+	if dropAll || sel.Count <= 1 {
+		dropCount = sel.Count
+	}
+
+	_ = c.player.Inventory.RemoveItem(c.player.Inventory.SelectedHotbar, dropCount)
+
+	lx, ly, lz := c.camera.GetLookVector()
+	spawnPos := sim.Vec3{
+		X: c.camera.X + lx*0.5,
+		Y: c.camera.Y + ly*0.5 - 0.1,
+		Z: c.camera.Z + lz*0.5,
+	}
+	vel := sim.Vec3{
+		X: lx * 0.35,
+		Y: ly*0.35 + 0.18,
+		Z: lz * 0.35,
+	}
+
+	c.engine.SpawnItemDropWithDelay(sel.ItemID, dropCount, spawnPos, vel, 1.2)
+	sound.PlayHardwareFeedback(sound.SoundBlockWoodStep)
+	c.isSwinging = true
+	c.swingProgress = 0.0
 }
 
 func (c *Client) AttackMob() bool {
@@ -1693,8 +1843,11 @@ func (c *Client) drawHeldItem() {
 		swingDrop = int(f2 * 30.0)
 	}
 
+	// Hotbar equip raise/lower animation
+	equipDrop := int((1.0 - c.equipProgress) * 45.0)
+
 	hx := c.framebuf.Width - 95 + swayX - swingOffset
-	hy := c.framebuf.Height - 110 + swayY + swingDrop
+	hy := c.framebuf.Height - 110 + swayY + swingDrop + equipDrop
 
 	skinTone := uint32(0xFFD6A07E)   // Tan skin
 	skinShade := uint32(0xFFB57C5E)  // Shading
@@ -1906,9 +2059,12 @@ func runGraphicalWindow(c *Client, w, h int) {
 			c.showDebugF3 = !c.showDebugF3
 		case 0x74: // F5: Toggle Perspective (First-Person, Third-Person Back, Third-Person Front)
 			c.perspectiveMode = (c.perspectiveMode + 1) % 3
-		case 0x51: // Q: Quit immediately if in pause menu
+		case 0x51: // Q: Quit immediately if in pause menu, or throw/drop held item in game
 			if c.showPauseMenu {
 				wnd.Close()
+				os.Exit(0)
+			} else if !c.showInventoryGUI && !c.isChatOpen {
+				c.DropHeldItem(wnd.IsKeyDown(0x11)) // Ctrl+Q drops full stack
 			}
 		case 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39: // 1-9
 			idx := vkCode - 0x31 + 1
@@ -1917,6 +2073,18 @@ func runGraphicalWindow(c *Client, w, h int) {
 			} else if c.player != nil && !c.showPauseMenu {
 				c.player.Inventory.SelectedHotbar = idx - 1
 			}
+		}
+	}
+
+	// Mouse wheel hotbar switching
+	wnd.OnMouseWheel = func(delta int) {
+		if c.showPauseMenu || c.showInventoryGUI || c.isChatOpen || c.player == nil {
+			return
+		}
+		if delta > 0 {
+			c.player.Inventory.SelectedHotbar = (c.player.Inventory.SelectedHotbar + 8) % 9
+		} else if delta < 0 {
+			c.player.Inventory.SelectedHotbar = (c.player.Inventory.SelectedHotbar + 1) % 9
 		}
 	}
 
@@ -1958,7 +2126,7 @@ func runGraphicalWindow(c *Client, w, h int) {
 		}
 		if c.showPauseMenu {
 			if btn == 1 {
-				mx, my := wnd.GetCursorClientPos()
+				mx, my := wnd.GetCursorClientPos(c.framebuf.Width, c.framebuf.Height)
 				// Check "Back to Game" button
 				b := c.backBtnRect
 				if mx >= b[0] && mx <= b[0]+b[2] && my >= b[1] && my <= b[1]+b[3] {
@@ -1970,7 +2138,7 @@ func runGraphicalWindow(c *Client, w, h int) {
 				q := c.quitBtnRect
 				if mx >= q[0] && mx <= q[0]+q[2] && my >= q[1] && my <= q[1]+q[3] {
 					wnd.Close()
-					return
+					os.Exit(0)
 				}
 			}
 			return
@@ -1991,10 +2159,9 @@ func runGraphicalWindow(c *Client, w, h int) {
 		} else if btn == 2 {
 			// Right click: Place block immediately if cooldown ready
 			if c.placeCooldown <= 0 {
+				c.UpdateRaycastTarget()
 				if c.PlaceBlockInFront() {
 					c.placeCooldown = 0.25
-					sel := c.player.Inventory.GetSelectedItem()
-					sound.PlayHardwareFeedback(sound.GetBlockPlaceSound(sel.ItemID))
 				}
 			}
 		}
@@ -2015,11 +2182,19 @@ func runGraphicalWindow(c *Client, w, h int) {
 		}
 		lastTime = now
 
+		// Update item equip animation progress
+		if c.equipProgress < 1.0 {
+			c.equipProgress += dt * 5.0
+			if c.equipProgress > 1.0 {
+				c.equipProgress = 1.0
+			}
+		}
+
 		// If Pause Menu is open, freeze world controls and display interactive Pause Menu
 		if c.showPauseMenu {
 			time.Sleep(16 * time.Millisecond)
 			c.RenderFrame()
-			mx, my := wnd.GetCursorClientPos()
+			mx, my := wnd.GetCursorClientPos(c.framebuf.Width, c.framebuf.Height)
 			c.backBtnRect, c.quitBtnRect = c.framebuf.DrawPauseMenu(mx, my)
 			wnd.Present(c.framebuf)
 			continue
@@ -2069,6 +2244,9 @@ func runGraphicalWindow(c *Client, w, h int) {
 		}
 
 		c.PhysicsStep(fwdInput, strafeInput, jumpNow, dt)
+
+		// Synchronize crosshair raycast target with current position & orientation
+		c.UpdateRaycastTarget()
 
 		// 4. Authentic Minecraft Mining: Hold Left Mouse to mine with cracking & tool times
 		isLeftDown := wnd.IsMouseDown(1)

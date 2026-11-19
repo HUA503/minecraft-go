@@ -40,6 +40,8 @@ var (
 	procDisableProcessWindowsGhosting = user32.NewProc("DisableProcessWindowsGhosting")
 	procBeginPaint                    = user32.NewProc("BeginPaint")
 	procEndPaint                      = user32.NewProc("EndPaint")
+	procDestroyWindow                 = user32.NewProc("DestroyWindow")
+	procGetClientRect                 = user32.NewProc("GetClientRect")
 )
 
 const (
@@ -52,15 +54,21 @@ const (
 	WM_QUIT             = 0x0012
 	WM_ERASEBKGND       = 0x0014
 	WM_DESTROY          = 0x0002
+	WM_KILLFOCUS        = 0x0008
 	WM_KEYDOWN          = 0x0100
 	WM_KEYUP            = 0x0101
 	WM_CHAR             = 0x0102
 	WM_LBUTTONDOWN      = 0x0201
 	WM_RBUTTONDOWN      = 0x0204
 	WM_ACTIVATE         = 0x0006
+	WM_MOUSEWHEEL       = 0x020A
 	DIB_RGB_COLORS      = 0
 	SRCCOPY             = 0x00CC0020
 )
+
+type RECT struct {
+	Left, Top, Right, Bottom int32
+}
 
 type POINT struct {
 	X, Y int32
@@ -121,6 +129,7 @@ type Window struct {
 	mu             sync.Mutex
 	OnKeyClick     func(vkCode int)
 	OnMouseClick   func(btn int)
+	OnMouseWheel   func(delta int)
 	OnCharInput    func(ch rune)
 	MouseCaptured  bool
 	centerScreenX  int32
@@ -135,6 +144,9 @@ func wndProc(hwnd, msg, wparam, lparam uintptr) uintptr {
 	case WM_CLOSE:
 		if globalWnd != nil {
 			globalWnd.Closed = true
+			if globalWnd.Hwnd != 0 {
+				procDestroyWindow.Call(globalWnd.Hwnd)
+			}
 		}
 		procPostQuitMessage.Call(0)
 		return 0
@@ -143,6 +155,16 @@ func wndProc(hwnd, msg, wparam, lparam uintptr) uintptr {
 			globalWnd.Closed = true
 		}
 		procPostQuitMessage.Call(0)
+		return 0
+	case WM_KILLFOCUS:
+		if globalWnd != nil {
+			if globalWnd.MouseCaptured {
+				globalWnd.SetMouseCaptured(false)
+			}
+			globalWnd.mu.Lock()
+			globalWnd.KeyDown = [256]bool{}
+			globalWnd.mu.Unlock()
+		}
 		return 0
 	case WM_ACTIVATE:
 		active := (wparam & 0xFFFF) != 0
@@ -155,6 +177,12 @@ func wndProc(hwnd, msg, wparam, lparam uintptr) uintptr {
 				globalWnd.KeyDown = [256]bool{} // Clear keys on focus loss
 				globalWnd.mu.Unlock()
 			}
+		}
+		return 0
+	case WM_MOUSEWHEEL:
+		if globalWnd != nil && globalWnd.OnMouseWheel != nil {
+			delta := int(int16(wparam >> 16))
+			globalWnd.OnMouseWheel(delta)
 		}
 		return 0
 	case WM_KEYDOWN:
@@ -315,11 +343,12 @@ func (w *Window) PollMouseDelta() (float64, float64) {
 	dx := float64(pt.X - center.X)
 	dy := float64(pt.Y - center.Y)
 
-	// Sub-pixel jitter filter (prevents residual auto-drift when stationary)
-	if math.Abs(dx) < 1.0 {
+	// Sub-pixel jitter filter: clamp deltas under 1.5 pixels to zero
+	// Completely eliminates auto-drift caused by Windows display scaling (125%/150%) rounding
+	if math.Abs(dx) < 1.5 {
 		dx = 0
 	}
-	if math.Abs(dy) < 1.0 {
+	if math.Abs(dy) < 1.5 {
 		dy = 0
 	}
 
@@ -330,12 +359,24 @@ func (w *Window) PollMouseDelta() (float64, float64) {
 	return dx, dy
 }
 
-// GetCursorClientPos queries current cursor position mapped to client window coordinates.
-func (w *Window) GetCursorClientPos() (int, int) {
+// GetCursorClientPos queries current cursor position mapped accurately to framebuffer pixel coordinates.
+func (w *Window) GetCursorClientPos(frameW, frameH int) (int, int) {
 	var pt POINT
 	procGetCursorPos.Call(uintptr(unsafe.Pointer(&pt)))
 	procScreenToClient.Call(w.Hwnd, uintptr(unsafe.Pointer(&pt)))
-	return int(pt.X), int(pt.Y)
+
+	var rect RECT
+	procGetClientRect.Call(w.Hwnd, uintptr(unsafe.Pointer(&rect)))
+	cw := rect.Right - rect.Left
+	ch := rect.Bottom - rect.Top
+	if cw <= 0 || ch <= 0 || frameW <= 0 || frameH <= 0 {
+		return int(pt.X), int(pt.Y)
+	}
+
+	// Map client coordinates to framebuffer pixel space
+	fx := int(pt.X) * frameW / int(cw)
+	fy := int(pt.Y) * frameH / int(ch)
+	return fx, fy
 }
 
 // IsMouseDown queries whether the given mouse button (1=Left, 2=Right) is currently physically pressed down.
@@ -417,6 +458,10 @@ func (w *Window) Close() {
 		if w.Hdc != 0 {
 			procReleaseDC.Call(w.Hwnd, w.Hdc)
 			w.Hdc = 0
+		}
+		if w.Hwnd != 0 {
+			procDestroyWindow.Call(w.Hwnd)
+			w.Hwnd = 0
 		}
 		procPostQuitMessage.Call(0)
 	}

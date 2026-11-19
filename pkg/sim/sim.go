@@ -61,6 +61,7 @@ type Engine struct {
 	ItemDrops      map[int32]*ItemDrop
 	nextItemDropID int32
 	TickCount      int64
+	WorldTime      int64
 	Events         chan WorldEvent
 	stopChan       chan struct{}
 }
@@ -74,12 +75,34 @@ func NewEngine() *Engine {
 		nextMobID:      100,
 		ItemDrops:      make(map[int32]*ItemDrop),
 		nextItemDropID: 1,
+		WorldTime:      6000, // Canonical Minecraft noon daylight
 		Events:         make(chan WorldEvent, 1024),
 		stopChan:       make(chan struct{}),
 	}
 }
 
+// GetWorldTime returns the authoritative 24000-tick Minecraft world time.
+func (e *Engine) GetWorldTime() int64 {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return e.WorldTime
+}
+
+// SetWorldTime sets the authoritative 24000-tick Minecraft world time.
+func (e *Engine) SetWorldTime(t int64) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.WorldTime = t % 24000
+	if e.WorldTime < 0 {
+		e.WorldTime += 24000
+	}
+}
+
 func (e *Engine) SpawnItemDrop(itemID int32, count int, pos Vec3, vel Vec3) *ItemDrop {
+	return e.SpawnItemDropWithDelay(itemID, count, pos, vel, 0.3)
+}
+
+func (e *Engine) SpawnItemDropWithDelay(itemID int32, count int, pos Vec3, vel Vec3, delay float64) *ItemDrop {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	id := e.nextItemDropID
@@ -91,7 +114,7 @@ func (e *Engine) SpawnItemDrop(itemID int32, count int, pos Vec3, vel Vec3) *Ite
 		Position:    pos,
 		Velocity:    vel,
 		Age:         0,
-		PickupDelay: 0.3,
+		PickupDelay: delay,
 	}
 	e.ItemDrops[id] = drop
 	return drop
@@ -357,7 +380,9 @@ func (e *Engine) BreakBlock(playerID int32, pos world.BlockPos) int32 {
 // PlaceBlock places a block if it does not intersect the player's bounding box.
 func (e *Engine) PlaceBlock(playerID int32, pos world.BlockPos, blockID int32) bool {
 	existing := e.GetBlock(pos.X, pos.Y, pos.Z)
-	if existing != 0 && existing != 8 && existing != 9 && existing != 10 && existing != 11 {
+	// Air (0), water (8, 9), lava (10, 11), tall grass (31, 32), and flowers (37, 38) are replaceable
+	if existing != 0 && existing != 8 && existing != 9 && existing != 10 && existing != 11 &&
+		existing != 31 && existing != 32 && existing != 37 && existing != 38 {
 		return false
 	}
 
@@ -598,6 +623,7 @@ func (e *Engine) MovePlayerRelative(id int32, delta Vec3, yaw, pitch float32) (V
 func (e *Engine) Tick() {
 	e.mu.Lock()
 	e.TickCount++
+	e.WorldTime = (e.WorldTime + 1) % 24000
 
 	isSolid := func(x, y, z int32) bool {
 		cp := world.BlockPos{X: x, Y: y, Z: z}.ToChunkPos()
