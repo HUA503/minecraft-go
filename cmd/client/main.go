@@ -1919,9 +1919,12 @@ func (c *Client) drawHeldItem() {
 
 	if selected.IsEmpty() {
 		// Steve's authentic first-person player arm / fist
-		c.framebuf.DrawRect(hx+20, hy+40, 45, 60, sleeveTone)
-		c.framebuf.DrawRect(hx+25, hy+15, 35, 25, skinTone)
-		c.framebuf.DrawRect(hx+20, hy, 40, 15, skinShade)
+		c.framebuf.DrawRect(hx+20, hy+40, 48, 65, sleeveTone)
+		c.framebuf.DrawRect(hx+18, hy+38, 52, 4, 0xFF1B5960) // Sleeve cuff border
+		c.framebuf.DrawRect(hx+25, hy+15, 38, 25, skinTone)
+		c.framebuf.DrawRect(hx+22, hy, 42, 16, skinShade)
+		// Knuckles & thumb details
+		c.framebuf.DrawRect(hx+20, hy+4, 10, 10, skinTone)
 		return
 	}
 
@@ -1930,89 +1933,158 @@ func (c *Client) drawHeldItem() {
 		fx := hx + 10
 		fy := hy + 10
 		if c.isEating {
-			fy -= 18 + int(math.Sin(c.eatTimer*40.0)*3.0)
-			fx -= 12
+			fy -= 18 + int(math.Sin(c.eatTimer*40.0)*4.0)
+			fx -= 12 + int(math.Cos(c.eatTimer*40.0)*2.0)
 		}
-		col := uint32(0xFFD85542) // Apple
+		// Render authentic food sprite
 		switch selected.ItemID {
-		case inventory.ItemCookedPorkchop, inventory.ItemSteak:
-			col = 0xFF9E5739 // Cooked meat
+		case inventory.ItemApple:
+			// Apple body
+			c.framebuf.DrawRect(fx+4, fy+6, 20, 20, 0xFFD82020)
+			c.framebuf.DrawRect(fx+6, fy+4, 16, 24, 0xFFD82020)
+			c.framebuf.DrawRect(fx+8, fy+8, 6, 6, 0xFFFFA090) // Glint
+			c.framebuf.DrawRect(fx+13, fy+1, 3, 5, 0xFF5C3A21)  // Stem
+			c.framebuf.DrawRect(fx+16, fy+2, 5, 3, 0xFF4E9333)  // Leaf
 		case inventory.ItemBread:
-			col = 0xFFC99742 // Golden bread
+			// Golden baked loaf
+			c.framebuf.DrawRect(fx+2, fy+8, 26, 16, 0xFFC99742)
+			c.framebuf.DrawRect(fx+6, fy+6, 18, 4, 0xFFE0B058)
+			c.framebuf.DrawRect(fx+8, fy+10, 3, 10, 0xFF8A5D20) // Crust cuts
+			c.framebuf.DrawRect(fx+15, fy+10, 3, 10, 0xFF8A5D20)
+			c.framebuf.DrawRect(fx+22, fy+10, 3, 10, 0xFF8A5D20)
+		default: // Steak / Porkchop
+			c.framebuf.DrawRect(fx+4, fy+6, 22, 18, 0xFF9E432C)
+			c.framebuf.DrawRect(fx+8, fy+8, 14, 14, 0xFFB35238)
+			c.framebuf.DrawRect(fx+20, fy+4, 6, 6, 0xFFECE7E2) // Bone
 		}
-		c.framebuf.DrawRect(fx, fy, 26, 26, col)
-		c.framebuf.DrawRect(fx+3, fy+3, 8, 8, 0xFFFFA090)
-		c.framebuf.DrawRect(fx+6, fy+22, 24, 16, skinTone)
-		c.framebuf.DrawRect(fx+10, fy+38, 30, 45, sleeveTone)
+		c.framebuf.DrawRect(fx+6, fy+24, 24, 16, skinTone)
+		c.framebuf.DrawRect(fx+10, fy+40, 32, 45, sleeveTone)
 		return
 	}
 
-	// 2. Tools (Pickaxe, Sword, Axe, Shovel)
+	// 2. Torch (ID 50)
+	if selected.ItemID == 50 {
+		tx := hx + 12
+		ty := hy + 2
+		// Wooden handle
+		c.framebuf.DrawRect(tx+8, ty+14, 6, 32, 0xFF6F4F37)
+		c.framebuf.DrawRect(tx+10, ty+14, 2, 32, 0xFF8F6849)
+		// Glowing flame head
+		c.framebuf.DrawRect(tx+6, ty+4, 10, 10, 0xFFFF8800)
+		c.framebuf.DrawRect(tx+8, ty+6, 6, 6, 0xFFFFEE55)
+		// Hand grasping lower post
+		c.framebuf.DrawRect(tx+4, ty+32, 18, 14, skinTone)
+		c.framebuf.DrawRect(tx+8, ty+46, 28, 40, sleeveTone)
+		return
+	}
+
+	// 3. Tools (Pickaxe, Sword, Axe, Shovel)
 	props, isTool := inventory.GetToolProperties(selected.ItemID)
 	if isTool {
 		// Draw Steve's arm holding tool
-		c.framebuf.DrawRect(hx+25, hy+50, 40, 50, sleeveTone)
+		c.framebuf.DrawRect(hx+25, hy+50, 42, 50, sleeveTone)
+		c.framebuf.DrawRect(hx+23, hy+48, 46, 4, 0xFF1B5960)
 		c.framebuf.DrawRect(hx+30, hy+30, 30, 20, skinTone)
 		c.framebuf.DrawRect(hx+25, hy+20, 25, 12, skinShade)
 
 		// Diagonal tool handle (brown wood)
 		handleCol := uint32(0xFF6F4F37)
-		for d := 0; d < 24; d++ {
-			c.framebuf.DrawRect(hx+32-d, hy+22-d, 3, 3, handleCol)
+		for d := 0; d < 28; d++ {
+			c.framebuf.DrawRect(hx+35-d, hy+26-d, 3, 3, handleCol)
 		}
 
 		// Tool Head
 		headCol := uint32(0xFFB8945F) // Wood
+		shineCol := uint32(0xFFD4B07B)
 		switch props.Tier {
 		case inventory.TierStone:
-			headCol = 0xFF888888
+			headCol = 0xFF7D7D7D
+			shineCol = 0xFF9E9E9E
 		case inventory.TierIron:
-			headCol = 0xFFEEEEEE
+			headCol = 0xFFD8D8D8
+			shineCol = 0xFFFFFFFF
 		case inventory.TierDiamond:
 			headCol = 0xFF4AEDD7
+			shineCol = 0xFF8CFFEE
 		}
 
-		tipX := hx + 32 - 24
-		tipY := hy + 22 - 24
+		tipX := hx + 35 - 28
+		tipY := hy + 26 - 28
 		switch props.Type {
 		case inventory.ToolPickaxe:
-			c.framebuf.DrawRect(tipX-10, tipY-2, 22, 6, headCol)
-			c.framebuf.DrawRect(tipX-12, tipY+3, 6, 6, headCol)
-			c.framebuf.DrawRect(tipX+10, tipY+3, 6, 6, headCol)
+			// Curved authentic pickaxe head
+			c.framebuf.DrawRect(tipX-14, tipY-4, 28, 6, headCol)
+			c.framebuf.DrawRect(tipX-18, tipY+1, 6, 8, headCol)
+			c.framebuf.DrawRect(tipX+12, tipY+1, 6, 8, headCol)
+			c.framebuf.DrawRect(tipX-12, tipY-4, 20, 2, shineCol)
 		case inventory.ToolSword:
-			for d := 0; d < 20; d++ {
-				c.framebuf.DrawRect(tipX-d, tipY-d, 5, 5, headCol)
+			// Double-edged sword blade
+			for d := 0; d < 26; d++ {
+				c.framebuf.DrawRect(tipX-d, tipY-d, 6, 6, headCol)
+				c.framebuf.DrawRect(tipX-d+1, tipY-d+1, 2, 2, shineCol)
 			}
-			c.framebuf.DrawRect(tipX+4, tipY+4, 10, 5, 0xFF4D3B26) // Crossguard
+			c.framebuf.DrawRect(tipX+6, tipY+6, 12, 6, 0xFF4D3B26) // Crossguard
+			c.framebuf.DrawRect(tipX+14, tipY+14, 5, 5, 0xFFB8945F) // Pommel
 		case inventory.ToolAxe:
-			c.framebuf.DrawRect(tipX-10, tipY-8, 14, 16, headCol)
+			// Curved wedge axe head
+			c.framebuf.DrawRect(tipX-12, tipY-10, 16, 20, headCol)
+			c.framebuf.DrawRect(tipX-16, tipY-6, 6, 14, headCol)
+			c.framebuf.DrawRect(tipX-16, tipY-6, 2, 14, shineCol)
+		case inventory.ToolShovel:
+			// Concave spade scoop
+			c.framebuf.DrawRect(tipX-8, tipY-12, 14, 16, headCol)
+			c.framebuf.DrawRect(tipX-6, tipY-14, 10, 4, headCol)
+			c.framebuf.DrawRect(tipX-6, tipY-12, 2, 12, shineCol)
 		default:
-			c.framebuf.DrawRect(tipX-6, tipY-6, 12, 12, headCol)
+			c.framebuf.DrawRect(tipX-6, tipY-6, 14, 14, headCol)
 		}
 		return
 	}
 
-	// 3. 3D Miniature Isometric Held Voxel Block
-	bx := hx - 8
-	by := hy - 12
-	colorTop := render.SampleBlockColor(selected.ItemID, 2, 0.5, 0.5, 1.0)
-	colorLeft := render.SampleBlockColor(selected.ItemID, 1, 0.5, 0.5, 0.8)
-	colorRight := render.SampleBlockColor(selected.ItemID, 0, 0.5, 0.5, 0.6)
+	// 4. 3D Miniature Isometric Textured Voxel Block
+	bx := hx - 12
+	by := hy - 16
 
-	// Top Face (Diamond shape)
-	for ty := 0; ty < 14; ty++ {
-		for tx := 0; tx < 14; tx++ {
-			c.framebuf.DrawRect(bx+20+(tx-ty)*2, by+ty+tx, 2, 1, colorTop)
+	// Render Top Face (16x16 sampled texels mapped to diamond)
+	for ty := 0; ty < 16; ty++ {
+		for tx := 0; tx < 16; tx++ {
+			u := float32(tx) / 16.0
+			v := float32(ty) / 16.0
+			col := render.SampleBlockColor(selected.ItemID, 2, u, v, 1.0)
+			sx := bx + 28 + (tx - ty)*2
+			sy := by + (tx + ty)
+			c.framebuf.DrawRect(sx, sy, 2, 1, col)
 		}
 	}
-	// Left Face
-	c.framebuf.DrawRect(bx-6, by+14, 26, 32, colorLeft)
-	// Right Face
-	c.framebuf.DrawRect(bx+20, by+14, 26, 32, colorRight)
 
-	// Steve's fingers grasping bottom edge
-	c.framebuf.DrawRect(bx+8, by+42, 28, 12, skinTone)
-	c.framebuf.DrawRect(bx+14, by+54, 34, 45, sleeveTone)
+	// Render Left Face (16x16 sampled texels with 0.8 directional shade)
+	for ty := 0; ty < 16; ty++ {
+		for tx := 0; tx < 16; tx++ {
+			u := float32(tx) / 16.0
+			v := float32(ty) / 16.0
+			col := render.SampleBlockColor(selected.ItemID, 1, u, v, 0.8)
+			sx := bx - 2 + tx*2
+			sy := by + 16 + tx + ty
+			c.framebuf.DrawRect(sx, sy, 2, 1, col)
+		}
+	}
+
+	// Render Right Face (16x16 sampled texels with 0.6 directional shade)
+	for ty := 0; ty < 16; ty++ {
+		for tx := 0; tx < 16; tx++ {
+			u := float32(tx) / 16.0
+			v := float32(ty) / 16.0
+			col := render.SampleBlockColor(selected.ItemID, 0, u, v, 0.6)
+			sx := bx + 28 + tx*2
+			sy := by + 31 - tx + ty
+			c.framebuf.DrawRect(sx, sy, 2, 1, col)
+		}
+	}
+
+	// Steve's grasping hand holding bottom-right block corner
+	c.framebuf.DrawRect(bx+14, by+44, 28, 14, skinTone)
+	c.framebuf.DrawRect(bx+22, by+56, 36, 45, sleeveTone)
+	c.framebuf.DrawRect(bx+20, by+54, 40, 4, 0xFF1B5960) // Cuff border
 }
 
 func main() {
