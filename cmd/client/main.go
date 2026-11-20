@@ -2016,25 +2016,6 @@ func (c *Client) RenderFrame() {
 			}
 			c.framebuf.DrawBlockDamage(c.camera, c.miningPos.X, c.miningPos.Y, c.miningPos.Z, stage)
 		}
-
-		// Draw subtle placement ghost wireframe when player holds a placeable block
-		if c.player != nil && c.player.Inventory != nil {
-			sel := c.player.Inventory.GetSelectedItem()
-			if inventory.IsPlaceableBlock(sel.ItemID) {
-				hitBlockID := c.engine.GetBlock(c.targetedPos.X, c.targetedPos.Y, c.targetedPos.Z)
-				var placePos world.BlockPos
-				if inventory.IsReplaceableBlock(hitBlockID) {
-					placePos = c.targetedPos
-				} else {
-					placePos = world.BlockPos{
-						X: c.targetedPos.X + c.targetedFace.X,
-						Y: c.targetedPos.Y + c.targetedFace.Y,
-						Z: c.targetedPos.Z + c.targetedFace.Z,
-					}
-				}
-				c.framebuf.DrawPlacementGhostOutline(c.camera, placePos.X, placePos.Y, placePos.Z)
-			}
-		}
 	}
 
 	// 3.5 Render 3D physical debris particles
@@ -2152,20 +2133,26 @@ func (c *Client) RenderFrame() {
 		}
 	}
 
-	// 5. Draw 2D HUD (Centered crosshair, 20 HP hearts, 20 hunger drumsticks, 9 hotbar slots with item icons & counts)
+	// 5. Draw 2D HUD (Centered crosshair, conditional 20 HP hearts, 20 hunger drumsticks, experience bar, level, hotbar)
+	gameMode := 0
 	health := float32(20.0)
 	hunger := 20
+	expProgress := float32(0.0)
+	level := 0
 	selectedSlot := 0
 	var hotbarSlots [9]inventory.ItemStack
 	if c.player != nil && c.player.Inventory != nil {
+		gameMode = c.player.GameMode
 		health = c.player.Health
 		hunger = c.player.Hunger
+		expProgress = c.player.ExpProgress
+		level = c.player.Level
 		selectedSlot = c.player.Inventory.SelectedHotbar
 		for i := 0; i < 9; i++ {
 			hotbarSlots[i] = c.player.Inventory.Slots[i]
 		}
 	}
-	c.framebuf.DrawHUDWithInventory(health, hunger, selectedSlot, hotbarSlots)
+	c.framebuf.DrawFullHUD(gameMode, health, hunger, expProgress, level, selectedSlot, hotbarSlots)
 
 	// 5.5 Render Ender Dragon Boss Bar if in The End
 	if c.currentDim == gen.DimensionEnd && c.engine != nil {
@@ -2420,17 +2407,17 @@ func (c *Client) drawMob(m *sim.MobEntity) {
 	case sim.MobPig:
 		frontX := 0.42 * sinY
 		frontZ := 0.42 * cosY
-		headUV := makeBoxFaceUVs(64, 64, [4]float32{8, 0, 16, 8}, [4]float32{16, 0, 24, 8}, [4]float32{24, 8, 32, 16}, [4]float32{8, 8, 16, 16}, [4]float32{16, 8, 24, 16}, [4]float32{0, 8, 8, 16})
+		headUV := makeBoxFaceUVs(64, 64, [4]float32{8, 0, 16, 8}, [4]float32{16, 0, 24, 8}, [4]float32{24, 8, 32, 16}, [4]float32{8, 8, 16, 16}, [4]float32{0, 8, 8, 16}, [4]float32{16, 8, 24, 16})
 		fbPigHead := [6]uint32{0xFFF0A0A0, 0xFFF0A0A0, 0xFFF0A0A0, 0xFFF0A0A0, 0xFFF0A0A0, 0xFFF0A0A0}
 		c.renderTextured3DBox(pos.X+frontX, pos.Y+0.65, pos.Z+frontZ, 0.20, 0.20, 0.20, yaw, pitch, mobTex, headUV, fbPigHead, tint)
 
 		snoutX := 0.58 * sinY
 		snoutZ := 0.58 * cosY
-		snoutUV := makeUniformFaceUV(64, 64, 17, 17, 21, 20)
+		snoutUV := makeBoxFaceUVs(64, 64, [4]float32{17, 16, 21, 17}, [4]float32{21, 16, 25, 17}, [4]float32{17, 17, 21, 20}, [4]float32{17, 17, 21, 20}, [4]float32{16, 17, 17, 20}, [4]float32{21, 17, 22, 20})
 		fbSnout := [6]uint32{0xFFD06868, 0xFFE88A8A, 0xFFE88A8A, 0xFFD06868, 0xFFE88A8A, 0xFFE88A8A}
 		c.renderTextured3DBox(pos.X+snoutX, pos.Y+0.60, pos.Z+snoutZ, 0.10, 0.08, 0.06, yaw, pitch, mobTex, snoutUV, fbSnout, tint)
 
-		bodyUV := makeUniformFaceUV(64, 64, 28, 20, 44, 36)
+		bodyUV := makeBoxFaceUVs(64, 64, [4]float32{28, 16, 36, 32}, [4]float32{36, 16, 44, 32}, [4]float32{36, 32, 44, 40}, [4]float32{20, 32, 28, 40}, [4]float32{16, 32, 20, 48}, [4]float32{28, 32, 32, 48})
 		fbPigBody := [6]uint32{0xFFF0A0A0, 0xFFF0A0A0, 0xFFF0A0A0, 0xFFF0A0A0, 0xFFF0A0A0, 0xFFF0A0A0}
 		c.renderTextured3DBox(pos.X, pos.Y+0.55, pos.Z, 0.26, 0.22, 0.38, yaw, 0, mobTex, bodyUV, fbPigBody, tint)
 
@@ -2444,7 +2431,7 @@ func (c *Client) drawMob(m *sim.MobEntity) {
 			{-0.15, -0.22},
 			{0.15, -0.22},
 		}
-		legUV := makeUniformFaceUV(64, 64, 0, 20, 4, 28)
+		legUV := makeUniformFaceUV(64, 64, 0, 16, 4, 22)
 		fbPigLeg := [6]uint32{0xFFE08E8E, 0xFFE08E8E, 0xFFE08E8E, 0xFFE08E8E, 0xFFE08E8E, 0xFFE08E8E}
 		for i, f := range legs {
 			lx := f[0]*cosY + f[1]*sinY
@@ -2457,7 +2444,7 @@ func (c *Client) drawMob(m *sim.MobEntity) {
 		}
 
 	case sim.MobCow:
-		bodyUV := makeUniformFaceUV(64, 64, 28, 20, 40, 34)
+		bodyUV := makeBoxFaceUVs(64, 64, [4]float32{28, 16, 36, 32}, [4]float32{36, 16, 44, 32}, [4]float32{36, 32, 44, 40}, [4]float32{20, 32, 28, 40}, [4]float32{16, 32, 20, 48}, [4]float32{28, 32, 32, 48})
 		fbCowBody := [6]uint32{0xFFE5E5E5, 0xFF5A4432, 0xFF5A4432, 0xFF5A4432, 0xFF5A4432, 0xFF5A4432}
 		c.renderTextured3DBox(pos.X, pos.Y+0.75, pos.Z, 0.30, 0.28, 0.45, yaw, 0, mobTex, bodyUV, fbCowBody, tint)
 
@@ -2467,13 +2454,15 @@ func (c *Client) drawMob(m *sim.MobEntity) {
 
 		frontX := 0.50 * sinY
 		frontZ := 0.50 * cosY
-		headUV := makeBoxFaceUVs(64, 64, [4]float32{8, 0, 16, 8}, [4]float32{16, 0, 24, 8}, [4]float32{24, 8, 32, 16}, [4]float32{8, 8, 16, 16}, [4]float32{16, 8, 24, 16}, [4]float32{0, 8, 8, 16})
+		headUV := makeBoxFaceUVs(64, 64, [4]float32{8, 0, 16, 8}, [4]float32{16, 0, 24, 8}, [4]float32{24, 8, 32, 16}, [4]float32{8, 8, 16, 16}, [4]float32{0, 8, 8, 16}, [4]float32{16, 8, 24, 16})
 		fbCowHead := [6]uint32{0xFF5A4432, 0xFF5A4432, 0xFF5A4432, 0xFF5A4432, 0xFF5A4432, 0xFF5A4432}
 		c.renderTextured3DBox(pos.X+frontX, pos.Y+0.90, pos.Z+frontZ, 0.22, 0.22, 0.22, yaw, pitch, mobTex, headUV, fbCowHead, tint)
 
 		muzzleX := 0.65 * sinY
 		muzzleZ := 0.65 * cosY
-		c.render3DBox(pos.X+muzzleX, pos.Y+0.82, pos.Z+muzzleZ, 0.14, 0.10, 0.08, yaw, pitch, 0xFF7D7D7D, 0xFF7D7D7D, 0xFF7D7D7D)
+		muzzleUV := makeBoxFaceUVs(64, 64, [4]float32{1, 0, 5, 2}, [4]float32{5, 0, 9, 2}, [4]float32{1, 2, 5, 5}, [4]float32{1, 2, 5, 5}, [4]float32{0, 2, 1, 5}, [4]float32{5, 2, 6, 5})
+		fbMuzzle := [6]uint32{0xFF7D7D7D, 0xFF7D7D7D, 0xFF7D7D7D, 0xFF7D7D7D, 0xFF7D7D7D, 0xFF7D7D7D}
+		c.renderTextured3DBox(pos.X+muzzleX, pos.Y+0.82, pos.Z+muzzleZ, 0.14, 0.10, 0.08, yaw, pitch, mobTex, muzzleUV, fbMuzzle, tint)
 
 		c.render3DBox(pos.X+frontX-0.18*cosY, pos.Y+1.08, pos.Z+frontZ+0.18*sinY, 0.04, 0.08, 0.04, yaw, 0, 0xFFCCCCCC, 0xFFCCCCCC, 0xFFCCCCCC)
 		c.render3DBox(pos.X+frontX+0.18*cosY, pos.Y+1.08, pos.Z+frontZ-0.18*sinY, 0.04, 0.08, 0.04, yaw, 0, 0xFFCCCCCC, 0xFFCCCCCC, 0xFFCCCCCC)
@@ -2497,13 +2486,13 @@ func (c *Client) drawMob(m *sim.MobEntity) {
 		}
 
 	case sim.MobSheep:
-		woolUV := makeUniformFaceUV(64, 32, 28, 16, 40, 30)
+		woolUV := makeBoxFaceUVs(64, 32, [4]float32{28, 16, 40, 28}, [4]float32{40, 16, 52, 28}, [4]float32{40, 28, 52, 32}, [4]float32{28, 28, 40, 32}, [4]float32{22, 28, 28, 32}, [4]float32{52, 28, 58, 32})
 		fbSheepBody := [6]uint32{0xFFEFEFEF, 0xFFD6D6D6, 0xFFEFEFEF, 0xFFEFEFEF, 0xFFEFEFEF, 0xFFEFEFEF}
 		c.renderTextured3DBox(pos.X, pos.Y+0.72, pos.Z, 0.34, 0.30, 0.46, yaw, 0, mobTex, woolUV, fbSheepBody, tint)
 
 		frontX := 0.48 * sinY
 		frontZ := 0.48 * cosY
-		headUV := makeUniformFaceUV(64, 32, 8, 8, 14, 14)
+		headUV := makeBoxFaceUVs(64, 32, [4]float32{6, 0, 12, 6}, [4]float32{12, 0, 18, 6}, [4]float32{18, 6, 24, 12}, [4]float32{6, 6, 12, 12}, [4]float32{0, 6, 6, 12}, [4]float32{12, 6, 18, 12})
 		fbSheepHead := [6]uint32{0xFFD8C0A8, 0xFFD8C0A8, 0xFFD8C0A8, 0xFFD8C0A8, 0xFFD8C0A8, 0xFFD8C0A8}
 		c.renderTextured3DBox(pos.X+frontX, pos.Y+0.85, pos.Z+frontZ, 0.18, 0.18, 0.20, yaw, pitch, mobTex, headUV, fbSheepHead, tint)
 		c.render3DBox(pos.X+frontX, pos.Y+0.98, pos.Z+frontZ, 0.19, 0.08, 0.18, yaw, pitch, 0xFFEFEFEF, 0xFFEFEFEF, 0xFFEFEFEF)
@@ -2514,7 +2503,7 @@ func (c *Client) drawMob(m *sim.MobEntity) {
 			{-0.16, -0.24},
 			{0.16, -0.24},
 		}
-		legUV := makeUniformFaceUV(64, 32, 0, 20, 4, 28)
+		legUV := makeUniformFaceUV(64, 32, 0, 16, 4, 26)
 		fbSheepLeg := [6]uint32{0xFFBBA088, 0xFF4A3828, 0xFFBBA088, 0xFFBBA088, 0xFFBBA088, 0xFFBBA088}
 		for i, f := range legs {
 			lx := f[0]*cosY + f[1]*sinY
@@ -2527,7 +2516,7 @@ func (c *Client) drawMob(m *sim.MobEntity) {
 		}
 
 	case sim.MobChicken:
-		bodyUV := makeUniformFaceUV(64, 32, 16, 12, 22, 18)
+		bodyUV := makeBoxFaceUVs(64, 32, [4]float32{16, 9, 22, 17}, [4]float32{22, 9, 28, 17}, [4]float32{22, 17, 28, 22}, [4]float32{16, 17, 22, 22}, [4]float32{10, 17, 16, 22}, [4]float32{28, 17, 34, 22})
 		fbChickenBody := [6]uint32{0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF}
 		c.renderTextured3DBox(pos.X, pos.Y+0.32, pos.Z, 0.18, 0.16, 0.22, yaw, 0, mobTex, bodyUV, fbChickenBody, tint)
 
@@ -2542,7 +2531,7 @@ func (c *Client) drawMob(m *sim.MobEntity) {
 
 		frontX := 0.22 * sinY
 		frontZ := 0.22 * cosY
-		headUV := makeUniformFaceUV(64, 32, 8, 4, 12, 8)
+		headUV := makeBoxFaceUVs(64, 32, [4]float32{3, 0, 6, 3}, [4]float32{6, 0, 9, 3}, [4]float32{9, 3, 12, 9}, [4]float32{3, 3, 6, 9}, [4]float32{0, 3, 3, 9}, [4]float32{6, 3, 9, 9})
 		fbChickenHead := [6]uint32{0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF}
 		c.renderTextured3DBox(pos.X+frontX, pos.Y+0.52, pos.Z+frontZ, 0.10, 0.18, 0.12, yaw, pitch, mobTex, headUV, fbChickenHead, tint)
 
@@ -2550,7 +2539,7 @@ func (c *Client) drawMob(m *sim.MobEntity) {
 
 		beakX := 0.32 * sinY
 		beakZ := 0.32 * cosY
-		beakUV := makeUniformFaceUV(64, 32, 14, 4, 18, 8)
+		beakUV := makeBoxFaceUVs(64, 32, [4]float32{15, 0, 19, 2}, [4]float32{19, 0, 23, 2}, [4]float32{15, 2, 19, 4}, [4]float32{15, 2, 19, 4}, [4]float32{14, 2, 15, 4}, [4]float32{19, 2, 20, 4})
 		fbBeak := [6]uint32{0xFFFFB010, 0xFFFFB010, 0xFFFFB010, 0xFFFFB010, 0xFFFFB010, 0xFFFFB010}
 		c.renderTextured3DBox(pos.X+beakX, pos.Y+0.50, pos.Z+beakZ, 0.06, 0.04, 0.06, yaw, pitch, mobTex, beakUV, fbBeak, tint)
 		c.render3DBox(pos.X+beakX, pos.Y+0.44, pos.Z+beakZ, 0.04, 0.04, 0.04, yaw, pitch, 0xFFFF2020, 0xFFFF2020, 0xFFFF2020)
@@ -2563,7 +2552,7 @@ func (c *Client) drawMob(m *sim.MobEntity) {
 		c.renderTextured3DBox(pos.X+legOffX, pos.Y+0.12, pos.Z+legOffZ, 0.03, 0.14, 0.04, yaw, walkSwing*1.4, mobTex, legUV, fbLeg, tint)
 
 	case sim.MobEnderman:
-		headUV := makeBoxFaceUVs(64, 32, [4]float32{8, 0, 16, 8}, [4]float32{16, 0, 24, 8}, [4]float32{24, 8, 32, 16}, [4]float32{8, 8, 16, 16}, [4]float32{16, 8, 24, 16}, [4]float32{0, 8, 8, 16})
+		headUV := makeBoxFaceUVs(64, 32, [4]float32{8, 0, 16, 8}, [4]float32{16, 0, 24, 8}, [4]float32{24, 8, 32, 16}, [4]float32{8, 8, 16, 16}, [4]float32{0, 8, 8, 16}, [4]float32{16, 8, 24, 16})
 		fbEnder := [6]uint32{0xFF161616, 0xFF101010, 0xFF141414, 0xFF141414, 0xFF141414, 0xFF141414}
 		c.renderTextured3DBox(pos.X, pos.Y+2.50, pos.Z, 0.16, 0.16, 0.16, yaw, pitch, mobTex, headUV, fbEnder, tint)
 
@@ -2839,15 +2828,23 @@ func (c *Client) renderTextured3DBox(
 		return cx + rx, cy + ry, cz + rz2
 	}
 
+	rotNormal := func(nx, ny, nz float64) (float64, float64, float64) {
+		ry := ny*cosP - nz*sinP
+		rz := ny*sinP + nz*cosP
+		rx := nx*cosY + rz*sinY
+		rz2 := -nx*sinY + rz*cosY
+		return rx, ry, rz2
+	}
+
 	corners := [8][3]float64{
-		{-hx, -hy, -hz},
-		{hx, -hy, -hz},
-		{hx, hy, -hz},
-		{-hx, hy, -hz},
-		{-hx, -hy, hz},
-		{hx, -hy, hz},
-		{hx, hy, hz},
-		{-hx, hy, hz},
+		{-hx, -hy, -hz}, // 0: -X, -Y, -Z
+		{hx, -hy, -hz},  // 1: +X, -Y, -Z
+		{hx, hy, -hz},   // 2: +X, +Y, -Z
+		{-hx, hy, -hz},  // 3: -X, +Y, -Z
+		{-hx, -hy, hz},  // 4: -X, -Y, +Z
+		{hx, -hy, hz},   // 5: +X, -Y, +Z
+		{hx, hy, hz},    // 6: +X, +Y, +Z
+		{-hx, hy, hz},   // 7: -X, +Y, +Z
 	}
 
 	var screenPts [8]render.ScreenPoint
@@ -2857,25 +2854,42 @@ func (c *Client) renderTextured3DBox(
 		screenPts[i], valid[i] = c.camera.ProjectToScreen(wx, wy, wz, c.framebuf.Width, c.framebuf.Height)
 	}
 
-	faces := [6][4]int{
-		{2, 3, 7, 6}, // Top (+Y)
-		{4, 5, 1, 0}, // Bottom (-Y)
-		{3, 2, 1, 0}, // North (-Z, Back)
-		{6, 7, 4, 5}, // South (+Z, Front)
-		{7, 3, 0, 4}, // West (-X, Right)
-		{2, 6, 5, 1}, // East (+X, Left)
+	type boxFaceDef struct {
+		indices [4]int
+		normal  [3]float64
+		center  [3]float64
+	}
+
+	// 6 Box faces with canonical Minecraft UV corner alignment:
+	// p0: Top-Left (U0, V0), p1: Top-Right (U1, V0), p2: Bottom-Right (U1, V1), p3: Bottom-Left (U0, V1)
+	faces := [6]boxFaceDef{
+		{indices: [4]int{3, 2, 6, 7}, normal: [3]float64{0, 1, 0}, center: [3]float64{0, hy, 0}},   // 0: Top (+Y)
+		{indices: [4]int{4, 5, 1, 0}, normal: [3]float64{0, -1, 0}, center: [3]float64{0, -hy, 0}}, // 1: Bottom (-Y)
+		{indices: [4]int{2, 3, 0, 1}, normal: [3]float64{0, 0, -1}, center: [3]float64{0, 0, -hz}}, // 2: North (-Z, Back)
+		{indices: [4]int{7, 6, 5, 4}, normal: [3]float64{0, 0, 1}, center: [3]float64{0, 0, hz}},   // 3: South (+Z, Front / Face)
+		{indices: [4]int{3, 7, 4, 0}, normal: [3]float64{-1, 0, 0}, center: [3]float64{-hx, 0, 0}}, // 4: West (-X, Right)
+		{indices: [4]int{6, 2, 1, 5}, normal: [3]float64{1, 0, 0}, center: [3]float64{hx, 0, 0}},   // 5: East (+X, Left)
 	}
 
 	for fIdx, f := range faces {
-		if !valid[f[0]] || !valid[f[1]] || !valid[f[2]] || !valid[f[3]] {
+		if !valid[f.indices[0]] || !valid[f.indices[1]] || !valid[f.indices[2]] || !valid[f.indices[3]] {
 			continue
 		}
-		p0, p1, p2, p3 := screenPts[f[0]], screenPts[f[1]], screenPts[f[2]], screenPts[f[3]]
-		// Screen-space 2D normal check for back-face culling
-		area := (p1.X-p0.X)*(p2.Y-p0.Y) - (p1.Y-p0.Y)*(p2.X-p0.X)
-		if area <= 0 {
-			continue
+
+		// 3D back-face normal culling: test if face normal points towards camera
+		rnx, rny, rnz := rotNormal(f.normal[0], f.normal[1], f.normal[2])
+		fcx, fcy, fcz := rot(f.center[0], f.center[1], f.center[2])
+		vx := fcx - c.camera.X
+		vy := fcy - c.camera.Y
+		vz := fcz - c.camera.Z
+		if rnx*vx+rny*vy+rnz*vz >= 0 {
+			continue // Points away from camera -> culled
 		}
+
+		p0 := screenPts[f.indices[0]]
+		p1 := screenPts[f.indices[1]]
+		p2 := screenPts[f.indices[2]]
+		p3 := screenPts[f.indices[3]]
 
 		uv := faceUVs[fIdx]
 		if tex != nil && (uv.U1 > uv.U0 && uv.V1 > uv.V0) {

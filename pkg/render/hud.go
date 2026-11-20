@@ -157,14 +157,112 @@ func (fb *Framebuffer) DrawItemIcon(x, y int, itemID int32) {
 	fb.DrawItemSprite16x16(x, y, itemID)
 }
 
+// Authentic 9x9 Minecraft Java Edition Bitmaps for Hearts & Food Icons (Used as primary/fallback sprites)
+var (
+	HeartContainerBitmap = [9][9]uint32{
+		{0, 0xFF000000, 0xFF000000, 0, 0, 0, 0xFF000000, 0xFF000000, 0},
+		{0xFF000000, 0xFF4A4A4A, 0xFF4A4A4A, 0xFF000000, 0, 0xFF000000, 0xFF4A4A4A, 0xFF4A4A4A, 0xFF000000},
+		{0xFF000000, 0xFF4A4A4A, 0xFFFFFFFF, 0xFF4A4A4A, 0xFF000000, 0xFF4A4A4A, 0xFF4A4A4A, 0xFF4A4A4A, 0xFF000000},
+		{0xFF000000, 0xFF353535, 0xFF353535, 0xFF353535, 0xFF353535, 0xFF353535, 0xFF353535, 0xFF353535, 0xFF000000},
+		{0, 0xFF000000, 0xFF353535, 0xFF353535, 0xFF353535, 0xFF353535, 0xFF353535, 0xFF000000, 0},
+		{0, 0, 0xFF000000, 0xFF353535, 0xFF353535, 0xFF353535, 0xFF000000, 0, 0},
+		{0, 0, 0, 0xFF000000, 0xFF353535, 0xFF000000, 0, 0, 0},
+		{0, 0, 0, 0, 0xFF000000, 0, 0, 0, 0},
+		{0, 0, 0, 0, 0, 0, 0, 0, 0},
+	}
+	HeartFullBitmap = [9][9]uint32{
+		{0, 0xFF000000, 0xFF000000, 0, 0, 0, 0xFF000000, 0xFF000000, 0},
+		{0xFF000000, 0xFFFF2222, 0xFFFF2222, 0xFF000000, 0, 0xFF000000, 0xFFFF2222, 0xFFFF2222, 0xFF000000},
+		{0xFF000000, 0xFFFF2222, 0xFFFFFFFF, 0xFFFF2222, 0xFF000000, 0xFFFF2222, 0xFFFF2222, 0xFFFF2222, 0xFF000000},
+		{0xFF000000, 0xFFBD1010, 0xFFBD1010, 0xFFBD1010, 0xFFBD1010, 0xFFBD1010, 0xFFBD1010, 0xFFBD1010, 0xFF000000},
+		{0, 0xFF000000, 0xFFBD1010, 0xFFBD1010, 0xFFBD1010, 0xFFBD1010, 0xFFBD1010, 0xFF000000, 0},
+		{0, 0, 0xFF000000, 0xFFBD1010, 0xFFBD1010, 0xFFBD1010, 0xFF000000, 0, 0},
+		{0, 0, 0, 0xFF000000, 0xFFBD1010, 0xFF000000, 0, 0, 0},
+		{0, 0, 0, 0, 0xFF000000, 0, 0, 0, 0},
+		{0, 0, 0, 0, 0, 0, 0, 0, 0},
+	}
+	HeartHalfBitmap = [9][9]uint32{
+		{0, 0xFF000000, 0xFF000000, 0, 0, 0, 0xFF000000, 0xFF000000, 0},
+		{0xFF000000, 0xFFFF2222, 0xFFFF2222, 0xFF000000, 0, 0xFF000000, 0xFF4A4A4A, 0xFF4A4A4A, 0xFF000000},
+		{0xFF000000, 0xFFFF2222, 0xFFFFFFFF, 0xFFFF2222, 0xFF000000, 0xFF4A4A4A, 0xFF4A4A4A, 0xFF4A4A4A, 0xFF000000},
+		{0xFF000000, 0xFFBD1010, 0xFFBD1010, 0xFFBD1010, 0xFF353535, 0xFF353535, 0xFF353535, 0xFF353535, 0xFF000000},
+		{0, 0xFF000000, 0xFFBD1010, 0xFFBD1010, 0xFF353535, 0xFF353535, 0xFF353535, 0xFF000000, 0},
+		{0, 0, 0xFF000000, 0xFFBD1010, 0xFF353535, 0xFF353535, 0xFF000000, 0, 0},
+		{0, 0, 0, 0xFF000000, 0xFF353535, 0xFF000000, 0, 0, 0},
+		{0, 0, 0, 0, 0xFF000000, 0, 0, 0, 0},
+		{0, 0, 0, 0, 0, 0, 0, 0, 0},
+	}
+	FoodEmptyBitmap = [9][9]uint32{
+		{0, 0, 0, 0, 0, 0xFF4A3828, 0xFF4A3828, 0, 0xFFFFFFFF},
+		{0, 0, 0, 0xFF4A3828, 0xFF352518, 0xFF352518, 0xFF352518, 0xFFFFFFFF, 0xFFC0C0C0},
+		{0, 0, 0xFF4A3828, 0xFF352518, 0xFF352518, 0xFF352518, 0xFF352518, 0xFF4A3828, 0xFF4A3828},
+		{0, 0xFF4A3828, 0xFF352518, 0xFF352518, 0xFF352518, 0xFF352518, 0xFF352518, 0xFF4A3828, 0},
+		{0xFF4A3828, 0xFF352518, 0xFF352518, 0xFF352518, 0xFF352518, 0xFF352518, 0xFF4A3828, 0, 0},
+		{0xFF4A3828, 0xFF352518, 0xFF352518, 0xFF352518, 0xFF4A3828, 0xFF4A3828, 0, 0, 0},
+		{0xFF4A3828, 0xFF352518, 0xFF352518, 0xFF4A3828, 0, 0, 0, 0, 0},
+		{0, 0xFF4A3828, 0xFF4A3828, 0, 0, 0, 0, 0, 0},
+		{0, 0, 0, 0, 0, 0, 0, 0, 0},
+	}
+	FoodFullBitmap = [9][9]uint32{
+		{0, 0, 0, 0, 0, 0xFF502810, 0xFF502810, 0, 0xFFFFFFFF},
+		{0, 0, 0, 0xFF502810, 0xFFB86020, 0xFFD88030, 0xFFD88030, 0xFFFFFFFF, 0xFFC0C0C0},
+		{0, 0, 0xFF502810, 0xFFB86020, 0xFFD88030, 0xFFF0A040, 0xFFD88030, 0xFF502810, 0xFF502810},
+		{0, 0xFF502810, 0xFFB86020, 0xFFD88030, 0xFFF0A040, 0xFFD88030, 0xFFB86020, 0xFF502810, 0},
+		{0xFF502810, 0xFFB86020, 0xFFD88030, 0xFFD88030, 0xFFB86020, 0xFF804018, 0xFF502810, 0, 0},
+		{0xFF502810, 0xFFD88030, 0xFFB86020, 0xFF804018, 0xFF502810, 0xFF502810, 0, 0, 0},
+		{0xFF502810, 0xFFB86020, 0xFF804018, 0xFF502810, 0, 0, 0, 0, 0},
+		{0, 0xFF502810, 0xFF502810, 0, 0, 0, 0, 0, 0},
+		{0, 0, 0, 0, 0, 0, 0, 0, 0},
+	}
+	FoodHalfBitmap = [9][9]uint32{
+		{0, 0, 0, 0, 0, 0xFF502810, 0xFF502810, 0, 0xFFFFFFFF},
+		{0, 0, 0, 0xFF502810, 0xFF352518, 0xFFD88030, 0xFFD88030, 0xFFFFFFFF, 0xFFC0C0C0},
+		{0, 0, 0xFF502810, 0xFF352518, 0xFF352518, 0xFFF0A040, 0xFFD88030, 0xFF502810, 0xFF502810},
+		{0, 0xFF502810, 0xFF352518, 0xFF352518, 0xFF352518, 0xFFD88030, 0xFFB86020, 0xFF502810, 0},
+		{0xFF502810, 0xFF352518, 0xFF352518, 0xFF352518, 0xFF352518, 0xFF804018, 0xFF502810, 0, 0},
+		{0xFF502810, 0xFF352518, 0xFF352518, 0xFF804018, 0xFF502810, 0xFF502810, 0, 0, 0},
+		{0xFF502810, 0xFFB86020, 0xFF804018, 0xFF502810, 0, 0, 0, 0, 0},
+		{0, 0xFF502810, 0xFF502810, 0, 0, 0, 0, 0, 0},
+		{0, 0, 0, 0, 0, 0, 0, 0, 0},
+	}
+)
+
+func (fb *Framebuffer) draw9x9Bitmap(x, y int, bmp [9][9]uint32) {
+	for r := 0; r < 9; r++ {
+		for c := 0; c < 9; c++ {
+			col := bmp[r][c]
+			if col != 0 {
+				px := x + c
+				py := y + r
+				if px >= 0 && px < fb.Width && py >= 0 && py < fb.Height {
+					fb.Color[py*fb.Width+px] = col
+				}
+			}
+		}
+	}
+}
+
 // DrawHUD renders crosshair, health bar, hunger bar, and 9 empty hotbar slots.
 func (fb *Framebuffer) DrawHUD(health float32, hunger int, selectedSlot int) {
 	var emptySlots [9]inventory.ItemStack
-	fb.DrawHUDWithInventory(health, hunger, selectedSlot, emptySlots)
+	fb.DrawFullHUD(0, health, hunger, 0.0, 0, selectedSlot, emptySlots)
 }
 
 // DrawHUDWithInventory renders crosshair, health, hunger, 9 hotbar slots with item icons and counts.
 func (fb *Framebuffer) DrawHUDWithInventory(health float32, hunger int, selectedSlot int, slots [9]inventory.ItemStack) {
+	fb.DrawFullHUD(0, health, hunger, 0.0, 0, selectedSlot, slots)
+}
+
+// DrawFullHUD renders crosshair, hotbar, and conditional survival HUD (hearts, food, experience bar, level).
+func (fb *Framebuffer) DrawFullHUD(
+	gameMode int,
+	health float32,
+	hunger int,
+	expProgress float32,
+	level int,
+	selectedSlot int,
+	slots [9]inventory.ItemStack,
+) {
 	// 1. Center Crosshair
 	fb.DrawCrosshair()
 
@@ -227,14 +325,59 @@ func (fb *Framebuffer) DrawHUDWithInventory(health float32, hunger int, selected
 		}
 	}
 
+	// In Creative Mode (gameMode == 1), health, hunger, exp bar and air bubbles are NOT drawn per vanilla rules
+	if gameMode == 1 {
+		return
+	}
+
 	// 4. Experience Bar (182x5) between hotbar and health/hunger
+	expBarW := 182
+	expBarH := 5
+	expBarX := hotbarX
+	expBarY := hotbarY - 7
+
 	if expBg, ok := GetOfficialImage("gui/sprites/hud/experience_bar_background.png"); ok {
-		fb.DrawRawImage(hotbarX, hotbarY-6, expBg)
+		fb.DrawRawImage(expBarX, expBarY, expBg)
+	} else {
+		// Pixel-accurate Minecraft Experience Bar Background (182x5)
+		fb.DrawRect(expBarX, expBarY, expBarW, expBarH, 0xFF000000)
+		fb.DrawRect(expBarX+1, expBarY+1, expBarW-2, expBarH-2, 0xFF3B4036)
+		for s := 1; s < 10; s++ {
+			nx := expBarX + s*18
+			fb.DrawRect(nx, expBarY+1, 1, 3, 0xFF222620)
+		}
+	}
+
+	// Filled Experience Progress Bar
+	if expProgress > 0.0 {
+		fillW := int(float32(expBarW) * expProgress)
+		if fillW > expBarW {
+			fillW = expBarW
+		}
+		if fillW > 2 {
+			fb.DrawRect(expBarX+1, expBarY+1, fillW-2, 1, 0xFFB4FF42) // Top bright lime highlight
+			fb.DrawRect(expBarX+1, expBarY+2, fillW-2, 2, 0xFF80FF20) // Vibrant Minecraft lime green
+			for s := 1; s < 10; s++ {
+				nx := expBarX + s*18
+				if nx < expBarX+fillW-1 {
+					fb.DrawRect(nx, expBarY+1, 1, 3, 0xFF356610)
+				}
+			}
+		}
+	}
+
+	// Experience Level Number (Centered right above experience bar)
+	if level > 0 {
+		lvlStr := strconv.Itoa(level)
+		numW := MeasureText5x7(lvlStr, 1)
+		lx := hotbarX + 91 - numW/2
+		ly := expBarY - 7
+		fb.DrawText5x7(lx, ly, lvlStr, 0xFF80FF20, 1) // Vibrant lime green text with drop shadow
 	}
 
 	// 5. Health Bar (aligned with left of hotbar, 10 hearts spaced by 8px)
 	heartStartX := hotbarX
-	hudBaseY := hotbarY - 17
+	hudBaseY := hotbarY - 18
 	heartContainer, hasHeartContainer := GetOfficialImage("gui/sprites/hud/heart/container.png")
 	heartFull, hasHeartFull := GetOfficialImage("gui/sprites/hud/heart/full.png")
 	heartHalf, hasHeartHalf := GetOfficialImage("gui/sprites/hud/heart/half.png")
@@ -253,19 +396,19 @@ func (fb *Framebuffer) DrawHUDWithInventory(health float32, hunger int, selected
 		if hasHeartContainer {
 			fb.DrawRawImage(hx, hy, heartContainer)
 		} else {
-			fb.DrawRect(hx, hy, 9, 9, 0xFF330000)
+			fb.draw9x9Bitmap(hx, hy, HeartContainerBitmap)
 		}
 		if i < fullHearts {
 			if hasHeartFull {
 				fb.DrawRawImage(hx, hy, heartFull)
 			} else {
-				fb.DrawRect(hx+1, hy+1, 7, 7, 0xFFFF1111)
+				fb.draw9x9Bitmap(hx, hy, HeartFullBitmap)
 			}
 		} else if i == fullHearts && hasHalfHeart {
 			if hasHeartHalf {
 				fb.DrawRawImage(hx, hy, heartHalf)
 			} else {
-				fb.DrawRect(hx+1, hy+1, 4, 7, 0xFFFF1111)
+				fb.draw9x9Bitmap(hx, hy, HeartHalfBitmap)
 			}
 		}
 	}
@@ -285,19 +428,19 @@ func (fb *Framebuffer) DrawHUDWithInventory(health float32, hunger int, selected
 		if hasFoodEmpty {
 			fb.DrawRawImage(hx, hy, foodEmpty)
 		} else {
-			fb.DrawRect(hx, hy, 9, 9, 0xFF2A1E14)
+			fb.draw9x9Bitmap(hx, hy, FoodEmptyBitmap)
 		}
 		if i < fullFood {
 			if hasFoodFull {
 				fb.DrawRawImage(hx, hy, foodFull)
 			} else {
-				fb.DrawRect(hx+1, hy+1, 7, 7, 0xFFD47C2F)
+				fb.draw9x9Bitmap(hx, hy, FoodFullBitmap)
 			}
 		} else if i == fullFood && hasHalfFood {
 			if hasFoodHalf {
 				fb.DrawRawImage(hx, hy, foodHalf)
 			} else {
-				fb.DrawRect(hx+1, hy+1, 4, 7, 0xFFD47C2F)
+				fb.draw9x9Bitmap(hx, hy, FoodHalfBitmap)
 			}
 		}
 	}

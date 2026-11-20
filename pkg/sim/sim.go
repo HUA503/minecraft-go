@@ -2,6 +2,7 @@ package sim
 
 import (
 	"math"
+	mrand "math/rand"
 	"sync"
 	"time"
 
@@ -26,11 +27,42 @@ type PlayerEntity struct {
 	Exhaustion   float32 // 0.0 to 4.0
 	RegenTimer   int     // Tick counter for natural regeneration
 	StarveTimer  int     // Tick counter for starvation damage
+	Level        int     // Experience level (e.g. 0, 1, 30)
+	ExpProgress  float32 // Progress to next level: 0.0 to 1.0
+	ExpTotal     int     // Total experience points collected in current level
 	FallDistance float32
 	IsAlive      bool
 	ClientDriven bool
 	GameMode     int // 0: Survival, 1: Creative, 2: Adventure, 3: Spectator
 	Inventory    *inventory.PlayerInventory
+}
+
+// AddExp adds canonical Minecraft experience points and levels up accordingly.
+func (p *PlayerEntity) AddExp(amount int) {
+	if amount <= 0 {
+		return
+	}
+	p.ExpTotal += amount
+	for {
+		cap := p.ExpBarCap()
+		if p.ExpTotal < cap {
+			p.ExpProgress = float32(p.ExpTotal) / float32(cap)
+			break
+		}
+		p.ExpTotal -= cap
+		p.Level++
+	}
+}
+
+// ExpBarCap returns the points required to advance from the current level to the next.
+func (p *PlayerEntity) ExpBarCap() int {
+	if p.Level >= 30 {
+		return 112 + (p.Level-30)*9
+	}
+	if p.Level >= 15 {
+		return 37 + (p.Level-15)*5
+	}
+	return 7 + p.Level*2
 }
 
 // EndCrystal represents an active healing crystal atop an obsidian tower.
@@ -104,6 +136,7 @@ type Engine struct {
 	Storage          *world.SaveManager
 	Furnaces         map[world.BlockPos]*inventory.FurnaceBlockEntity
 	IsPaused         bool
+	Difficulty       int // 0: Peaceful, 1: Easy, 2: Normal, 3: Hard
 }
 
 func NewEngine() *Engine {
@@ -120,6 +153,7 @@ func NewEngine() *Engine {
 		EndCrystals:      make(map[int32]*EndCrystal),
 		nextCrystalID:    1,
 		WorldTime:        6000, // Canonical Minecraft noon daylight
+		Difficulty:       2,    // Default: Normal difficulty
 		Events:           make(chan WorldEvent, 1024),
 		stopChan:         make(chan struct{}),
 		Furnaces:         make(map[world.BlockPos]*inventory.FurnaceBlockEntity),
@@ -586,12 +620,14 @@ func (e *Engine) PlaceBlock(playerID int32, pos world.BlockPos, blockID int32) b
 		e.mu.RUnlock()
 	}
 
-	// Decrement item from player's inventory if matching item is held
+	// Decrement item from player's inventory if matching item is held (In Creative mode GameMode==1, items are not consumed)
 	e.mu.Lock()
 	if p, ok := e.Players[playerID]; ok && p.Inventory != nil {
-		sel := p.Inventory.GetSelectedItem()
-		if sel.ItemID == blockID && sel.Count > 0 {
-			_ = p.Inventory.RemoveItem(p.Inventory.SelectedHotbar, 1)
+		if p.GameMode != 1 {
+			sel := p.Inventory.GetSelectedItem()
+			if sel.ItemID == blockID && sel.Count > 0 {
+				_ = p.Inventory.RemoveItem(p.Inventory.SelectedHotbar, 1)
+			}
 		}
 	}
 	e.mu.Unlock()
@@ -973,6 +1009,26 @@ func (e *Engine) Tick() {
 			continue
 		}
 
+		// In Creative mode (GameMode == 1), health, hunger, saturation remain pristine
+		if p.GameMode == 1 {
+			p.Health = 20.0
+			p.Hunger = 20
+			p.Saturation = 5.0
+			p.Exhaustion = 0
+			continue
+		}
+
+		// Peaceful difficulty (0): hunger never drains and health continuously recovers
+		if e.Difficulty == 0 {
+			p.Hunger = 20
+			p.Saturation = 5.0
+			p.Exhaustion = 0
+			if p.Health < 20.0 {
+				p.Health = float32(math.Min(20.0, float64(p.Health+1.0)))
+			}
+			continue
+		}
+
 		// Drain exhaustion: each 4.0 exhaustion consumes 1.0 saturation, or 1 hunger
 		for p.Exhaustion >= 4.0 {
 			p.Exhaustion -= 4.0
@@ -1007,13 +1063,110 @@ func (e *Engine) Tick() {
 		if p.Hunger == 0 {
 			p.StarveTimer++
 			if p.StarveTimer >= 80 { // Every 4.0s (80 ticks)
-				if p.Health > 1.0 {
+				// Easy stops at 10 HP, Normal stops at 1 HP, Hard kills at 0 HP
+				canStarve := false
+				if e.Difficulty == 1 && p.Health > 10.0 {
+					canStarve = true
+				} else if e.Difficulty == 2 && p.Health > 1.0 {
+					canStarve = true
+				} else if e.Difficulty >= 3 {
+					canStarve = true
+				}
+				if canStarve {
 					p.Health -= 1.0
+					if p.Health <= 0 {
+						p.Health = 0
+						p.IsAlive = false
+					}
 				}
 				p.StarveTimer = 0
 			}
 		} else {
 			p.StarveTimer = 0
+		}
+	}
+
+	// Dynamic Natural Ecosystem Spawning & Despawning (Runs every 100 ticks = 5 seconds)
+	if e.TickCount%100 == 0 && len(e.Players) > 0 {
+		animalCount := 0
+		hostileCount := 0
+		for _, m := range e.Mobs {
+			if m.IsAlive {
+				if m.Type == MobCow || m.Type == MobPig || m.Type == MobSheep || m.Type == MobChicken {
+					animalCount++
+				} else {
+					hostileCount++
+				}
+			}
+		}
+
+		// Despawn distant mobs (> 72m from all players)
+		for mID, m := range e.Mobs {
+			if !m.IsAlive {
+				continue
+			}
+			nearest := 999999.0
+			for _, p := range e.Players {
+				if p.IsAlive {
+					d := p.Position.DistanceTo(m.Position)
+					if d < nearest {
+						nearest = d
+					}
+				}
+			}
+			if nearest > 72.0 {
+				delete(e.Mobs, mID)
+			}
+		}
+
+		// Spawning candidates around each player
+		rng := mrand.New(mrand.NewSource(time.Now().UnixNano() + e.TickCount))
+		isDay := (e.WorldTime >= 450 && e.WorldTime <= 12500)
+
+		for _, p := range e.Players {
+			if !p.IsAlive {
+				continue
+			}
+			// Attempt natural spawn
+			angle := rng.Float64() * 2 * math.Pi
+			dist := 24.0 + rng.Float64()*30.0 // 24m to 54m canonical spawning ring
+			sx := p.Position.X + math.Cos(angle)*dist
+			sz := p.Position.Z + math.Sin(angle)*dist
+			wx := int32(math.Floor(sx))
+			wz := int32(math.Floor(sz))
+
+			// Scan downward for ground
+			var groundY int32 = -999
+			for y := int32(95); y >= 50; y-- {
+				b := e.getBlockLocked(wx, y, wz)
+				if IsSolidBlock(b) {
+					above1 := e.getBlockLocked(wx, y+1, wz)
+					above2 := e.getBlockLocked(wx, y+2, wz)
+					if !IsSolidBlock(above1) && !IsSolidBlock(above2) &&
+						above1 != 8 && above1 != 9 && above1 != 10 && above1 != 11 {
+						groundY = y
+						break
+					}
+				}
+			}
+
+			if groundY > 0 {
+				surfY := float64(groundY + 1)
+				spawnPos := Vec3{X: float64(wx) + 0.5, Y: surfY, Z: float64(wz) + 0.5}
+				groundBlock := e.getBlockLocked(wx, groundY, wz)
+
+				if isDay && groundBlock == 2 && animalCount < 16 { // Daytime grass surface: peaceful animals
+					animalTypes := []MobType{MobCow, MobPig, MobSheep, MobChicken}
+					chosen := animalTypes[rng.Intn(len(animalTypes))]
+					e.SpawnMob(chosen, spawnPos)
+					animalCount++
+				} else if (!isDay || groundY < 55) && e.Difficulty > 0 && hostileCount < 20 { // Night or caves: hostiles
+					hostileTypes := []MobType{MobZombie, MobSkeleton, MobCreeper, MobSpider}
+					chosen := hostileTypes[rng.Intn(len(hostileTypes))]
+					e.SpawnMob(chosen, spawnPos)
+					hostileCount++
+				}
+			}
 		}
 	}
 

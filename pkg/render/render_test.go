@@ -611,3 +611,97 @@ func TestDrawCloudsAestheticsAndDepth(t *testing.T) {
 		t.Fatalf("expected clouds to be rasterized on sky dome when looking up")
 	}
 }
+
+func TestVerifyMobAndHUDSprites(t *testing.T) {
+	mobs := []string{
+		"entity/pig/pig.png",
+		"entity/cow/cow.png",
+		"entity/chicken/chicken.png",
+		"entity/sheep/sheep.png",
+		"entity/zombie/zombie.png",
+		"entity/skeleton/skeleton.png",
+		"entity/creeper/creeper.png",
+	}
+	for _, m := range mobs {
+		img, ok := GetOfficialImage(m)
+		if !ok || img == nil {
+			t.Errorf("failed to load mob image: %s", m)
+		} else {
+			t.Logf("loaded %s (%dx%d)", m, img.Width, img.Height)
+		}
+	}
+
+	hudSprites := []string{
+		"gui/sprites/hud/crosshair.png",
+		"gui/sprites/hud/hotbar.png",
+		"gui/sprites/hud/hotbar_selection.png",
+		"gui/sprites/hud/experience_bar_background.png",
+		"gui/sprites/hud/heart/container.png",
+		"gui/sprites/hud/heart/full.png",
+		"gui/sprites/hud/heart/half.png",
+		"gui/sprites/hud/food_empty.png",
+		"gui/sprites/hud/food_full.png",
+		"gui/sprites/hud/food_half.png",
+	}
+	for _, h := range hudSprites {
+		img, ok := GetOfficialImage(h)
+		if !ok || img == nil {
+			t.Errorf("failed to load hud sprite: %s", h)
+		} else {
+			t.Logf("loaded %s (%dx%d)", h, img.Width, img.Height)
+		}
+	}
+}
+
+func TestPigTextureFacialFeatures(t *testing.T) {
+	img, ok := GetOfficialImage("entity/pig/pig.png")
+	if !ok || img == nil {
+		t.Fatalf("could not load pig image")
+	}
+	// Pig face is at texture rect [8..15, 8..15].
+	// Row 11 contains the pig's eyes: pupils at x=8 and x=15 (near black), sclera at x=9 and x=14 (white 0xFFFFFF).
+	pupilLeft := img.Pixels[11*img.Width+8] & 0xFFFFFF
+	scleraLeft := img.Pixels[11*img.Width+9] & 0xFFFFFF
+	scleraRight := img.Pixels[11*img.Width+14] & 0xFFFFFF
+	pupilRight := img.Pixels[11*img.Width+15] & 0xFFFFFF
+
+	if scleraLeft != 0xFFFFFF || scleraRight != 0xFFFFFF {
+		t.Errorf("expected pig eyes to have white sclera 0xFFFFFF, got left=0x%X right=0x%X", scleraLeft, scleraRight)
+	}
+	if pupilLeft > 0x303030 || pupilRight > 0x303030 {
+		t.Errorf("expected dark pupil pixels, got left=0x%X right=0x%X", pupilLeft, pupilRight)
+	}
+}
+
+func TestDrawFullHUDSurvivalAndCreative(t *testing.T) {
+	fb := NewFramebuffer(320, 240)
+	var slots [9]inventory.ItemStack
+	slots[0] = inventory.ItemStack{ItemID: 1, Count: 64} // Stone
+
+	// Survival HUD: renders hearts, hunger, exp bar, level
+	fb.Clear(0xFF000000)
+	fb.DrawFullHUD(0, 15.0, 18, 0.65, 27, 0, slots)
+	// Check that framebuffer has non-zero pixels rendered
+	var nonZeroCount int
+	for _, p := range fb.Color {
+		if p != 0xFF000000 {
+			nonZeroCount++
+		}
+	}
+	if nonZeroCount < 500 {
+		t.Errorf("expected Survival HUD to render hearts, hunger, and exp bar, nonZeroCount=%d", nonZeroCount)
+	}
+
+	// Creative HUD: only crosshair and hotbar
+	fb.Clear(0xFF000000)
+	fb.DrawFullHUD(1, 20.0, 20, 0.0, 0, 0, slots)
+	var creativeCount int
+	for _, p := range fb.Color {
+		if p != 0xFF000000 {
+			creativeCount++
+		}
+	}
+	if creativeCount == 0 || creativeCount >= nonZeroCount {
+		t.Errorf("expected Creative HUD to render fewer elements than Survival, creative=%d survival=%d", creativeCount, nonZeroCount)
+	}
+}

@@ -98,6 +98,34 @@ func LoadRawImage(r io.Reader) (*RawImage, error) {
 
 // ReadOfficialAssetBytes reads bytes from file or embedded FS for any relative path.
 func ReadOfficialAssetBytes(relPath string) ([]byte, error) {
+	data, err := readSingleAssetCandidate(relPath)
+	if err == nil && len(data) > 0 {
+		return data, nil
+	}
+
+	// Try biome temperate/alternative variants if standard name was queried
+	slashPath := filepath.ToSlash(relPath)
+	if strings.Contains(slashPath, "entity/pig/pig.png") {
+		alt := strings.Replace(slashPath, "entity/pig/pig.png", "entity/pig/pig_temperate.png", 1)
+		if d, e := readSingleAssetCandidate(alt); e == nil && len(d) > 0 {
+			return d, nil
+		}
+	} else if strings.Contains(slashPath, "entity/cow/cow.png") {
+		alt := strings.Replace(slashPath, "entity/cow/cow.png", "entity/cow/cow_temperate.png", 1)
+		if d, e := readSingleAssetCandidate(alt); e == nil && len(d) > 0 {
+			return d, nil
+		}
+	} else if strings.Contains(slashPath, "entity/chicken/chicken.png") {
+		alt := strings.Replace(slashPath, "entity/chicken/chicken.png", "entity/chicken/chicken_temperate.png", 1)
+		if d, e := readSingleAssetCandidate(alt); e == nil && len(d) > 0 {
+			return d, nil
+		}
+	}
+
+	return nil, err
+}
+
+func readSingleAssetCandidate(relPath string) ([]byte, error) {
 	if !strings.HasSuffix(relPath, ".png") {
 		relPath += ".png"
 	}
@@ -107,6 +135,8 @@ func ReadOfficialAssetBytes(relPath string) ([]byte, error) {
 		filepath.Join("..", "assets", "minecraft", "textures", normPath),
 		filepath.Join("..", "..", "assets", "minecraft", "textures", normPath),
 		filepath.Join("pkg", "render", "assets", "textures", normPath),
+		filepath.Join("..", "pkg", "render", "assets", "textures", normPath),
+		filepath.Join("..", "..", "pkg", "render", "assets", "textures", normPath),
 	}
 	for _, p := range candidates {
 		if data, err := os.ReadFile(p); err == nil && len(data) > 0 {
