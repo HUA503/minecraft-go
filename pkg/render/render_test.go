@@ -651,6 +651,15 @@ func TestVerifyMobAndHUDSprites(t *testing.T) {
 			t.Logf("loaded %s (%dx%d)", h, img.Width, img.Height)
 		}
 	}
+
+	cImg, _ := GetOfficialImage("gui/sprites/hud/heart/container.png")
+	fImg, _ := GetOfficialImage("gui/sprites/hud/heart/full.png")
+	foodE, _ := GetOfficialImage("gui/sprites/hud/food_empty.png")
+	foodF, _ := GetOfficialImage("gui/sprites/hud/food_full.png")
+	t.Logf("container pixel (0,0)=%08X (4,4)=%08X", cImg.Pixels[0], cImg.Pixels[4*9+4])
+	t.Logf("full heart pixel (0,0)=%08X (4,4)=%08X", fImg.Pixels[0], fImg.Pixels[4*9+4])
+	t.Logf("food_empty pixel (0,0)=%08X (4,4)=%08X", foodE.Pixels[0], foodE.Pixels[4*9+4])
+	t.Logf("food_full pixel (0,0)=%08X (4,4)=%08X", foodF.Pixels[0], foodF.Pixels[4*9+4])
 }
 
 func TestPigTextureFacialFeatures(t *testing.T) {
@@ -703,5 +712,31 @@ func TestDrawFullHUDSurvivalAndCreative(t *testing.T) {
 	}
 	if creativeCount == 0 || creativeCount >= nonZeroCount {
 		t.Errorf("expected Creative HUD to render fewer elements than Survival, creative=%d survival=%d", creativeCount, nonZeroCount)
+	}
+}
+
+func TestCrossedQuadsFoliageUprightOrientation(t *testing.T) {
+	worldMap := map[[3]int32]int32{
+		{0, 0, 0}: 37, // Dandelion (yellow flower)
+	}
+	getBlock := func(x, y, z int32) int32 {
+		return worldMap[[3]int32{x, y, z}]
+	}
+	mesh := BuildSectionMesh(getBlock, 0, 0, 0)
+	if len(mesh.Vertices) == 0 {
+		t.Fatalf("expected mesh vertices for flower block")
+	}
+
+	for _, v := range mesh.Vertices {
+		if v.FaceIndex == 6 {
+			// Ground level (Y=0) must have V=1.0 (stem/roots)
+			if v.Y == 0 && v.V != 1.0 {
+				t.Errorf("expected bottom vertex Y=0 to have V=1.0, got V=%f", v.V)
+			}
+			// Top level (Y=1) must have V=0.0 (flower blossom)
+			if v.Y == 1 && v.V != 0.0 {
+				t.Errorf("expected top vertex Y=1 to have V=0.0, got V=%f", v.V)
+			}
+		}
 	}
 }

@@ -241,11 +241,28 @@ func addFaceQuad(mesh *Mesh, x, y, z int32, face int, blockID int32, getBlock fu
 		ao[3] = calcAO(isSolid(x+1, y, z-1), isSolid(x, y-1, z-1), isSolid(x+1, y-1, z-1))
 	}
 
-	uvs := [4][2]float32{
-		{0, 0},
-		{0, 1},
-		{1, 1},
-		{1, 0},
+	var uvs [4][2]float32
+	if face == 2 { // Top (+Y)
+		uvs = [4][2]float32{
+			{0, 0},
+			{0, 1},
+			{1, 1},
+			{1, 0},
+		}
+	} else if face == 3 { // Bottom (-Y)
+		uvs = [4][2]float32{
+			{0, 1},
+			{0, 0},
+			{1, 0},
+			{1, 1},
+		}
+	} else { // Sides (0, 1, 4, 5): Corners 0 & 3 are bottom (V=1), corners 1 & 2 are top (V=0)
+		uvs = [4][2]float32{
+			{0, 1},
+			{0, 0},
+			{1, 0},
+			{1, 1},
+		}
 	}
 
 	for i := 0; i < 4; i++ {
@@ -301,20 +318,20 @@ func addCrossedQuads(mesh *Mesh, x, y, z int32, blockID int32) {
 		yTop = fy + 1
 	}
 
-	// Diagonal 1: (x0, fy, z0) -> (x0, yTop, z0) -> (x1, yTop, z1) -> (x1, fy, z1)
+	// Diagonal 1: (x0, fy, z0) [bottom, V=1] -> (x0, yTop, z0) [top, V=0] -> (x1, yTop, z1) [top, V=0] -> (x1, fy, z1) [bottom, V=1]
 	mesh.Vertices = append(mesh.Vertices,
-		Vertex{X: x0, Y: fy, Z: z0, U: 0, V: 0, BlockID: blockID, FaceIndex: 6, LightingMult: lightMult},
-		Vertex{X: x0, Y: yTop, Z: z0, U: 0, V: 1, BlockID: blockID, FaceIndex: 6, LightingMult: lightMult},
-		Vertex{X: x1, Y: yTop, Z: z1, U: 1, V: 1, BlockID: blockID, FaceIndex: 6, LightingMult: lightMult},
-		Vertex{X: x1, Y: fy, Z: z1, U: 1, V: 0, BlockID: blockID, FaceIndex: 6, LightingMult: lightMult},
+		Vertex{X: x0, Y: fy, Z: z0, U: 0, V: 1, BlockID: blockID, FaceIndex: 6, LightingMult: lightMult},
+		Vertex{X: x0, Y: yTop, Z: z0, U: 0, V: 0, BlockID: blockID, FaceIndex: 6, LightingMult: lightMult},
+		Vertex{X: x1, Y: yTop, Z: z1, U: 1, V: 0, BlockID: blockID, FaceIndex: 6, LightingMult: lightMult},
+		Vertex{X: x1, Y: fy, Z: z1, U: 1, V: 1, BlockID: blockID, FaceIndex: 6, LightingMult: lightMult},
 	)
 
-	// Diagonal 2: (x0, fy, z1) -> (x0, yTop, z1) -> (x1, yTop, z0) -> (x1, fy, z0)
+	// Diagonal 2: (x0, fy, z1) [bottom, V=1] -> (x0, yTop, z1) [top, V=0] -> (x1, yTop, z0) [top, V=0] -> (x1, fy, z0) [bottom, V=1]
 	mesh.Vertices = append(mesh.Vertices,
-		Vertex{X: x0, Y: fy, Z: z1, U: 0, V: 0, BlockID: blockID, FaceIndex: 6, LightingMult: lightMult},
-		Vertex{X: x0, Y: yTop, Z: z1, U: 0, V: 1, BlockID: blockID, FaceIndex: 6, LightingMult: lightMult},
-		Vertex{X: x1, Y: yTop, Z: z0, U: 1, V: 1, BlockID: blockID, FaceIndex: 6, LightingMult: lightMult},
-		Vertex{X: x1, Y: fy, Z: z0, U: 1, V: 0, BlockID: blockID, FaceIndex: 6, LightingMult: lightMult},
+		Vertex{X: x0, Y: fy, Z: z1, U: 0, V: 1, BlockID: blockID, FaceIndex: 6, LightingMult: lightMult},
+		Vertex{X: x0, Y: yTop, Z: z1, U: 0, V: 0, BlockID: blockID, FaceIndex: 6, LightingMult: lightMult},
+		Vertex{X: x1, Y: yTop, Z: z0, U: 1, V: 0, BlockID: blockID, FaceIndex: 6, LightingMult: lightMult},
+		Vertex{X: x1, Y: fy, Z: z0, U: 1, V: 1, BlockID: blockID, FaceIndex: 6, LightingMult: lightMult},
 	)
 
 	// Add double-sided indices (front and back) for both diagonals

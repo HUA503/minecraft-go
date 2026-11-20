@@ -2417,7 +2417,7 @@ func (c *Client) drawMob(m *sim.MobEntity) {
 		fbSnout := [6]uint32{0xFFD06868, 0xFFE88A8A, 0xFFE88A8A, 0xFFD06868, 0xFFE88A8A, 0xFFE88A8A}
 		c.renderTextured3DBox(pos.X+snoutX, pos.Y+0.60, pos.Z+snoutZ, 0.10, 0.08, 0.06, yaw, pitch, mobTex, snoutUV, fbSnout, tint)
 
-		bodyUV := makeBoxFaceUVs(64, 64, [4]float32{28, 16, 36, 32}, [4]float32{36, 16, 44, 32}, [4]float32{36, 32, 44, 40}, [4]float32{20, 32, 28, 40}, [4]float32{16, 32, 20, 48}, [4]float32{28, 32, 32, 48})
+		bodyUV := makeBoxFaceUVs(64, 64, [4]float32{36, 16, 46, 32}, [4]float32{54, 16, 64, 32}, [4]float32{46, 8, 56, 16}, [4]float32{36, 8, 46, 16}, [4]float32{28, 16, 36, 32}, [4]float32{46, 16, 54, 32})
 		fbPigBody := [6]uint32{0xFFF0A0A0, 0xFFF0A0A0, 0xFFF0A0A0, 0xFFF0A0A0, 0xFFF0A0A0, 0xFFF0A0A0}
 		c.renderTextured3DBox(pos.X, pos.Y+0.55, pos.Z, 0.26, 0.22, 0.38, yaw, 0, mobTex, bodyUV, fbPigBody, tint)
 
@@ -2444,7 +2444,7 @@ func (c *Client) drawMob(m *sim.MobEntity) {
 		}
 
 	case sim.MobCow:
-		bodyUV := makeBoxFaceUVs(64, 64, [4]float32{28, 16, 36, 32}, [4]float32{36, 16, 44, 32}, [4]float32{36, 32, 44, 40}, [4]float32{20, 32, 28, 40}, [4]float32{16, 32, 20, 48}, [4]float32{28, 32, 32, 48})
+		bodyUV := makeBoxFaceUVs(64, 64, [4]float32{36, 16, 46, 32}, [4]float32{54, 16, 64, 32}, [4]float32{46, 8, 56, 16}, [4]float32{36, 8, 46, 16}, [4]float32{28, 16, 36, 32}, [4]float32{46, 16, 54, 32})
 		fbCowBody := [6]uint32{0xFFE5E5E5, 0xFF5A4432, 0xFF5A4432, 0xFF5A4432, 0xFF5A4432, 0xFF5A4432}
 		c.renderTextured3DBox(pos.X, pos.Y+0.75, pos.Z, 0.30, 0.28, 0.45, yaw, 0, mobTex, bodyUV, fbCowBody, tint)
 
