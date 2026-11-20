@@ -832,3 +832,62 @@ func (fb *Framebuffer) DrawUnderwaterOverlay() {
 		fb.Color[i] = 0xFF000000 | (nr << 16) | (ng << 8) | nb
 	}
 }
+
+// DrawBossBar renders an authentic Minecraft purple boss health bar at the top of the screen.
+func (fb *Framebuffer) DrawBossBar(title string, health, maxHealth float32) {
+	if health < 0 {
+		health = 0
+	}
+	if maxHealth <= 0 {
+		maxHealth = 200.0
+	}
+	barWidth := 200
+	barHeight := 6
+	barX := (fb.Width - barWidth) / 2
+	barY := 22
+
+	// Render title text centered above boss bar
+	titleW := len(title) * 6
+	textX := (fb.Width - titleW) / 2
+	textY := 10
+	fb.DrawText5x7(textX, textY, title, 0xFFFFAAFF, 1)
+
+	// Boss bar outer frame and dark background
+	fb.DrawRect(barX-1, barY-1, barWidth+2, barHeight+2, 0xFF1A001A)
+	fb.DrawRect(barX, barY, barWidth, barHeight, 0xFF3A0D3A)
+
+	// Filled boss bar (magenta / purple)
+	pct := float64(health) / float64(maxHealth)
+	if pct > 1.0 {
+		pct = 1.0
+	}
+	fillW := int(float64(barWidth) * pct)
+	if fillW > 0 {
+		fb.DrawRect(barX, barY, fillW, barHeight, 0xFFC800C8)
+		// Highlight strip on top row
+		fb.DrawRect(barX, barY, fillW, 2, 0xFFEA4FEA)
+	}
+
+	// 10 Notch dividers
+	for i := 1; i < 10; i++ {
+		notchX := barX + (i * barWidth / 10)
+		fb.DrawRect(notchX, barY, 1, barHeight, 0xFF1A001A)
+	}
+}
+
+// DrawNetherPortalOverlay renders the authentic purple swirling portal vignette when standing in a portal.
+func (fb *Framebuffer) DrawNetherPortalOverlay(intensity float32) {
+	if intensity <= 0 {
+		return
+	}
+	if intensity > 1.0 {
+		intensity = 1.0
+	}
+	alpha := uint32(float32(140) * intensity)
+	portalCol := (alpha << 24) | 0x008A2BE2
+	for y := 0; y < fb.Height; y++ {
+		for x := 0; x < fb.Width; x++ {
+			fb.BlendPixel(x, y, portalCol)
+		}
+	}
+}

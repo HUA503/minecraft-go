@@ -58,6 +58,10 @@ type Client struct {
 	isSneaking   bool
 	wasSpaceDown bool
 	genOverworld     *gen.Generator
+	genNether        *gen.Generator
+	genEnd           *gen.Generator
+	currentDim       gen.Dimension
+	portalStandTime  float64
 	loadedChunks     map[world.ChunkPos]bool
 	lastChunkX       int32
 	lastChunkZ       int32
@@ -170,6 +174,9 @@ func NewClient(serverAddr, username string, isSingleplayer bool, width, height i
 		cli.engine = sim.NewEngine()
 		seed := time.Now().UnixNano()
 		cli.genOverworld = gen.NewGenerator(seed, gen.DimensionOverworld)
+		cli.genNether = gen.NewGenerator(seed, gen.DimensionNether)
+		cli.genEnd = gen.NewGenerator(seed, gen.DimensionEnd)
+		cli.currentDim = gen.DimensionOverworld
 		cli.engine.StartTickLoop()
 
 		spawnPos := findSafeSpawnPoint(cli.genOverworld, cli.engine)
@@ -249,9 +256,61 @@ func NewClient(serverAddr, username string, isSingleplayer bool, width, height i
 	return cli
 }
 
+func (c *Client) getGenerator() *gen.Generator {
+	switch c.currentDim {
+	case gen.DimensionNether:
+		return c.genNether
+	case gen.DimensionEnd:
+		return c.genEnd
+	default:
+		return c.genOverworld
+	}
+}
+
+// SwitchDimension transitions client world and chunks to target dimension.
+func (c *Client) SwitchDimension(dim gen.Dimension) {
+	if c.engine == nil || c.currentDim == dim {
+		return
+	}
+	c.currentDim = dim
+	c.engine.SwitchDimension(int(dim))
+
+	c.meshMu.Lock()
+	c.meshCache = make(map[[3]int32]*render.Mesh)
+	c.loadedChunks = make(map[world.ChunkPos]bool)
+	c.meshMu.Unlock()
+
+	var newPos sim.Vec3
+	switch dim {
+	case gen.DimensionNether:
+		newPos = sim.Vec3{X: 0.5, Y: 66.0, Z: 0.5}
+		c.AddChatMessage("[Dimension] Entered the Nether. Beware the lava seas!")
+	case gen.DimensionEnd:
+		newPos = sim.Vec3{X: 0.5, Y: 62.0, Z: 0.5}
+		c.AddChatMessage("[Dimension] Entered The End. Slay the Ender Dragon to open the exit portal!")
+	default:
+		newPos = c.player.SpawnPos
+		if newPos.X == 0 && newPos.Y == 0 && newPos.Z == 0 {
+			newPos = sim.Vec3{X: 8.5, Y: 66.0, Z: 8.5}
+		}
+		c.AddChatMessage("[Dimension] Returned to the Overworld.")
+	}
+
+	c.player.Position = newPos
+	c.player.Velocity = sim.Vec3{}
+	c.camera.X = newPos.X
+	c.camera.Y = newPos.Y + 1.62
+	c.camera.Z = newPos.Z
+
+	for i := 0; i < 25; i++ {
+		c.EnsureChunksAroundPlayer(newPos.X, newPos.Z, 1)
+	}
+}
+
 // EnsureChunksAroundPlayer streams procedural world chunks and progressively meshes sections around the player.
 func (c *Client) EnsureChunksAroundPlayer(playerX, playerZ float64, radius int32) {
-	if c.genOverworld == nil || c.engine == nil {
+	generator := c.getGenerator()
+	if generator == nil || c.engine == nil {
 		return
 	}
 	pcx := int32(math.Floor(playerX / 16.0))
@@ -295,7 +354,7 @@ func (c *Client) EnsureChunksAroundPlayer(playerX, playerZ float64, radius int32
 		for dz := -radius - 1; dz <= radius + 1; dz++ {
 			cp := world.ChunkPos{X: pcx + dx, Z: pcz + dz}
 			if !c.loadedChunks[cp] {
-				chunk := c.genOverworld.GenerateChunk(cp)
+				chunk := generator.GenerateChunk(cp)
 				c.engine.LoadChunk(cp, chunk)
 				c.loadedChunks[cp] = true
 				generatedCount++
@@ -678,6 +737,11 @@ func (c *Client) PhysicsStep(fwdInput, strafeInput float64, jumpRequested bool, 
 		if jumpRequested && c.player.OnGround {
 			c.player.Velocity.Y = 8.4
 			c.player.OnGround = false
+			if c.isSprinting {
+				c.player.Exhaustion += 0.2
+			} else {
+				c.player.Exhaustion += 0.05
+			}
 		} else if !c.player.OnGround {
 			// Air Gravity: Authentic Minecraft 32.0 m/s^2 (0.08 blocks/tick^2 * 400), terminal velocity -78.4 m/s
 			c.player.Velocity.Y -= 32.0 * dt
@@ -758,6 +822,9 @@ func (c *Client) PhysicsStep(fwdInput, strafeInput float64, jumpRequested bool, 
 	// 4. Update Camera & Bobbing
 	c.isMoving = (lenInput > 0)
 	if c.isMoving && onGround {
+		if c.isSprinting {
+			c.player.Exhaustion += float32(0.1 * dt * 5.6)
+		}
 		c.walkCycle += 10.0 * dt // Authentic Minecraft walk cycle speed
 
 		// Authentic Minecraft Footstep Sound Feedback
@@ -851,6 +918,37 @@ func (c *Client) PhysicsStep(fwdInput, strafeInput float64, jumpRequested bool, 
 	c.lastPlayerHealth = c.player.Health
 	if c.hurtFlashTimer > 0 {
 		c.hurtFlashTimer -= dt
+	}
+
+	// Portal immersion & dimension transition check
+	if c.engine != nil {
+		bx := int32(math.Floor(resolvedPos.X))
+		by := int32(math.Floor(resolvedPos.Y))
+		bz := int32(math.Floor(resolvedPos.Z))
+		curBlock := c.engine.GetBlock(bx, by, bz)
+		headBlock := c.engine.GetBlock(bx, by+1, bz)
+		inNetherPortal := (curBlock == 90 || headBlock == 90)
+		inEndPortal := (curBlock == 119 || headBlock == 119)
+
+		if inEndPortal {
+			if c.currentDim == gen.DimensionEnd {
+				c.SwitchDimension(gen.DimensionOverworld)
+			} else {
+				c.SwitchDimension(gen.DimensionEnd)
+			}
+		} else if inNetherPortal {
+			c.portalStandTime += dt
+			if c.portalStandTime >= 1.5 {
+				c.portalStandTime = 0
+				if c.currentDim == gen.DimensionNether {
+					c.SwitchDimension(gen.DimensionOverworld)
+				} else {
+					c.SwitchDimension(gen.DimensionNether)
+				}
+			}
+		} else {
+			c.portalStandTime = math.Max(0, c.portalStandTime-dt*2.0)
+		}
 	}
 
 	// Stream chunks as player moves
@@ -1254,6 +1352,36 @@ func (c *Client) ExecuteCommand(input string) {
 			c.AddChatMessage(fmt.Sprintf("[Teleport] Teleported %s to (%.1f, %.1f, %.1f)", c.username, x, y, z))
 		}
 
+	case "/dimension":
+		if len(parts) < 2 {
+			c.AddChatMessage("Usage: /dimension <overworld|nether|end>")
+			return
+		}
+		target := strings.ToLower(parts[1])
+		switch target {
+		case "overworld", "0":
+			c.SwitchDimension(gen.DimensionOverworld)
+		case "nether", "1":
+			c.SwitchDimension(gen.DimensionNether)
+		case "end", "2":
+			c.SwitchDimension(gen.DimensionEnd)
+		default:
+			c.AddChatMessage("Unknown dimension: " + parts[1])
+		}
+
+	case "/kill":
+		if len(parts) >= 2 && (parts[1] == "@e[type=ender_dragon]" || parts[1] == "dragon") {
+			if c.engine != nil && c.engine.EnderDragon != nil {
+				c.engine.DamageEnderDragon(200.0)
+				c.AddChatMessage("[Kill] Slew Ender Dragon!")
+			}
+			return
+		}
+		if c.player != nil {
+			c.engine.DamagePlayer(c.player.ID, 100.0, "command")
+			c.AddChatMessage("[Kill] Ouch! That looks like it hurt.")
+		}
+
 	case "/clear":
 		if c.player != nil && c.player.Inventory != nil {
 			for i := range c.player.Inventory.Slots {
@@ -1586,11 +1714,14 @@ func (c *Client) RenderFrame() {
 		}
 	}
 
-	// 3.7 Render 3D living mobs (Zombies, Creepers, Cows, Pigs, Skeletons)
+	// 3.7 Render 3D living mobs (Zombies, Creepers, Cows, Pigs, Skeletons, Endermen, Spiders)
 	if c.engine != nil {
 		mobs := c.engine.GetMobs()
 		for _, m := range mobs {
 			c.drawMob(m)
+		}
+		if c.currentDim == gen.DimensionEnd {
+			c.drawEndEntities()
 		}
 	}
 
@@ -1671,6 +1802,19 @@ func (c *Client) RenderFrame() {
 		}
 	}
 	c.framebuf.DrawHUDWithInventory(health, hunger, selectedSlot, hotbarSlots)
+
+	// 5.5 Render Ender Dragon Boss Bar if in The End
+	if c.currentDim == gen.DimensionEnd && c.engine != nil {
+		dragon := c.engine.GetEnderDragon()
+		if dragon != nil && (dragon.IsAlive || dragon.IsDying) {
+			c.framebuf.DrawBossBar("Ender Dragon", dragon.Health, dragon.MaxHealth)
+		}
+	}
+
+	// 5.6 Render Nether Portal Swirling Effect
+	if c.portalStandTime > 0 {
+		c.framebuf.DrawNetherPortalOverlay(float32(c.portalStandTime / 1.5))
+	}
 
 	// 6. Draw 2D Inventory & Crafting GUI if toggled (E key)
 	if c.showInventoryGUI && c.player != nil && c.player.Inventory != nil {
@@ -1814,6 +1958,10 @@ func (c *Client) drawMob(m *sim.MobEntity) {
 		mobTex, _ = render.GetOfficialImage("entity/sheep/sheep.png")
 	case sim.MobChicken:
 		mobTex, _ = render.GetOfficialImage("entity/chicken/chicken.png")
+	case sim.MobEnderman:
+		mobTex, _ = render.GetOfficialImage("entity/enderman/enderman.png")
+	case sim.MobSpider:
+		mobTex, _ = render.GetOfficialImage("entity/spider/spider.png")
 	}
 
 	tint := uint32(0)
@@ -2038,11 +2186,91 @@ func (c *Client) drawMob(m *sim.MobEntity) {
 		fbLeg := [6]uint32{0xFFFFB010, 0xFFFFB010, 0xFFFFB010, 0xFFFFB010, 0xFFFFB010, 0xFFFFB010}
 		c.renderTextured3DBox(pos.X-legOffX, pos.Y+0.12, pos.Z-legOffZ, 0.03, 0.14, 0.04, yaw, -walkSwing*1.4, mobTex, legUV, fbLeg, tint)
 		c.renderTextured3DBox(pos.X+legOffX, pos.Y+0.12, pos.Z+legOffZ, 0.03, 0.14, 0.04, yaw, walkSwing*1.4, mobTex, legUV, fbLeg, tint)
+
+	case sim.MobEnderman:
+		headUV := makeBoxFaceUVs(64, 32, [4]float32{8, 0, 16, 8}, [4]float32{16, 0, 24, 8}, [4]float32{24, 8, 32, 16}, [4]float32{8, 8, 16, 16}, [4]float32{16, 8, 24, 16}, [4]float32{0, 8, 8, 16})
+		fbEnder := [6]uint32{0xFF161616, 0xFF101010, 0xFF141414, 0xFF141414, 0xFF141414, 0xFF141414}
+		c.renderTextured3DBox(pos.X, pos.Y+2.50, pos.Z, 0.16, 0.16, 0.16, yaw, pitch, mobTex, headUV, fbEnder, tint)
+
+		// Glowing purple eyes
+		eyeOffX := 0.06 * cosY
+		eyeOffZ := -0.06 * sinY
+		eyeFwdX := 0.17 * sinY
+		eyeFwdZ := 0.17 * cosY
+		c.render3DBox(pos.X-eyeOffX+eyeFwdX, pos.Y+2.50, pos.Z-eyeOffZ+eyeFwdZ, 0.03, 0.02, 0.02, yaw, pitch, 0xFFCC22DD, 0xFFCC22DD, 0xFFCC22DD)
+		c.render3DBox(pos.X+eyeOffX+eyeFwdX, pos.Y+2.50, pos.Z+eyeOffZ+eyeFwdZ, 0.03, 0.02, 0.02, yaw, pitch, 0xFFCC22DD, 0xFFCC22DD, 0xFFCC22DD)
+
+		torsoUV := makeUniformFaceUV(64, 32, 20, 16, 28, 28)
+		c.renderTextured3DBox(pos.X, pos.Y+1.85, pos.Z, 0.16, 0.45, 0.10, yaw, 0, mobTex, torsoUV, fbEnder, tint)
+
+		armOffX := 0.22 * cosY
+		armOffZ := -0.22 * sinY
+		armBob := math.Sin(float64(m.WalkDistance)*1.2) * 15.0
+		limbUV := makeUniformFaceUV(64, 32, 56, 0, 60, 30)
+		c.renderTextured3DBox(pos.X-armOffX, pos.Y+1.60, pos.Z-armOffZ, 0.05, 0.65, 0.05, yaw, -armBob, mobTex, limbUV, fbEnder, tint)
+		c.renderTextured3DBox(pos.X+armOffX, pos.Y+1.60, pos.Z+armOffZ, 0.05, 0.65, 0.05, yaw, armBob, mobTex, limbUV, fbEnder, tint)
+
+		legOffX := 0.08 * cosY
+		legOffZ := -0.08 * sinY
+		c.renderTextured3DBox(pos.X-legOffX, pos.Y+0.75, pos.Z-legOffZ, 0.05, 0.75, 0.05, yaw, -walkSwing*0.8, mobTex, limbUV, fbEnder, tint)
+		c.renderTextured3DBox(pos.X+legOffX, pos.Y+0.75, pos.Z+legOffZ, 0.05, 0.75, 0.05, yaw, walkSwing*0.8, mobTex, limbUV, fbEnder, tint)
+
+	case sim.MobSpider:
+		fbSpider := [6]uint32{0xFF242020, 0xFF1C1818, 0xFF221E1E, 0xFF221E1E, 0xFF221E1E, 0xFF221E1E}
+		// Thorax (central body)
+		bodyUV := makeUniformFaceUV(64, 32, 0, 0, 16, 12)
+		c.renderTextured3DBox(pos.X, pos.Y+0.35, pos.Z, 0.18, 0.16, 0.18, yaw, 0, mobTex, bodyUV, fbSpider, tint)
+
+		// Head (front)
+		headX := 0.32 * sinY
+		headZ := 0.32 * cosY
+		headUV := makeUniformFaceUV(64, 32, 32, 4, 48, 16)
+		c.renderTextured3DBox(pos.X+headX, pos.Y+0.35, pos.Z+headZ, 0.16, 0.14, 0.16, yaw, pitch, mobTex, headUV, fbSpider, tint)
+
+		// Red Spider Eyes
+		eyeOffX := 0.06 * cosY
+		eyeOffZ := -0.06 * sinY
+		eyeFwdX := 0.47 * sinY
+		eyeFwdZ := 0.47 * cosY
+		c.render3DBox(pos.X-eyeOffX+eyeFwdX, pos.Y+0.37, pos.Z-eyeOffZ+eyeFwdZ, 0.03, 0.02, 0.02, yaw, pitch, 0xFFFF1515, 0xFFFF1515, 0xFFFF1515)
+		c.render3DBox(pos.X+eyeOffX+eyeFwdX, pos.Y+0.37, pos.Z+eyeOffZ+eyeFwdZ, 0.03, 0.02, 0.02, yaw, pitch, 0xFFFF1515, 0xFFFF1515, 0xFFFF1515)
+
+		// Abdomen (rear)
+		abX := -0.36 * sinY
+		abZ := -0.36 * cosY
+		abUV := makeUniformFaceUV(64, 32, 0, 12, 24, 32)
+		c.renderTextured3DBox(pos.X+abX, pos.Y+0.42, pos.Z+abZ, 0.28, 0.22, 0.34, yaw, 0, mobTex, abUV, fbSpider, tint)
+
+		// 8 Angled Legs (4 per side)
+		legUV := makeUniformFaceUV(64, 32, 18, 0, 24, 16)
+		legSpacings := []float64{-0.18, -0.06, 0.06, 0.18}
+		for i, off := range legSpacings {
+			sideYaw := 55.0 - float64(i)*22.0
+			legSwing := math.Sin(float64(m.WalkDistance)*2.5+float64(i)*0.8) * 16.0
+
+			// Left leg
+			lx := -0.28*cosY + off*sinY
+			lz := 0.28*sinY + off*cosY
+			c.renderTextured3DBox(pos.X+lx, pos.Y+0.28, pos.Z+lz, 0.20, 0.04, 0.04, yaw+sideYaw, legSwing, mobTex, legUV, fbSpider, tint)
+
+			// Right leg
+			rx := 0.28*cosY + off*sinY
+			rz := -0.28*sinY + off*cosY
+			c.renderTextured3DBox(pos.X+rx, pos.Y+0.28, pos.Z+rz, 0.20, 0.04, 0.04, yaw-sideYaw, -legSwing, mobTex, legUV, fbSpider, tint)
+		}
 	}
 
 	// Health bar above mob if damaged
 	if m.Health < m.MaxHealth {
-		sp, ok := c.camera.ProjectToScreen(pos.X, pos.Y+1.9, pos.Z, c.framebuf.Width, c.framebuf.Height)
+		headH := 1.9
+		if m.Type == sim.MobEnderman {
+			headH = 3.1
+		} else if m.Type == sim.MobSpider {
+			headH = 1.0
+		} else if m.Type == sim.MobChicken {
+			headH = 0.9
+		}
+		sp, ok := c.camera.ProjectToScreen(pos.X, pos.Y+headH, pos.Z, c.framebuf.Width, c.framebuf.Height)
 		if ok && sp.Depth > 0.2 {
 			barW := 36
 			barH := 3
@@ -2057,6 +2285,133 @@ func (c *Client) drawMob(m *sim.MobEntity) {
 			c.framebuf.DrawRect(barX+1, barY+1, fillW, barH-2, 0xFF00FF00)
 		}
 	}
+}
+
+func (c *Client) drawEndEntities() {
+	if c.engine == nil {
+		return
+	}
+
+	crystals := c.engine.GetEndCrystals()
+	dragon := c.engine.GetEnderDragon()
+
+	// 1. Draw End Crystals atop obsidian pillars
+	crystalTex, _ := render.GetOfficialImage("entity/end_crystal/end_crystal.png")
+	t := float64(time.Now().UnixNano()%10000000000) / 1e9
+	spinYaw := t * 90.0
+
+	for _, cry := range crystals {
+		if !cry.IsAlive {
+			continue
+		}
+		cPos := cry.Position
+		// Base plate (bedrock/obsidian slab)
+		c.render3DBox(cPos.X, cPos.Y-0.1, cPos.Z, 0.40, 0.08, 0.40, 0, 0, 0xFF2A2A2A, 0xFF181818, 0xFF222222)
+
+		// Inner luminous white core
+		c.render3DBox(cPos.X, cPos.Y+0.6, cPos.Z, 0.15, 0.15, 0.15, -spinYaw*1.5, 20, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFEEEEEE)
+
+		// Outer rotating crystal cube
+		cryUV := makeUniformFaceUV(64, 64, 0, 0, 32, 32)
+		fbCry := [6]uint32{0xFFDA70D6, 0xFF8A2BE2, 0xFFBA55D3, 0xFFBA55D3, 0xFF9932CC, 0xFF9932CC}
+		c.renderTextured3DBox(cPos.X, cPos.Y+0.6, cPos.Z, 0.28, 0.28, 0.28, spinYaw, 15, crystalTex, cryUV, fbCry, 0)
+
+		// Healing beam to dragon if tethered
+		if dragon != nil && (dragon.IsAlive || dragon.IsDying) && dragon.HealingCrystalID == cry.ID {
+			c.drawHealingBeam(cPos, dragon.Position)
+		}
+	}
+
+	// 2. Draw Ender Dragon
+	if dragon != nil && (dragon.IsAlive || dragon.IsDying) {
+		c.drawEnderDragon(dragon)
+	}
+}
+
+func (c *Client) drawHealingBeam(start, end sim.Vec3) {
+	dx := end.X - start.X
+	dy := end.Y - start.Y
+	dz := end.Z - start.Z
+	steps := 12
+	for i := 0; i <= steps; i++ {
+		frac := float64(i) / float64(steps)
+		bx := start.X + dx*frac
+		by := start.Y + dy*frac + 0.6
+		bz := start.Z + dz*frac
+		c.render3DBox(bx, by, bz, 0.08, 0.08, 0.08, 0, 0, 0xFFE050FF, 0xFFD030EE, 0xFFE050FF)
+	}
+}
+
+func (c *Client) drawEnderDragon(dragon *sim.EnderDragon) {
+	pos := dragon.Position
+	yaw := float64(dragon.Yaw)
+	pitch := float64(dragon.Pitch)
+
+	radY := yaw * math.Pi / 180.0
+	cosY, sinY := math.Cos(radY), math.Sin(radY)
+
+	dragonTex, _ := render.GetOfficialImage("entity/enderdragon/dragon.png")
+	tint := uint32(0)
+	if dragon.IsDying {
+		tint = 0xFFFFAAAA
+	}
+
+	// 1. Torso / Main Body
+	torsoUV := makeUniformFaceUV(256, 256, 0, 0, 64, 64)
+	fbDragon := [6]uint32{0xFF1A1A1A, 0xFF141414, 0xFF181818, 0xFF181818, 0xFF181818, 0xFF181818}
+	c.renderTextured3DBox(pos.X, pos.Y, pos.Z, 0.75, 0.65, 1.25, yaw, pitch, dragonTex, torsoUV, fbDragon, tint)
+
+	// Dorsal Spine plates on Torso
+	c.render3DBox(pos.X, pos.Y+0.75, pos.Z, 0.12, 0.20, 1.10, yaw, pitch, 0xFF353535, 0xFF2A2A2A, 0xFF2F2F2F)
+
+	// 2. Neck & Head extending forward (+Z in local coords -> +sinY, +cosY in world)
+	for i := 1; i <= 4; i++ {
+		dist := float64(i) * 0.75
+		nx := pos.X + dist*sinY
+		ny := pos.Y + float64(i)*0.25 - math.Sin(pitch*math.Pi/180.0)*dist*0.4
+		nz := pos.Z + dist*cosY
+		c.renderTextured3DBox(nx, ny, nz, 0.30, 0.30, 0.35, yaw, pitch*0.7, dragonTex, torsoUV, fbDragon, tint)
+		c.render3DBox(nx, ny+0.35, nz, 0.08, 0.12, 0.25, yaw, pitch*0.7, 0xFF353535, 0xFF2A2A2A, 0xFF2F2F2F)
+	}
+
+	// Head at tip of neck
+	headDist := 3.6
+	hx := pos.X + headDist*sinY
+	hy := pos.Y + 1.1 - math.Sin(pitch*math.Pi/180.0)*headDist*0.4
+	hz := pos.Z + headDist*cosY
+	headUV := makeUniformFaceUV(256, 256, 112, 30, 144, 62)
+	c.renderTextured3DBox(hx, hy, hz, 0.45, 0.40, 0.55, yaw, pitch, dragonTex, headUV, fbDragon, tint)
+
+	// Snout & Jaw
+	snoutDist := headDist + 0.60
+	c.render3DBox(pos.X+snoutDist*sinY, hy-0.10, pos.Z+snoutDist*cosY, 0.30, 0.20, 0.35, yaw, pitch, 0xFF141414, 0xFF141414, 0xFF141414)
+
+	// Purple Glowing Eyes
+	eyeOff := 0.32
+	c.render3DBox(hx-eyeOff*cosY+0.25*sinY, hy+0.12, hz+eyeOff*sinY+0.25*cosY, 0.08, 0.08, 0.08, yaw, pitch, 0xFFCC22DD, 0xFFCC22DD, 0xFFCC22DD)
+	c.render3DBox(hx+eyeOff*cosY+0.25*sinY, hy+0.12, hz-eyeOff*sinY+0.25*cosY, 0.08, 0.08, 0.08, yaw, pitch, 0xFFCC22DD, 0xFFCC22DD, 0xFFCC22DD)
+
+	// 3. Tail extending backwards (-Z local)
+	for i := 1; i <= 5; i++ {
+		dist := float64(i) * 0.85
+		tx := pos.X - dist*sinY
+		ty := pos.Y - float64(i)*0.15
+		tz := pos.Z - dist*cosY
+		w := 0.40 - float64(i)*0.05
+		c.renderTextured3DBox(tx, ty, tz, w, w, 0.42, yaw, 0, dragonTex, torsoUV, fbDragon, tint)
+		c.render3DBox(tx, ty+w+0.08, tz, 0.06, 0.12, 0.30, yaw, 0, 0xFF353535, 0xFF2A2A2A, 0xFF2F2F2F)
+	}
+
+	// 4. Wings flapping dynamically
+	wingFlap := math.Sin(float64(dragon.WingAngle)) * 36.0
+	// Left wing
+	lwOffX := -1.3 * cosY
+	lwOffZ := 1.3 * sinY
+	c.renderTextured3DBox(pos.X+lwOffX, pos.Y+0.3, pos.Z+lwOffZ, 1.10, 0.08, 0.70, yaw-15.0, wingFlap, dragonTex, torsoUV, fbDragon, tint)
+	// Right wing
+	rwOffX := 1.3 * cosY
+	rwOffZ := -1.3 * sinY
+	c.renderTextured3DBox(pos.X+rwOffX, pos.Y+0.3, pos.Z+rwOffZ, 1.10, 0.08, 0.70, yaw+15.0, -wingFlap, dragonTex, torsoUV, fbDragon, tint)
 }
 
 // BoxFaceUV stores the UV bounds for one face of a 3D box.
@@ -3136,6 +3491,9 @@ func runGraphicalWindow(c *Client, w, h int) {
 		// 2. Sprint & Sneak modifiers
 		c.isSneaking = wnd.IsKeyDown(0x10)  // Shift
 		c.isSprinting = wnd.IsKeyDown(0x11) // Ctrl
+		if c.player != nil && c.player.Hunger <= 6 {
+			c.isSprinting = false
+		}
 
 		// 3. Movement input polling
 		var fwdInput, strafeInput float64

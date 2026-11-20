@@ -41,14 +41,26 @@ const (
 	ItemRawBeef       int32 = 363
 	ItemSteak         int32 = 364
 	ItemRottenFlesh   int32 = 367
+	ItemEnderPearl    int32 = 368
+	ItemEyeOfEnder    int32 = 381
+	ItemString        int32 = 287
+	ItemSpiderEye     int32 = 375
+	ItemGunpowder     int32 = 289
+	ItemBone          int32 = 352
+	ItemArrow         int32 = 262
+	ItemBow           int32 = 261
+	ItemFlintAndSteel int32 = 259
+	ItemGoldNugget    int32 = 371
+	ItemNetherQuartz  int32 = 406
 )
 
 // IsPlaceableBlock reports whether an item ID corresponds to a placeable voxel block.
 func IsPlaceableBlock(itemID int32) bool {
 	switch itemID {
 	case ItemStone, ItemGrass, ItemDirt, ItemCobblestone, ItemOakPlanks,
-		7, 8, 9, 10, 11, 12, 13, 14, 15, 16, ItemOakLog, 18, 20, 31, 37, 38, 45, 49,
-		ItemTorch, 56, ItemCraftingTable, ItemFurnace, 87, 89, 121, 150:
+		7, 8, 9, 10, 11, 12, 13, 14, 15, 16, ItemOakLog, 18, 19, 20, 21, 22, 23,
+		31, 32, 33, 37, 38, 45, 48, 49, ItemTorch, 52, 54, 56, ItemCraftingTable, ItemFurnace,
+		73, 74, 81, 87, 88, 89, 90, 111, 119, 120, 121, 122, 150, 153, 154:
 		return true
 	default:
 		return false
@@ -58,7 +70,7 @@ func IsPlaceableBlock(itemID int32) bool {
 // IsReplaceableBlock reports whether a block can be replaced by placing another block into its space.
 func IsReplaceableBlock(blockID int32) bool {
 	switch blockID {
-	case 0, 8, 9, 10, 11, 31, 32, 37, 38, 50:
+	case 0, 8, 9, 10, 11, 31, 32, 33, 37, 38, 50, 111:
 		return true
 	default:
 		return false

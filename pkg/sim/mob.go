@@ -18,6 +18,8 @@ const (
 	MobPig
 	MobSheep
 	MobChicken
+	MobEnderman
+	MobSpider
 )
 
 func (m MobType) String() string {
@@ -36,6 +38,10 @@ func (m MobType) String() string {
 		return "Sheep"
 	case MobChicken:
 		return "Chicken"
+	case MobEnderman:
+		return "Enderman"
+	case MobSpider:
+		return "Spider"
 	default:
 		return "Unknown"
 	}
@@ -57,12 +63,15 @@ type MobEntity struct {
 	IsAlive        bool
 
 	// Dynamic authentic AI & Animation states
-	WalkDistance float64 // Continuous walking distance for leg-swing animations
-	IsMoving     bool
-	WanderTicks  int     // Countdown for current wander or idle action
-	IsIdle       bool    // Idle/grazing vs active walking
-	TargetYaw    float32 // Target heading towards which animal smoothly steers
-	HurtTime     int     // Authentic Minecraft hurt flash timer in ticks (10 ticks = 0.5s)
+	WalkDistance   float64 // Continuous walking distance for leg-swing animations
+	IsMoving       bool
+	WanderTicks    int     // Countdown for current wander or idle action
+	IsIdle         bool    // Idle/grazing vs active walking
+	TargetYaw      float32 // Target heading towards which animal smoothly steers
+	HurtTime       int     // Authentic Minecraft hurt flash timer in ticks (10 ticks = 0.5s)
+	BurningTicks   int     // Daylight / fire burning tick counter
+	IsAggro        bool    // Hostile aggro state (e.g. Enderman stared at)
+	TeleportTimer  int     // Enderman teleport cooldown
 }
 
 // NewMobEntity creates an initialized mob.
@@ -74,15 +83,19 @@ func NewMobEntity(id int32, mobType MobType, pos Vec3) *MobEntity {
 		maxHP = 8.0
 	} else if mobType == MobChicken {
 		maxHP = 4.0
+	} else if mobType == MobEnderman {
+		maxHP = 40.0
+	} else if mobType == MobSpider {
+		maxHP = 16.0
 	}
 	return &MobEntity{
-		ID:        id,
-		Type:      mobType,
-		Position:  pos,
-		Health:    maxHP,
-		MaxHealth: maxHP,
-		IsAlive:   true,
-		IsIdle:    true,
+		ID:          id,
+		Type:        mobType,
+		Position:    pos,
+		Health:      maxHP,
+		MaxHealth:   maxHP,
+		IsAlive:     true,
+		IsIdle:      true,
 		WanderTicks: 20 + int(id*11)%40,
 	}
 }
@@ -98,6 +111,47 @@ func (m *MobEntity) TickMob(engine *Engine) {
 	}
 	if m.HurtTime > 0 {
 		m.HurtTime--
+	}
+	if m.TeleportTimer > 0 {
+		m.TeleportTimer--
+	}
+
+	// Daylight burning for undead (Zombie & Skeleton)
+	if (m.Type == MobZombie || m.Type == MobSkeleton) && engine.WorldTime >= 0 && engine.WorldTime <= 12000 {
+		footX := int32(math.Floor(m.Position.X))
+		footY := int32(math.Floor(m.Position.Y))
+		footZ := int32(math.Floor(m.Position.Z))
+		underSky := true
+		for y := footY + 2; y <= footY+30; y++ {
+			if IsSolidBlock(engine.GetBlock(footX, y, footZ)) {
+				underSky = false
+				break
+			}
+		}
+		inLiquid := engine.GetBlock(footX, footY, footZ) == 8 || engine.GetBlock(footX, footY, footZ) == 9
+		if underSky && !inLiquid {
+			m.BurningTicks = 20
+			if engine.TickCount%20 == 0 {
+				m.Health -= 1.0
+				if m.Health <= 0 {
+					m.Health = 0
+					m.IsAlive = false
+					drops := m.DeathDrops()
+					for _, stack := range drops {
+						engine.nextItemDropID++
+						engine.ItemDrops[engine.nextItemDropID] = &ItemDrop{
+							ID:          engine.nextItemDropID,
+							ItemID:      stack.ItemID,
+							Count:       stack.Count,
+							Position:    m.Position.Add(Vec3{X: 0, Y: 0.5, Z: 0}),
+							Velocity:    Vec3{X: 0, Y: 0.15, Z: 0},
+							PickupDelay: 0.2,
+						}
+					}
+					return
+				}
+			}
+		}
 	}
 
 	// 1. Gravity simulation
@@ -140,6 +194,10 @@ func (m *MobEntity) TickMob(engine *Engine) {
 		m.tickSkeletonAI(engine, closestPlayer, math.Sqrt(closestDistSq))
 	case MobCreeper:
 		m.tickCreeperAI(engine, closestPlayer, math.Sqrt(closestDistSq))
+	case MobEnderman:
+		m.tickEndermanAI(engine, closestPlayer, math.Sqrt(closestDistSq))
+	case MobSpider:
+		m.tickSpiderAI(engine, closestPlayer, math.Sqrt(closestDistSq))
 	case MobCow, MobPig, MobSheep, MobChicken:
 		m.tickPassiveAI(engine)
 	}
@@ -438,6 +496,155 @@ func (m *MobEntity) tickPassiveAI(engine *Engine) {
 	}
 }
 
+func (m *MobEntity) tickEndermanAI(engine *Engine, player *PlayerEntity, dist float64) {
+	// Water damage & panic teleport
+	footX := int32(math.Floor(m.Position.X))
+	footY := int32(math.Floor(m.Position.Y))
+	footZ := int32(math.Floor(m.Position.Z))
+	b := engine.GetBlock(footX, footY, footZ)
+	if b == 8 || b == 9 {
+		m.Health -= 2.0
+		m.HurtTime = 10
+		m.teleportRandomly(engine)
+		return
+	}
+
+	if player == nil || dist > 48.0 {
+		m.IsAggro = false
+		m.tickPassiveAI(engine)
+		return
+	}
+
+	// Stare aggro check: is player looking directly at Enderman?
+	if !m.IsAggro {
+		radYaw := float64(player.Yaw) * math.Pi / 180.0
+		radPitch := float64(player.Pitch) * math.Pi / 180.0
+		pLook := Vec3{
+			X: -math.Sin(radYaw) * math.Cos(radPitch),
+			Y: -math.Sin(radPitch),
+			Z: math.Cos(radYaw) * math.Cos(radPitch),
+		}
+		toMob := m.Position.Add(Vec3{Y: 2.2}).Sub(player.Position.Add(Vec3{Y: 1.62})).Normalize()
+		dot := pLook.X*toMob.X + pLook.Y*toMob.Y + pLook.Z*toMob.Z
+		if dot > 0.985 {
+			m.IsAggro = true
+		}
+	}
+
+	if !m.IsAggro {
+		m.tickPassiveAI(engine)
+		return
+	}
+
+	// Aggro pursuit
+	dx := player.Position.X - m.Position.X
+	dz := player.Position.Z - m.Position.Z
+	m.Yaw = float32(math.Atan2(-dx, dz) * 180.0 / math.Pi)
+
+	speed := 0.22
+	m.Velocity.X = (dx / dist) * speed
+	m.Velocity.Z = (dz / dist) * speed
+	m.WalkDistance += speed
+	m.IsMoving = true
+
+	// Step-climb
+	aheadX := int32(math.Floor(m.Position.X + (dx/dist)*0.6))
+	aheadZ := int32(math.Floor(m.Position.Z + (dz/dist)*0.6))
+	if IsSolidBlock(engine.GetBlock(aheadX, footY, aheadZ)) && !IsSolidBlock(engine.GetBlock(aheadX, footY+1, aheadZ)) && m.Velocity.Y <= 0 {
+		m.Velocity.Y = 0.38
+	}
+
+	// Attack within 2.0 blocks
+	if dist <= 2.0 && m.AttackCooldown <= 0 {
+		mobEye := m.Position.Add(Vec3{Y: 2.4})
+		playerChest := player.Position.Add(Vec3{Y: 1.0})
+		if hasLineOfSight(engine, mobEye, playerChest) {
+			engine.DamagePlayer(player.ID, 6.0, "enderman")
+			m.AttackCooldown = 20
+		}
+	}
+
+	// Combat teleport when hurt or at random interval
+	if m.HurtTime == 9 && m.TeleportTimer <= 0 {
+		m.teleportRandomly(engine)
+		m.TeleportTimer = 40
+	}
+}
+
+func (m *MobEntity) teleportRandomly(engine *Engine) {
+	// Attempt random teleport within 16 blocks
+	for attempt := 0; attempt < 16; attempt++ {
+		ox := float64((int(m.ID*17)+attempt*13)%32 - 16)
+		oz := float64((int(m.ID*31)+attempt*19)%32 - 16)
+		targetX := m.Position.X + ox
+		targetZ := m.Position.Z + oz
+
+		bx := int32(math.Floor(targetX))
+		bz := int32(math.Floor(targetZ))
+
+		for by := int32(math.Floor(m.Position.Y)) + 4; by >= int32(math.Floor(m.Position.Y))-6; by-- {
+			floor := engine.GetBlock(bx, by-1, bz)
+			body := engine.GetBlock(bx, by, bz)
+			head1 := engine.GetBlock(bx, by+1, bz)
+			head2 := engine.GetBlock(bx, by+2, bz)
+
+			if IsSolidBlock(floor) && !IsSolidBlock(body) && !IsSolidBlock(head1) && !IsSolidBlock(head2) &&
+				body != 8 && body != 9 && body != 10 && body != 11 {
+				m.Position = Vec3{X: targetX, Y: float64(by), Z: targetZ}
+				m.Velocity = Vec3{}
+				return
+			}
+		}
+	}
+}
+
+func (m *MobEntity) tickSpiderAI(engine *Engine, player *PlayerEntity, dist float64) {
+	// Spider neutral in bright daylight unless provoked
+	isDay := engine.WorldTime >= 0 && engine.WorldTime <= 12000
+	isHostile := !isDay || m.HurtTime > 0
+
+	if player == nil || dist > 16.0 || !isHostile {
+		m.tickPassiveAI(engine)
+		return
+	}
+
+	dx := player.Position.X - m.Position.X
+	dz := player.Position.Z - m.Position.Z
+	m.Yaw = float32(math.Atan2(-dx, dz) * 180.0 / math.Pi)
+
+	speed := 0.16
+	m.Velocity.X = (dx / dist) * speed
+	m.Velocity.Z = (dz / dist) * speed
+	m.WalkDistance += speed
+	m.IsMoving = true
+
+	footY := int32(math.Floor(m.Position.Y))
+
+	// Wall climbing: vertical climb if blocked by a solid wall
+	aheadX := int32(math.Floor(m.Position.X + (dx/dist)*0.6))
+	aheadZ := int32(math.Floor(m.Position.Z + (dz/dist)*0.6))
+	if IsSolidBlock(engine.GetBlock(aheadX, footY, aheadZ)) || IsSolidBlock(engine.GetBlock(aheadX, footY+1, aheadZ)) {
+		m.Velocity.Y = 0.22 // Wall climb
+	}
+
+	// Pounce leap within 4.5 blocks
+	if dist <= 4.5 && dist >= 2.0 && m.Velocity.Y <= 0 {
+		m.Velocity.Y = 0.32
+		m.Velocity.X *= 1.4
+		m.Velocity.Z *= 1.4
+	}
+
+	// Bite attack
+	if dist <= 1.5 && m.AttackCooldown <= 0 {
+		mobChest := m.Position.Add(Vec3{Y: 0.5})
+		playerChest := player.Position.Add(Vec3{Y: 1.0})
+		if hasLineOfSight(engine, mobChest, playerChest) {
+			engine.DamagePlayer(player.ID, 3.0, "spider")
+			m.AttackCooldown = 20
+		}
+	}
+}
+
 // DeathDrops generates authentic Minecraft loot when mob is slain.
 func (m *MobEntity) DeathDrops() []inventory.ItemStack {
 	switch m.Type {
@@ -453,6 +660,15 @@ func (m *MobEntity) DeathDrops() []inventory.ItemStack {
 	case MobCreeper:
 		return []inventory.ItemStack{
 			{ItemID: 289, Count: 1}, // Gunpowder
+		}
+	case MobEnderman:
+		return []inventory.ItemStack{
+			{ItemID: 368, Count: 1}, // Ender Pearl
+		}
+	case MobSpider:
+		return []inventory.ItemStack{
+			{ItemID: 287, Count: 2}, // String
+			{ItemID: 375, Count: 1}, // Spider Eye
 		}
 	case MobCow:
 		return []inventory.ItemStack{

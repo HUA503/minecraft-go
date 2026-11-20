@@ -629,6 +629,301 @@ func initDefaultTextures() {
 		}
 	}
 	Textures[121] = &BlockFaceTextures{Top: endStoneTex, Bottom: endStoneTex, Side: endStoneTex}
+
+	// 27. Birch Log (ID 19) & Birch Leaves (ID 21)
+	var birchBarkTex BlockTexture
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			h := texHash(x, y, 1919) % 100
+			if (y%3 == 0 && (x+y)%5 == 0) || h < 12 {
+				birchBarkTex[y][x] = 0xFF282828 // Black flecks
+			} else if h < 60 {
+				birchBarkTex[y][x] = 0xFFEBEBEB // Chalky white
+			} else {
+				birchBarkTex[y][x] = 0xFFD8D8D8
+			}
+		}
+	}
+	Textures[19] = &BlockFaceTextures{Top: logRingsTex, Bottom: logRingsTex, Side: birchBarkTex}
+
+	var birchLeavesTex BlockTexture
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			h := texHash(x, y, 2121) % 100
+			if h < 24 {
+				birchLeavesTex[y][x] = 0
+			} else if h < 60 {
+				birchLeavesTex[y][x] = 0xFF659832
+			} else {
+				birchLeavesTex[y][x] = 0xFF7BB33B
+			}
+		}
+	}
+	Textures[21] = &BlockFaceTextures{Top: birchLeavesTex, Bottom: birchLeavesTex, Side: birchLeavesTex}
+
+	// 28. Spruce Log (ID 22) & Spruce Leaves (ID 23)
+	var spruceBarkTex BlockTexture
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			h := texHash(x, y, 2222) % 100
+			if h < 40 {
+				spruceBarkTex[y][x] = 0xFF3B2716
+			} else if h < 75 {
+				spruceBarkTex[y][x] = 0xFF2E1E11
+			} else {
+				spruceBarkTex[y][x] = 0xFF4A341E
+			}
+		}
+	}
+	Textures[22] = &BlockFaceTextures{Top: logRingsTex, Bottom: logRingsTex, Side: spruceBarkTex}
+
+	var spruceLeavesTex BlockTexture
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			h := texHash(x, y, 2323) % 100
+			if h < 22 {
+				spruceLeavesTex[y][x] = 0
+			} else if h < 65 {
+				spruceLeavesTex[y][x] = 0xFF2D502E
+			} else {
+				spruceLeavesTex[y][x] = 0xFF3B683C
+			}
+		}
+	}
+	Textures[23] = &BlockFaceTextures{Top: spruceLeavesTex, Bottom: spruceLeavesTex, Side: spruceLeavesTex}
+
+	// 29. Cactus (ID 81)
+	var cactusSideTex BlockTexture
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			isSpine := (x == 3 || x == 8 || x == 13) && (y%4 == 1)
+			if isSpine {
+				cactusSideTex[y][x] = 0xFFF0EBE0 // Pale spine
+			} else if x%3 == 0 {
+				cactusSideTex[y][x] = 0xFF35681E // Ridge shadow
+			} else {
+				cactusSideTex[y][x] = 0xFF558C2F // Cactus green
+			}
+		}
+	}
+	Textures[81] = &BlockFaceTextures{Top: cactusSideTex, Bottom: cactusSideTex, Side: cactusSideTex}
+
+	// 30. Dead Bush (ID 32), Fern (ID 33), Lily Pad (ID 111)
+	var deadBushTex BlockTexture
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			if y <= 12 && (x+y)%3 == 0 && (x >= 3 && x <= 12) {
+				deadBushTex[y][x] = 0xFF886633
+			} else {
+				deadBushTex[y][x] = 0
+			}
+		}
+	}
+	Textures[32] = &BlockFaceTextures{Top: deadBushTex, Bottom: deadBushTex, Side: deadBushTex}
+
+	var fernTex BlockTexture
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			diff := x - 8
+			if diff < 0 {
+				diff = -diff
+			}
+			if diff <= (14-y)/2 && y <= 14 {
+				fernTex[y][x] = 0xFF3D7828
+			} else {
+				fernTex[y][x] = 0
+			}
+		}
+	}
+	Textures[33] = &BlockFaceTextures{Top: fernTex, Bottom: fernTex, Side: fernTex}
+
+	var lilyPadTex BlockTexture
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			dx := x - 8
+			dy := y - 8
+			if dx*dx+dy*dy <= 45 && !(dx > 2 && dy == 0) {
+				lilyPadTex[y][x] = 0xFF2A591E
+			} else {
+				lilyPadTex[y][x] = 0
+			}
+		}
+	}
+	Textures[111] = &BlockFaceTextures{Top: lilyPadTex, Bottom: lilyPadTex, Side: lilyPadTex}
+
+	// 31. Ores: Redstone (ID 73), Lapis (ID 74), Copper (ID 153), Quartz (ID 154)
+	var redstoneTex BlockTexture
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			c := stoneTex[y][x]
+			if (x == 4 && y == 4) || (x == 5 && y == 4) || (x == 10 && y == 11) || (x == 11 && y == 11) || (x == 7 && y == 9) {
+				c = 0xFFFF1818
+			}
+			redstoneTex[y][x] = c
+		}
+	}
+	Textures[73] = &BlockFaceTextures{Top: redstoneTex, Bottom: redstoneTex, Side: redstoneTex}
+
+	var lapisTex BlockTexture
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			c := stoneTex[y][x]
+			if (x == 6 && y == 6) || (x == 7 && y == 6) || (x == 12 && y == 8) || (x == 3 && y == 11) {
+				c = 0xFF1B4AB7
+			}
+			lapisTex[y][x] = c
+		}
+	}
+	Textures[74] = &BlockFaceTextures{Top: lapisTex, Bottom: lapisTex, Side: lapisTex}
+
+	var copperTex BlockTexture
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			c := stoneTex[y][x]
+			if (x == 5 && y == 5) || (x == 6 && y == 5) || (x == 11 && y == 10) {
+				c = 0xFFE0734A // Raw copper orange
+			} else if (x == 6 && y == 6) || (x == 10 && y == 10) {
+				c = 0xFF4EB890 // Verdigris patina green
+			}
+			copperTex[y][x] = c
+		}
+	}
+	Textures[153] = &BlockFaceTextures{Top: copperTex, Bottom: copperTex, Side: copperTex}
+
+	var quartzTex BlockTexture
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			c := netherrackTex[y][x]
+			if (x == 4 && y == 4) || (x == 5 && y == 4) || (x == 10 && y == 11) || (x == 11 && y == 11) || (x == 8 && y == 7) {
+				c = 0xFFEDE7DC // White quartz crystals
+			}
+			quartzTex[y][x] = c
+		}
+	}
+	Textures[154] = &BlockFaceTextures{Top: quartzTex, Bottom: quartzTex, Side: quartzTex}
+
+	// 32. Mossy Cobblestone (ID 48), Monster Spawner (ID 52), Chest (ID 54)
+	var mossyCobbleTex BlockTexture
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			c := cobbleTex[y][x]
+			if (x+y)%4 == 0 || (x*y)%7 == 0 {
+				c = 0xFF4A7436 // Forest moss
+			}
+			mossyCobbleTex[y][x] = c
+		}
+	}
+	Textures[48] = &BlockFaceTextures{Top: mossyCobbleTex, Bottom: mossyCobbleTex, Side: mossyCobbleTex}
+
+	var spawnerTex BlockTexture
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			isBar := x == 0 || x == 15 || y == 0 || y == 15 || x == 5 || x == 10 || y == 5 || y == 10
+			if isBar {
+				spawnerTex[y][x] = 0xFF242630
+			} else {
+				spawnerTex[y][x] = 0 // Cage air openings
+			}
+		}
+	}
+	Textures[52] = &BlockFaceTextures{Top: spawnerTex, Bottom: spawnerTex, Side: spawnerTex}
+
+	var chestSideTex BlockTexture
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			isBorder := x == 0 || x == 15 || y == 0 || y == 15 || y == 6
+			isLatch := (x == 7 || x == 8) && (y >= 5 && y <= 8)
+			if isLatch {
+				chestSideTex[y][x] = 0xFFC0C0C0 // Silver latch
+			} else if isBorder {
+				chestSideTex[y][x] = 0xFF4D381F // Dark wooden band
+			} else {
+				chestSideTex[y][x] = 0xFF8A6538 // Chest wood
+			}
+		}
+	}
+	Textures[54] = &BlockFaceTextures{Top: plankTex, Bottom: plankTex, Side: chestSideTex}
+
+	// 33. Soul Sand (ID 88)
+	var soulSandTex BlockTexture
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			h := texHash(x, y, 8888) % 100
+			if h < 55 {
+				soulSandTex[y][x] = 0xFF523D33
+			} else if h < 85 {
+				soulSandTex[y][x] = 0xFF433026
+			} else {
+				soulSandTex[y][x] = 0xFF35251D
+			}
+		}
+	}
+	Textures[88] = &BlockFaceTextures{Top: soulSandTex, Bottom: soulSandTex, Side: soulSandTex}
+
+	// 34. Nether Portal (ID 90) - Swirling ethereal purple with alpha
+	var portalTex BlockTexture
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			h := texHash(x, y, 9090) % 100
+			if h < 45 {
+				portalTex[y][x] = 0xCC7F1ED6
+			} else if h < 75 {
+				portalTex[y][x] = 0xDDA53EFA
+			} else {
+				portalTex[y][x] = 0xEE4B0D80
+			}
+		}
+	}
+	Textures[90] = &BlockFaceTextures{Top: portalTex, Bottom: portalTex, Side: portalTex}
+
+	// 35. End Portal Frame (ID 120) & End Portal (ID 119)
+	var frameTopTex BlockTexture
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			isEye := x >= 5 && x <= 10 && y >= 5 && y <= 10
+			if isEye {
+				if (x == 7 || x == 8) && (y == 7 || y == 8) {
+					frameTopTex[y][x] = 0xFF142B24 // Eye pupil
+				} else {
+					frameTopTex[y][x] = 0xFF2F8569 // Teal Eye of Ender
+				}
+			} else {
+				frameTopTex[y][x] = 0xFF3E6958 // End Portal frame dark green rim
+			}
+		}
+	}
+	Textures[120] = &BlockFaceTextures{Top: frameTopTex, Bottom: endStoneTex, Side: endStoneTex}
+
+	var endPortalTex BlockTexture
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			h := texHash(x, y, 119119) % 100
+			if h < 8 {
+				endPortalTex[y][x] = 0xFF8AE8D0 // Twinkling cosmic cyan star
+			} else if h < 14 {
+				endPortalTex[y][x] = 0xFFFFFFFF // White star
+			} else {
+				endPortalTex[y][x] = 0xFF020712 // Deep space black
+			}
+		}
+	}
+	Textures[119] = &BlockFaceTextures{Top: endPortalTex, Bottom: endPortalTex, Side: endPortalTex}
+
+	// 36. Dragon Egg (ID 122)
+	var eggTex BlockTexture
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			h := texHash(x, y, 122122) % 100
+			if h < 18 {
+				eggTex[y][x] = 0xFF6D219C // Radiant dragon purple fleck
+			} else if h < 60 {
+				eggTex[y][x] = 0xFF0C0912 // Obsidian deep black
+			} else {
+				eggTex[y][x] = 0xFF1C1428
+			}
+		}
+	}
+	Textures[122] = &BlockFaceTextures{Top: eggTex, Bottom: eggTex, Side: eggTex}
 }
 
 // initOfficialBlockTextures loads authentic official textures from embedded Mojang vanilla assets.

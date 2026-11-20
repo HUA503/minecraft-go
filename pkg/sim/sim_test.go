@@ -678,3 +678,85 @@ func TestFallDamageResetInWater(t *testing.T) {
 		t.Fatalf("player took fall damage entering water: health = %f", p.Health)
 	}
 }
+
+func TestVanillaHungerSaturationAndFastRegen(t *testing.T) {
+	eng := NewEngine()
+	p := eng.AddPlayer("Steve", [16]byte{3}, Vec3{X: 0, Y: 64, Z: 0})
+	p.Health = 15.0
+	p.Hunger = 20
+	p.Saturation = 5.0
+	p.Exhaustion = 0
+
+	// In 10 ticks, fast regen should restore 1 HP and consume saturation via exhaustion
+	for i := 0; i < 10; i++ {
+		eng.Tick()
+	}
+
+	if p.Health != 16.0 {
+		t.Fatalf("fast natural regen expected health 16.0, got %f", p.Health)
+	}
+
+	// Step another 50 ticks to drain exhaustion
+	for i := 0; i < 50; i++ {
+		eng.Tick()
+	}
+	if p.Saturation >= 5.0 {
+		t.Fatalf("expected saturation to decrease from fast regen exhaustion, got %f", p.Saturation)
+	}
+}
+
+func TestEndermanStareAggroAndTeleport(t *testing.T) {
+	eng := NewEngine()
+	p := eng.AddPlayer("Steve", [16]byte{4}, Vec3{X: 10, Y: 64, Z: 10})
+	p.Yaw = 0   // looking south (+Z)
+	p.Pitch = 0 // looking horizontal
+
+	// Spawn Enderman directly in front along +Z
+	enderman := eng.SpawnMob(MobEnderman, Vec3{X: 10, Y: 64, Z: 18})
+	if enderman.IsAggro {
+		t.Fatalf("enderman should start unprovoked")
+	}
+
+	// Tick mob AI: player is staring directly at enderman
+	enderman.TickMob(eng)
+	if !enderman.IsAggro {
+		t.Fatalf("enderman should become aggressive when stared at")
+	}
+
+	// Test drops
+	drops := enderman.DeathDrops()
+	if len(drops) == 0 || drops[0].ItemID != 368 {
+		t.Fatalf("expected ender pearl drop from enderman, got %v", drops)
+	}
+}
+
+func TestEndDimensionBossAndCrystalExplosion(t *testing.T) {
+	eng := NewEngine()
+	eng.SwitchDimension(2) // The End
+
+	if eng.GetDimension() != 2 {
+		t.Fatalf("expected active dimension 2 (The End)")
+	}
+
+	dragon := eng.GetEnderDragon()
+	if dragon == nil {
+		t.Fatalf("expected Ender Dragon boss spawned in The End")
+	}
+	if dragon.Health != 200.0 {
+		t.Fatalf("expected 200.0 HP for Ender Dragon, got %f", dragon.Health)
+	}
+
+	crystals := eng.GetEndCrystals()
+	if len(crystals) != 8 {
+		t.Fatalf("expected 8 End Crystals on towers, got %d", len(crystals))
+	}
+
+	// Tether dragon to crystal 1 and explode crystal
+	eng.SetDragonHealingCrystal(crystals[0].ID)
+	eng.AttackEndCrystal(crystals[0].ID)
+
+	dragonAfter := eng.GetEnderDragon()
+	if dragonAfter.Health >= 200.0 {
+		t.Fatalf("exploding tethered End Crystal should damage dragon, got health %f", dragonAfter.Health)
+	}
+}

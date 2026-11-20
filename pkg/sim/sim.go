@@ -22,10 +22,40 @@ type PlayerEntity struct {
 	OnGround     bool
 	Health       float32 // 0.0 to 20.0
 	Hunger       int     // 0 to 20
+	Saturation   float32 // 0.0 to 20.0 (canonical vanilla saturation)
+	Exhaustion   float32 // 0.0 to 4.0
+	RegenTimer   int     // Tick counter for natural regeneration
+	StarveTimer  int     // Tick counter for starvation damage
 	FallDistance float32
 	IsAlive      bool
 	ClientDriven bool
 	Inventory    *inventory.PlayerInventory
+}
+
+// EndCrystal represents an active healing crystal atop an obsidian tower.
+type EndCrystal struct {
+	ID        int32
+	Position  Vec3
+	IsAlive   bool
+	BeamTarget Vec3
+}
+
+// EnderDragon represents the authoritative End dimension boss entity.
+type EnderDragon struct {
+	Position         Vec3
+	Velocity         Vec3
+	Yaw              float32
+	Pitch            float32
+	Health           float32 // 0.0 to 200.0 (100 hearts)
+	MaxHealth        float32 // 200.0
+	IsAlive          bool
+	IsDying          bool
+	DeathTicks       int
+	Phase            int // 0: circling, 1: dive attack, 2: perched at exit portal
+	TargetPos        Vec3
+	HealingCrystalID int32
+	WingAngle        float32
+	DiveCooldown     int
 }
 
 // ItemDrop represents a 3D physical item entity in the world dropped from mined blocks or mobs.
@@ -41,7 +71,7 @@ type ItemDrop struct {
 
 // WorldEvent represents a simulation event to broadcast to connected clients.
 type WorldEvent struct {
-	Type     string // "block_update", "player_move", "player_join", "player_leave", "player_death", "player_respawn", "item_pickup"
+	Type     string // "block_update", "player_move", "player_join", "player_leave", "player_death", "player_respawn", "item_pickup", "dimension_change"
 	PlayerID int32
 	BlockPos world.BlockPos
 	BlockID  int32
@@ -53,34 +83,47 @@ type WorldEvent struct {
 
 // Engine manages the authoritative 20 TPS game simulation.
 type Engine struct {
-	mu             sync.RWMutex
-	World          map[world.ChunkPos]*world.Chunk
-	Players        map[int32]*PlayerEntity
-	nextPlayerID   int32
-	Mobs           map[int32]*MobEntity
-	nextMobID      int32
-	ItemDrops      map[int32]*ItemDrop
-	nextItemDropID int32
-	TickCount      int64
-	WorldTime      int64
-	Events         chan WorldEvent
-	stopChan       chan struct{}
-	Storage        *world.SaveManager
+	mu               sync.RWMutex
+	World            map[world.ChunkPos]*world.Chunk
+	DimensionWorlds  map[int]map[world.ChunkPos]*world.Chunk
+	CurrentDimension int // 0: Overworld, 1: Nether, 2: End
+	Players          map[int32]*PlayerEntity
+	nextPlayerID     int32
+	Mobs             map[int32]*MobEntity
+	nextMobID        int32
+	ItemDrops        map[int32]*ItemDrop
+	nextItemDropID   int32
+	EnderDragon      *EnderDragon
+	EndCrystals      map[int32]*EndCrystal
+	nextCrystalID    int32
+	TickCount        int64
+	WorldTime        int64
+	Events           chan WorldEvent
+	stopChan         chan struct{}
+	Storage          *world.SaveManager
 }
 
 func NewEngine() *Engine {
-	return &Engine{
-		World:          make(map[world.ChunkPos]*world.Chunk),
-		Players:        make(map[int32]*PlayerEntity),
-		nextPlayerID:   1,
-		Mobs:           make(map[int32]*MobEntity),
-		nextMobID:      100,
-		ItemDrops:      make(map[int32]*ItemDrop),
-		nextItemDropID: 1,
-		WorldTime:      6000, // Canonical Minecraft noon daylight
-		Events:         make(chan WorldEvent, 1024),
-		stopChan:       make(chan struct{}),
+	eng := &Engine{
+		World:            make(map[world.ChunkPos]*world.Chunk),
+		DimensionWorlds:  make(map[int]map[world.ChunkPos]*world.Chunk),
+		CurrentDimension: 0,
+		Players:          make(map[int32]*PlayerEntity),
+		nextPlayerID:     1,
+		Mobs:             make(map[int32]*MobEntity),
+		nextMobID:        100,
+		ItemDrops:        make(map[int32]*ItemDrop),
+		nextItemDropID:   1,
+		EndCrystals:      make(map[int32]*EndCrystal),
+		nextCrystalID:    1,
+		WorldTime:        6000, // Canonical Minecraft noon daylight
+		Events:           make(chan WorldEvent, 1024),
+		stopChan:         make(chan struct{}),
 	}
+	eng.DimensionWorlds[0] = eng.World
+	eng.DimensionWorlds[1] = make(map[world.ChunkPos]*world.Chunk)
+	eng.DimensionWorlds[2] = make(map[world.ChunkPos]*world.Chunk)
+	return eng
 }
 
 // GetWorldTime returns the authoritative 24000-tick Minecraft world time.
@@ -502,16 +545,17 @@ func (e *Engine) AddPlayer(username string, uuid [16]byte, spawnPos Vec3) *Playe
 	e.nextPlayerID++
 
 	p := &PlayerEntity{
-		ID:        id,
-		Username:  username,
-		UUID:      uuid,
-		Position:  spawnPos,
-		SpawnPos:  spawnPos,
-		OnGround:  true,
-		Health:    20.0,
-		Hunger:    20,
-		IsAlive:   true,
-		Inventory: inventory.NewPlayerInventory(),
+		ID:         id,
+		Username:   username,
+		UUID:       uuid,
+		Position:   spawnPos,
+		SpawnPos:   spawnPos,
+		OnGround:   true,
+		Health:     20.0,
+		Hunger:     20,
+		Saturation: 5.0,
+		IsAlive:    true,
+		Inventory:  inventory.NewPlayerInventory(),
 	}
 	e.Players[id] = p
 
@@ -573,6 +617,10 @@ func (e *Engine) RespawnPlayer(id int32, spawnPos Vec3) {
 	if ok {
 		p.Health = 20.0
 		p.Hunger = 20
+		p.Saturation = 5.0
+		p.Exhaustion = 0
+		p.RegenTimer = 0
+		p.StarveTimer = 0
 		p.IsAlive = true
 		p.Position = spawnPos
 		p.SpawnPos = spawnPos
@@ -704,6 +752,12 @@ func (e *Engine) MovePlayerRelative(id int32, delta Vec3, yaw, pitch float32) (V
 		p.Yaw = yaw
 		p.Pitch = pitch
 		p.OnGround = ground
+
+		// Vanilla movement exhaustion
+		horizDist := math.Sqrt(delta.X*delta.X + delta.Z*delta.Z)
+		if horizDist > 0 {
+			p.Exhaustion += float32(horizDist * 0.01)
+		}
 	}
 	e.mu.Unlock()
 
@@ -831,23 +885,59 @@ func (e *Engine) Tick() {
 		}
 	}
 
-	// Natural Health Regeneration & Starvation check every 4 seconds (80 ticks)
-	if e.TickCount%80 == 0 {
-		for _, p := range e.Players {
-			if !p.IsAlive {
-				continue
+	// Natural Health Regeneration & Starvation per canonical Minecraft Java rules
+	for _, p := range e.Players {
+		if !p.IsAlive {
+			continue
+		}
+
+		// Drain exhaustion: each 4.0 exhaustion consumes 1.0 saturation, or 1 hunger
+		for p.Exhaustion >= 4.0 {
+			p.Exhaustion -= 4.0
+			if p.Saturation > 0 {
+				p.Saturation = float32(math.Max(0, float64(p.Saturation-1.0)))
+			} else if p.Hunger > 0 {
+				p.Hunger--
 			}
-			if p.Hunger >= 18 && p.Health < 20.0 {
-				p.Health += 1.0
-				if p.Health > 20.0 {
-					p.Health = 20.0
-				}
-			} else if p.Hunger == 0 {
+		}
+
+		// Fast natural regeneration: when Hunger == 20 && Saturation > 0
+		if p.Hunger == 20 && p.Saturation > 0 && p.Health < 20.0 {
+			p.RegenTimer++
+			if p.RegenTimer >= 10 { // Every 0.5s (10 ticks)
+				p.Health = float32(math.Min(20.0, float64(p.Health+1.0)))
+				p.Exhaustion += 6.0 // Drains saturation quickly
+				p.RegenTimer = 0
+			}
+		} else if p.Hunger >= 18 && p.Health < 20.0 {
+			// Normal natural regeneration: when Hunger >= 18
+			p.RegenTimer++
+			if p.RegenTimer >= 80 { // Every 4.0s (80 ticks)
+				p.Health = float32(math.Min(20.0, float64(p.Health+1.0)))
+				p.Exhaustion += 6.0
+				p.RegenTimer = 0
+			}
+		} else {
+			p.RegenTimer = 0
+		}
+
+		// Starvation: when Hunger == 0
+		if p.Hunger == 0 {
+			p.StarveTimer++
+			if p.StarveTimer >= 80 { // Every 4.0s (80 ticks)
 				if p.Health > 1.0 {
 					p.Health -= 1.0
 				}
+				p.StarveTimer = 0
 			}
+		} else {
+			p.StarveTimer = 0
 		}
+	}
+
+	// Tick Ender Dragon Boss when in End dimension
+	if e.CurrentDimension == 2 && e.EnderDragon != nil {
+		e.tickEnderDragon()
 	}
 
 	var activeMobs []*MobEntity
@@ -884,7 +974,7 @@ func (e *Engine) Stop() {
 	close(e.stopChan)
 }
 
-// ConsumeFood eats one unit of food from player's inventory, restoring hunger points.
+// ConsumeFood eats one unit of food from player's inventory, restoring hunger and saturation points.
 func (e *Engine) ConsumeFood(playerID int32, slotIdx int) (bool, int) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -912,6 +1002,10 @@ func (e *Engine) ConsumeFood(playerID int32, slotIdx int) (bool, int) {
 	if p.Hunger > 20 {
 		p.Hunger = 20
 	}
+	p.Saturation += food.Saturation
+	if p.Saturation > float32(p.Hunger) {
+		p.Saturation = float32(p.Hunger)
+	}
 
 	slot.Count--
 	if slot.Count <= 0 {
@@ -928,4 +1022,240 @@ func (e *Engine) ConsumeFood(playerID int32, slotIdx int) (bool, int) {
 	}
 
 	return true, p.Hunger
+}
+
+// SwitchDimension transitions the active simulation to another dimension (0: Overworld, 1: Nether, 2: The End).
+func (e *Engine) SwitchDimension(dim int) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	if dim < 0 || dim > 2 || dim == e.CurrentDimension {
+		return
+	}
+	e.DimensionWorlds[e.CurrentDimension] = e.World
+	e.CurrentDimension = dim
+	if e.DimensionWorlds[dim] == nil {
+		e.DimensionWorlds[dim] = make(map[world.ChunkPos]*world.Chunk)
+	}
+	e.World = e.DimensionWorlds[dim]
+
+	// If entering The End for the first time, spawn Ender Dragon and End Crystals
+	if dim == 2 && e.EnderDragon == nil {
+		e.spawnEndBossLocked()
+	}
+
+	select {
+	case e.Events <- WorldEvent{
+		Type:     "dimension_change",
+		BlockID:  int32(dim),
+	}:
+	default:
+	}
+}
+
+// GetDimension returns current active dimension index (0: Overworld, 1: Nether, 2: End).
+func (e *Engine) GetDimension() int {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return e.CurrentDimension
+}
+
+func (e *Engine) spawnEndBossLocked() {
+	e.EnderDragon = &EnderDragon{
+		Position:  Vec3{X: 0, Y: 75.0, Z: 0},
+		Health:    200.0,
+		MaxHealth: 200.0,
+		IsAlive:   true,
+		Phase:     0,
+		TargetPos: Vec3{X: 0, Y: 75.0, Z: 0},
+	}
+
+	// 8 End Crystals atop obsidian towers
+	pillarAngles := []float64{0, 45, 90, 135, 180, 225, 270, 315}
+	pillarHeights := []int32{78, 86, 92, 82, 98, 84, 90, 80}
+
+	for idx, angDeg := range pillarAngles {
+		rad := angDeg * math.Pi / 180.0
+		px := math.Round(42.0 * math.Cos(rad))
+		pz := math.Round(42.0 * math.Sin(rad))
+		topY := float64(pillarHeights[idx] + 2)
+
+		cid := e.nextCrystalID
+		e.nextCrystalID++
+		e.EndCrystals[cid] = &EndCrystal{
+			ID:       cid,
+			Position: Vec3{X: px, Y: topY, Z: pz},
+			IsAlive:  true,
+		}
+	}
+}
+
+// SpawnEndBoss publicly initializes the boss encounter in The End.
+func (e *Engine) SpawnEndBoss() {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.spawnEndBossLocked()
+}
+
+// AttackEndCrystal detonates an active End Crystal when attacked.
+func (e *Engine) AttackEndCrystal(crystalID int32) bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	c, ok := e.EndCrystals[crystalID]
+	if !ok || !c.IsAlive {
+		return false
+	}
+	c.IsAlive = false
+
+	// If dragon is tethered to this crystal, deal 10.0 HP damage to dragon!
+	if e.EnderDragon != nil && e.EnderDragon.IsAlive && e.EnderDragon.HealingCrystalID == crystalID {
+		e.EnderDragon.Health -= 10.0
+		e.EnderDragon.HealingCrystalID = 0
+		if e.EnderDragon.Health <= 0 {
+			e.EnderDragon.Health = 0
+			e.EnderDragon.IsDying = true
+		}
+	}
+
+	// Detonate in 4.0 block radius
+	for _, p := range e.Players {
+		if p.IsAlive && p.Position.DistanceTo(c.Position) < 6.0 {
+			p.Health -= 8.0
+			if p.Health <= 0 {
+				p.Health = 0
+				p.IsAlive = false
+			}
+		}
+	}
+	return true
+}
+
+// SetDragonHealingCrystal sets the active healing tether crystal ID.
+func (e *Engine) SetDragonHealingCrystal(crystalID int32) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.EnderDragon != nil {
+		e.EnderDragon.HealingCrystalID = crystalID
+	}
+}
+
+// DamageEnderDragon inflicts direct damage on the boss.
+func (e *Engine) DamageEnderDragon(damage float32) (killed bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	if e.EnderDragon == nil || !e.EnderDragon.IsAlive || e.EnderDragon.IsDying {
+		return false
+	}
+	e.EnderDragon.Health -= damage
+	if e.EnderDragon.Health <= 0 {
+		e.EnderDragon.Health = 0
+		e.EnderDragon.IsDying = true
+		return true
+	}
+	return false
+}
+
+// GetEnderDragon returns snapshot of current Ender Dragon state.
+func (e *Engine) GetEnderDragon() *EnderDragon {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	if e.EnderDragon == nil {
+		return nil
+	}
+	cp := *e.EnderDragon
+	return &cp
+}
+
+// GetEndCrystals returns snapshot of active End Crystals.
+func (e *Engine) GetEndCrystals() []EndCrystal {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	res := make([]EndCrystal, 0, len(e.EndCrystals))
+	for _, c := range e.EndCrystals {
+		res = append(res, *c)
+	}
+	return res
+}
+
+func (e *Engine) tickEnderDragon() {
+	dragon := e.EnderDragon
+	if dragon == nil {
+		return
+	}
+
+	if dragon.IsDying {
+		dragon.DeathTicks++
+		if dragon.DeathTicks >= 100 {
+			dragon.IsAlive = false
+			dragon.IsDying = false
+			// Spawn massive XP orbs
+			e.SpawnItemDrop(264, 64, Vec3{X: 0, Y: 68, Z: 0}, Vec3{Y: 0.2}) // Diamonds celebration
+		}
+		return
+	}
+
+	if !dragon.IsAlive {
+		return
+	}
+
+	// Flap wings
+	dragon.WingAngle += 0.2
+	if dragon.WingAngle > math.Pi*2 {
+		dragon.WingAngle -= math.Pi * 2
+	}
+
+	// Healing tether: find closest alive End Crystal within 45 blocks
+	dragon.HealingCrystalID = 0
+	for _, c := range e.EndCrystals {
+		if c.IsAlive && dragon.Position.DistanceTo(c.Position) < 45.0 {
+			dragon.HealingCrystalID = c.ID
+			dragon.Health = float32(math.Min(200.0, float64(dragon.Health+0.2))) // Regenerate
+			break
+		}
+	}
+
+	// Dragon AI Flight: Smooth 3D circular flight circling (0, 75, 0)
+	flightAngle := float64(e.TickCount%1200) * (2.0 * math.Pi / 300.0)
+	targetRadius := 40.0
+	targetHeight := 75.0 + math.Sin(flightAngle*2.0)*6.0
+
+	// Dive attack mode
+	if dragon.DiveCooldown > 0 {
+		dragon.DiveCooldown--
+	} else if len(e.Players) > 0 {
+		// Pick closest player to swoop down
+		for _, p := range e.Players {
+			if p.IsAlive {
+				targetRadius = 8.0
+				targetHeight = p.Position.Y + 2.0
+				dist := dragon.Position.DistanceTo(p.Position)
+				if dist < 4.0 {
+					p.Health -= 6.0
+					if p.Health <= 0 {
+						p.Health = 0
+						p.IsAlive = false
+					}
+					dragon.DiveCooldown = 300 // 15s between dives
+				}
+				break
+			}
+		}
+	}
+
+	destX := targetRadius * math.Cos(flightAngle)
+	destZ := targetRadius * math.Sin(flightAngle)
+	destPos := Vec3{X: destX, Y: targetHeight, Z: destZ}
+
+	toDest := destPos.Sub(dragon.Position)
+	distToDest := toDest.Length()
+	if distToDest > 0.1 {
+		dir := toDest.Scale(1.0 / distToDest)
+		speed := 0.35
+		dragon.Velocity = dir.Scale(speed)
+		dragon.Position = dragon.Position.Add(dragon.Velocity)
+		dragon.Yaw = float32(math.Atan2(-dir.X, dir.Z) * 180.0 / math.Pi)
+		dragon.Pitch = float32(-math.Asin(dir.Y) * 180.0 / math.Pi)
+	}
 }
