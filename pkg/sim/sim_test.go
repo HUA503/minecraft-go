@@ -4,6 +4,7 @@ import (
 	"math"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/HUA503/minecraft-go/pkg/inventory"
 	"github.com/HUA503/minecraft-go/pkg/world"
@@ -758,5 +759,126 @@ func TestEndDimensionBossAndCrystalExplosion(t *testing.T) {
 	dragonAfter := eng.GetEnderDragon()
 	if dragonAfter.Health >= 200.0 {
 		t.Fatalf("exploding tethered End Crystal should damage dragon, got health %f", dragonAfter.Health)
+	}
+}
+
+func TestEnderDragonDeathSettlementNoDeadlock(t *testing.T) {
+	eng := NewEngine()
+	eng.SwitchDimension(2) // The End
+
+	dragon := eng.GetEnderDragon()
+	if dragon == nil {
+		t.Fatalf("expected Ender Dragon boss spawned in The End")
+	}
+
+	// Deal fatal damage
+	killed := eng.DamageEnderDragon(200.0)
+	if !killed {
+		t.Fatalf("expected DamageEnderDragon to trigger death state")
+	}
+
+	done := make(chan struct{})
+	go func() {
+		for i := 0; i < 110; i++ {
+			eng.Tick()
+		}
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// Completed 110 ticks successfully without deadlocking!
+	case <-time.After(2 * time.Second):
+		t.Fatalf("FATAL: Engine.Tick deadlocked during Ender Dragon death settlement!")
+	}
+
+	finalDragon := eng.GetEnderDragon()
+	if finalDragon.IsAlive || finalDragon.IsDying {
+		t.Fatalf("expected dragon to be fully defeated after 110 death ticks, got alive=%v dying=%v", finalDragon.IsAlive, finalDragon.IsDying)
+	}
+
+	drops := eng.GetItemDrops()
+	if len(drops) == 0 {
+		t.Fatalf("expected celebration drops spawned after dragon death")
+	}
+}
+
+func TestDimensionSwitchRetainsModifiedBlocks(t *testing.T) {
+	eng := NewEngine()
+	// 1. Overworld block placement
+	eng.SetBlock(-85, 110, 25, 57) // Diamond block
+	if b := eng.GetBlock(-85, 110, 25); b != 57 {
+		t.Fatalf("expected diamond block 57 in Overworld, got %d", b)
+	}
+
+	// 2. Switch to Nether
+	eng.SwitchDimension(1)
+	if b := eng.GetBlock(-85, 110, 25); b == 57 {
+		t.Fatalf("overworld block should not be present at nether coordinates")
+	}
+	eng.SetBlock(10, 66, 10, 89) // Glowstone
+	if b := eng.GetBlock(10, 66, 10); b != 89 {
+		t.Fatalf("expected glowstone 89 in Nether, got %d", b)
+	}
+
+	// 3. Switch back to Overworld
+	eng.SwitchDimension(0)
+	if b := eng.GetBlock(-85, 110, 25); b != 57 {
+		t.Fatalf("re-entering Overworld lost placed block! Expected 57, got %d", b)
+	}
+
+	// 4. Switch back to Nether
+	eng.SwitchDimension(1)
+	if b := eng.GetBlock(10, 66, 10); b != 89 {
+		t.Fatalf("re-entering Nether lost placed block! Expected 89, got %d", b)
+	}
+}
+
+func TestFurnaceSmeltingAndDrop(t *testing.T) {
+	eng := NewEngine()
+	furnacePos := world.BlockPos{X: 10, Y: 64, Z: 10}
+
+	// 1. Place Furnace (ID 61)
+	eng.PlaceBlock(1, furnacePos, 61)
+	if b := eng.GetBlock(10, 64, 10); b != 61 {
+		t.Fatalf("expected furnace block at (10, 64, 10), got %d", b)
+	}
+
+	furnace := eng.GetOrCreateFurnace(furnacePos)
+	if furnace == nil {
+		t.Fatalf("expected furnace entity created")
+	}
+
+	// 2. Add Coal (263) and Iron Ore (15)
+	furnace.FuelSlot = inventory.ItemStack{ItemID: inventory.ItemCoal, Count: 1}
+	furnace.InputSlot = inventory.ItemStack{ItemID: 15, Count: 1} // Iron Ore
+
+	// 3. Run ticks until smelting completes (200 ticks = 1 item)
+	for i := 0; i < 205; i++ {
+		eng.Tick()
+	}
+
+	// Verify OutputSlot has Iron Ingot (ID 265)
+	if furnace.OutputSlot.ItemID != inventory.ItemIronIngot || furnace.OutputSlot.Count != 1 {
+		t.Fatalf("expected 1 Iron Ingot smelted in furnace, got ItemID=%d Count=%d", furnace.OutputSlot.ItemID, furnace.OutputSlot.Count)
+	}
+
+	// 4. Break furnace with pickaxe (tool ID 270: Wooden Pickaxe)
+	dropItem, ok := eng.BreakBlockWithTool(1, furnacePos, 270)
+	if !ok || dropItem != 61 {
+		t.Fatalf("expected furnace block to drop when mined, got drop=%d, ok=%v", dropItem, ok)
+	}
+
+	// Verify furnace dropped its smelted iron ingot
+	drops := eng.GetItemDrops()
+	foundIngot := false
+	for _, d := range drops {
+		if d.ItemID == inventory.ItemIronIngot {
+			foundIngot = true
+			break
+		}
+	}
+	if !foundIngot {
+		t.Fatalf("expected furnace contents (iron ingot) dropped when broken")
 	}
 }

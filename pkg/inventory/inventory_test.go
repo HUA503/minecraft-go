@@ -180,3 +180,55 @@ func TestToolStackLimit(t *testing.T) {
 			inv.Slots[0].Count, inv.Slots[1].Count, inv.Slots[2].Count)
 	}
 }
+
+func TestSlotLeftAndRightClickLogic(t *testing.T) {
+	// 1. Left-click pick up
+	cursor := ItemStack{}
+	slot := ItemStack{ItemID: ItemOakPlanks, Count: 30}
+	HandleSlotLeftClick(&cursor, &slot)
+	if cursor.ItemID != ItemOakPlanks || cursor.Count != 30 || !slot.IsEmpty() {
+		t.Fatalf("left click pickup failed: cursor=%+v, slot=%+v", cursor, slot)
+	}
+
+	// 2. Left-click place on empty slot
+	HandleSlotLeftClick(&cursor, &slot)
+	if !cursor.IsEmpty() || slot.ItemID != ItemOakPlanks || slot.Count != 30 {
+		t.Fatalf("left click place failed: cursor=%+v, slot=%+v", cursor, slot)
+	}
+
+	// 3. Left-click stack matching items
+	cursor = ItemStack{ItemID: ItemOakPlanks, Count: 40}
+	HandleSlotLeftClick(&cursor, &slot)
+	// slot should have 64, cursor should have 6 left
+	if slot.Count != 64 || cursor.Count != 6 {
+		t.Fatalf("left click stack failed: slot=%d, cursor=%d", slot.Count, cursor.Count)
+	}
+
+	// 4. Left-click swap different items
+	cursor = ItemStack{ItemID: ItemCobblestone, Count: 10}
+	HandleSlotLeftClick(&cursor, &slot)
+	if cursor.ItemID != ItemOakPlanks || cursor.Count != 64 || slot.ItemID != ItemCobblestone || slot.Count != 10 {
+		t.Fatalf("left click swap failed: cursor=%+v, slot=%+v", cursor, slot)
+	}
+
+	// 5. Right-click pick up half stack (rounded up)
+	cursor = ItemStack{}
+	slot = ItemStack{ItemID: ItemCobblestone, Count: 11}
+	HandleSlotRightClick(&cursor, &slot)
+	if cursor.Count != 6 || slot.Count != 5 {
+		t.Fatalf("right click half pickup failed: cursor=%d, slot=%d", cursor.Count, slot.Count)
+	}
+
+	// 6. Right-click place single item onto empty slot
+	slotEmpty := ItemStack{}
+	HandleSlotRightClick(&cursor, &slotEmpty)
+	if cursor.Count != 5 || slotEmpty.Count != 1 || slotEmpty.ItemID != ItemCobblestone {
+		t.Fatalf("right click place 1 failed: cursor=%d, slot=%d", cursor.Count, slotEmpty.Count)
+	}
+
+	// 7. Right-click place single item onto matching slot
+	HandleSlotRightClick(&cursor, &slotEmpty)
+	if cursor.Count != 4 || slotEmpty.Count != 2 {
+		t.Fatalf("right click stack 1 failed: cursor=%d, slot=%d", cursor.Count, slotEmpty.Count)
+	}
+}

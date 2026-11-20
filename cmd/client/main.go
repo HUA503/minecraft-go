@@ -10,6 +10,7 @@ import (
 	mrand "math/rand"
 	"net"
 	"os"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"strconv"
@@ -32,7 +33,45 @@ type RemotePlayer struct {
 	Pitch float32
 }
 
+type ClientScreenState int
+
+const (
+	ScreenTitle ClientScreenState = iota
+	ScreenWorldSelect
+	ScreenNewWorld
+	ScreenPlaying
+)
+
 type Client struct {
+	wndRef            *render.Window
+	screenState       ClientScreenState
+	saveMgr           *world.SaveManager
+	currentWorldDir   string
+	currentWorldName  string
+	availableWorlds   []render.WorldInfo
+	selectedWorldIdx  int
+	newWorldName      string
+	newWorldMode      int // 0: Survival, 1: Creative
+	newWorldSeedText  string
+	newWorldActiveBox int // 0: Name, 1: Seed
+	titleSpBtn        [4]int
+	titleMpBtn        [4]int
+	titleQuitBtn      [4]int
+	wsPlayBtn         [4]int
+	wsNewBtn          [4]int
+	wsBackBtn         [4]int
+	wsRects           [][4]int
+	nwCreateBtn       [4]int
+	nwCancelBtn       [4]int
+	nwModeBtn         [4]int
+	nwNameBox         [4]int
+	nwSeedBox         [4]int
+	cursorItem        inventory.ItemStack
+	craftGrid         [9]inventory.ItemStack
+	craftResult       inventory.ItemStack
+	isCraftingTableOpen bool
+	isFurnaceOpen     bool
+	currentFurnacePos world.BlockPos
 	serverAddr   string
 	username     string
 	uuid         [16]byte
@@ -146,6 +185,342 @@ func findSafeSpawnPoint(generator *gen.Generator, engine *sim.Engine) sim.Vec3 {
 	return sim.Vec3{X: 8.5, Y: 66.0, Z: 8.5}
 }
 
+func handleSlotLeftClick(cursor *inventory.ItemStack, slot *inventory.ItemStack) {
+	inventory.HandleSlotLeftClick(cursor, slot)
+}
+
+func handleSlotRightClick(cursor *inventory.ItemStack, slot *inventory.ItemStack) {
+	inventory.HandleSlotRightClick(cursor, slot)
+}
+
+func (c *Client) updateCraftResult() {
+	if c.craftingMgr == nil {
+		return
+	}
+	if c.isCraftingTableOpen {
+		grid := make([]int32, 9)
+		for i := 0; i < 9; i++ {
+			if !c.craftGrid[i].IsEmpty() {
+				grid[i] = c.craftGrid[i].ItemID
+			}
+		}
+		out, ok := c.craftingMgr.MatchCrafting(grid, 3)
+		if ok {
+			c.craftResult = out
+		} else {
+			c.craftResult = inventory.ItemStack{}
+		}
+	} else {
+		grid := make([]int32, 4)
+		for i := 0; i < 4; i++ {
+			if !c.craftGrid[i].IsEmpty() {
+				grid[i] = c.craftGrid[i].ItemID
+			}
+		}
+		out, ok := c.craftingMgr.MatchCrafting(grid, 2)
+		if ok {
+			c.craftResult = out
+		} else {
+			c.craftResult = inventory.ItemStack{}
+		}
+	}
+}
+
+func (c *Client) CloseCurrentGUI() {
+	if c.player == nil || c.player.Inventory == nil {
+		c.showInventoryGUI = false
+		c.isCraftingTableOpen = false
+		c.isFurnaceOpen = false
+		if c.wndRef != nil {
+			c.wndRef.SetMouseCaptured(true)
+		}
+		return
+	}
+
+	for i := range c.craftGrid {
+		if !c.craftGrid[i].IsEmpty() {
+			rem := c.player.Inventory.AddItem(c.craftGrid[i].ItemID, c.craftGrid[i].Count)
+			if rem > 0 && c.engine != nil {
+				c.engine.SpawnItemDrop(c.craftGrid[i].ItemID, rem, c.player.Position.Add(sim.Vec3{X: 0, Y: 1.0, Z: 0}), sim.Vec3{})
+			}
+			c.craftGrid[i] = inventory.ItemStack{}
+		}
+	}
+	c.craftResult = inventory.ItemStack{}
+
+	if !c.cursorItem.IsEmpty() {
+		rem := c.player.Inventory.AddItem(c.cursorItem.ItemID, c.cursorItem.Count)
+		if rem > 0 && c.engine != nil {
+			c.engine.SpawnItemDrop(c.cursorItem.ItemID, rem, c.player.Position.Add(sim.Vec3{X: 0, Y: 1.0, Z: 0}), sim.Vec3{})
+		}
+		c.cursorItem = inventory.ItemStack{}
+	}
+
+	c.showInventoryGUI = false
+	c.isCraftingTableOpen = false
+	c.isFurnaceOpen = false
+	if c.wndRef != nil {
+		c.wndRef.SetMouseCaptured(true)
+	}
+}
+
+func (c *Client) scanSavedWorlds() {
+	c.availableWorlds = nil
+	savesDir := "saves"
+	_ = os.MkdirAll(savesDir, 0755)
+	entries, err := os.ReadDir(savesDir)
+	if err != nil {
+		return
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			dirPath := filepath.Join(savesDir, entry.Name())
+			datPath := filepath.Join(dirPath, "level.dat")
+			if fi, err := os.Stat(datPath); err == nil {
+				wInfo := render.WorldInfo{
+					DirName:   entry.Name(),
+					LevelName: entry.Name(),
+					LastTime:  fi.ModTime(),
+				}
+				sm, err := world.NewSaveManager(dirPath)
+				if err == nil {
+					lvl, err := sm.LoadLevel()
+					if err == nil && lvl != nil {
+						if lvl.LevelName != "" {
+							wInfo.LevelName = lvl.LevelName
+						}
+						wInfo.GameMode = lvl.GameMode
+					}
+					_ = sm.Close()
+				}
+				c.availableWorlds = append(c.availableWorlds, wInfo)
+			}
+		}
+	}
+}
+
+func (c *Client) StartSingleplayerWorld(worldDirName string, isNew bool, newSeed int64, newLevelName string, newGameMode int) {
+	worldPath := filepath.Join("saves", worldDirName)
+	_ = os.MkdirAll(worldPath, 0755)
+
+	sm, err := world.NewSaveManager(worldPath)
+	if err != nil {
+		log.Printf("[Client] Failed to open save manager: %v\n", err)
+	}
+	c.saveMgr = sm
+	c.currentWorldDir = worldPath
+	c.currentWorldName = newLevelName
+	if c.currentWorldName == "" {
+		c.currentWorldName = worldDirName
+	}
+
+	c.engine = sim.NewEngine()
+	if sm != nil {
+		c.engine.SetStorage(sm)
+	}
+
+	var seed int64
+	var spawnPos sim.Vec3
+	var savedPlayer *world.PlayerSaveData
+
+	if isNew {
+		if newSeed == 0 {
+			seed = time.Now().UnixNano()
+		} else {
+			seed = newSeed
+		}
+		c.genOverworld = gen.NewGenerator(seed, gen.DimensionOverworld)
+		c.genNether = gen.NewGenerator(seed, gen.DimensionNether)
+		c.genEnd = gen.NewGenerator(seed, gen.DimensionEnd)
+		c.currentDim = gen.DimensionOverworld
+
+		spawnPos = findSafeSpawnPoint(c.genOverworld, c.engine)
+		c.player = c.engine.AddPlayer(c.username, c.uuid, spawnPos)
+		c.player.GameMode = newGameMode
+		c.isCreative = (newGameMode == 1)
+		if c.isCreative {
+			c.isFlying = true
+		}
+
+		// Initial level.dat save
+		lvlData := &world.LevelData{
+			Seed:      seed,
+			SpawnX:    int32(spawnPos.X),
+			SpawnY:    int32(spawnPos.Y),
+			SpawnZ:    int32(spawnPos.Z),
+			LevelName: c.currentWorldName,
+			GameMode:  newGameMode,
+		}
+		_ = sm.SaveLevel(lvlData)
+
+		// Spawn authentic natural herds and flocks around meadow
+		spawnMobOnSurface := func(mobType sim.MobType, ox, oz float64) {
+			mx := spawnPos.X + ox
+			mz := spawnPos.Z + oz
+			wx := int32(math.Floor(mx))
+			wz := int32(math.Floor(mz))
+			cp := world.BlockPos{X: wx, Y: 0, Z: wz}.ToChunkPos()
+			chk := c.engine.GetChunk(cp)
+			if chk == nil {
+				chk = c.genOverworld.GenerateChunk(cp)
+				c.engine.LoadChunk(cp, chk)
+			}
+			surfY := spawnPos.Y
+			for y := int32(110); y >= 55; y-- {
+				b := chk.GetBlock(wx, y, wz)
+				if sim.IsSolidBlock(b) {
+					surfY = float64(y + 1)
+					break
+				}
+			}
+			c.engine.SpawnMob(mobType, sim.Vec3{X: mx, Y: surfY, Z: mz})
+		}
+
+		spawnMobOnSurface(sim.MobCow, -6.5, 5.0)
+		spawnMobOnSurface(sim.MobCow, -8.0, 7.0)
+		spawnMobOnSurface(sim.MobPig, 6.0, 4.5)
+		spawnMobOnSurface(sim.MobPig, 8.0, 6.0)
+		spawnMobOnSurface(sim.MobSheep, -12.0, -8.0)
+		spawnMobOnSurface(sim.MobSheep, -10.5, -10.0)
+		spawnMobOnSurface(sim.MobChicken, 9.0, -7.0)
+		spawnMobOnSurface(sim.MobChicken, 11.0, -8.5)
+		// Hostile mobs (Zombies, Skeletons, Creepers) spawn naturally in dark caves or night per vanilla rules
+	} else {
+		lvlData, err := sm.LoadLevel()
+		if err == nil && lvlData != nil {
+			seed = lvlData.Seed
+			newGameMode = lvlData.GameMode
+			if lvlData.LevelName != "" {
+				c.currentWorldName = lvlData.LevelName
+			}
+			savedPlayer = lvlData.Player
+			spawnPos = sim.Vec3{X: float64(lvlData.SpawnX), Y: float64(lvlData.SpawnY), Z: float64(lvlData.SpawnZ)}
+		} else {
+			seed = time.Now().UnixNano()
+			spawnPos = sim.Vec3{X: 8.0, Y: 66.0, Z: 8.0}
+		}
+
+		c.genOverworld = gen.NewGenerator(seed, gen.DimensionOverworld)
+		c.genNether = gen.NewGenerator(seed, gen.DimensionNether)
+		c.genEnd = gen.NewGenerator(seed, gen.DimensionEnd)
+		c.currentDim = gen.DimensionOverworld
+
+		posToSpawn := spawnPos
+		if savedPlayer != nil && savedPlayer.Y > 0 {
+			posToSpawn = sim.Vec3{X: savedPlayer.X, Y: savedPlayer.Y, Z: savedPlayer.Z}
+		}
+		c.player = c.engine.AddPlayer(c.username, c.uuid, posToSpawn)
+		c.player.GameMode = newGameMode
+		c.isCreative = (newGameMode == 1)
+		if c.isCreative {
+			c.isFlying = true
+		}
+
+		if savedPlayer != nil {
+			c.player.Health = savedPlayer.Health
+			c.player.Hunger = savedPlayer.Hunger
+			c.camera.Yaw = float64(savedPlayer.Yaw)
+			c.camera.Pitch = float64(savedPlayer.Pitch)
+			for _, item := range savedPlayer.Inventory {
+				if item.Slot >= 0 && item.Slot < 36 {
+					c.player.Inventory.Slots[item.Slot] = inventory.ItemStack{
+						ItemID: item.ItemID,
+						Count:  item.Count,
+						Damage: item.Damage,
+					}
+				}
+			}
+		}
+	}
+
+	c.camera.X = c.player.Position.X
+	c.camera.Y = c.player.Position.Y + 1.62
+	c.camera.Z = c.player.Position.Z
+
+	c.meshMu.Lock()
+	c.meshCache = make(map[[3]int32]*render.Mesh)
+	c.loadedChunks = make(map[world.ChunkPos]bool)
+	c.meshMu.Unlock()
+
+	for i := 0; i < 25; i++ {
+		c.EnsureChunksAroundPlayer(c.player.Position.X, c.player.Position.Z, 1)
+	}
+
+	c.engine.StartTickLoop()
+	c.screenState = ScreenPlaying
+	if c.wndRef != nil {
+		c.wndRef.SetMouseCaptured(true)
+	}
+}
+
+func (c *Client) SaveAndQuitToTitle() {
+	if c.engine != nil {
+		c.engine.SaveAll()
+
+		if c.saveMgr != nil && c.player != nil {
+			savedInv := make([]world.SavedItemStack, 0, 36)
+			for slotIdx, s := range c.player.Inventory.Slots {
+				if !s.IsEmpty() {
+					savedInv = append(savedInv, world.SavedItemStack{
+						Slot:   slotIdx,
+						ItemID: s.ItemID,
+						Count:  s.Count,
+						Damage: s.Damage,
+					})
+				}
+			}
+			gm := 0
+			if c.isCreative {
+				gm = 1
+			}
+			seed := int64(1)
+			if c.genOverworld != nil {
+				seed = c.genOverworld.Seed
+			}
+			lvl := &world.LevelData{
+				Seed:      seed,
+				SpawnX:    int32(c.player.Position.X),
+				SpawnY:    int32(c.player.Position.Y),
+				SpawnZ:    int32(c.player.Position.Z),
+				LevelName: c.currentWorldName,
+				GameMode:  gm,
+				Player: &world.PlayerSaveData{
+					X:         c.player.Position.X,
+					Y:         c.player.Position.Y,
+					Z:         c.player.Position.Z,
+					Yaw:       float32(c.camera.Yaw),
+					Pitch:     float32(c.camera.Pitch),
+					Health:    c.player.Health,
+					Hunger:    c.player.Hunger,
+					GameMode:  gm,
+					Inventory: savedInv,
+				},
+			}
+			_ = c.saveMgr.SaveLevel(lvl)
+			_ = c.saveMgr.Close()
+			c.saveMgr = nil
+		}
+
+		c.engine.Stop()
+		c.engine = nil
+		c.player = nil
+	}
+
+	c.meshMu.Lock()
+	c.meshCache = make(map[[3]int32]*render.Mesh)
+	c.loadedChunks = make(map[world.ChunkPos]bool)
+	c.meshMu.Unlock()
+
+	c.showPauseMenu = false
+	c.showInventoryGUI = false
+	c.isCraftingTableOpen = false
+	c.isFurnaceOpen = false
+	c.screenState = ScreenTitle
+	if c.wndRef != nil {
+		c.wndRef.SetMouseCaptured(false)
+	}
+}
+
 func NewClient(serverAddr, username string, isSingleplayer bool, width, height int) *Client {
 	var u [16]byte
 	rand.Read(u[:])
@@ -168,89 +543,15 @@ func NewClient(serverAddr, username string, isSingleplayer bool, width, height i
 		targetFov:        70.0,
 		equipProgress:    1.0,
 		lastSelectedSlot: 1,
+		screenState:      ScreenTitle,
+		newWorldName:     "新世界",
+		newWorldMode:     0,
 	}
 
-	if isSingleplayer {
-		cli.engine = sim.NewEngine()
-		seed := time.Now().UnixNano()
-		cli.genOverworld = gen.NewGenerator(seed, gen.DimensionOverworld)
-		cli.genNether = gen.NewGenerator(seed, gen.DimensionNether)
-		cli.genEnd = gen.NewGenerator(seed, gen.DimensionEnd)
-		cli.currentDim = gen.DimensionOverworld
-		cli.engine.StartTickLoop()
-
-		spawnPos := findSafeSpawnPoint(cli.genOverworld, cli.engine)
-		cli.player = cli.engine.AddPlayer(username, u, spawnPos)
-		cli.camera.X = spawnPos.X
-		cli.camera.Y = spawnPos.Y + 1.62
-		cli.camera.Z = spawnPos.Z
-
-		// Classic starter items in hotbar
-		cli.player.Inventory.Slots[0] = inventory.ItemStack{ItemID: inventory.ItemWoodenPickaxe, Count: 1}
-		cli.player.Inventory.Slots[1] = inventory.ItemStack{ItemID: inventory.ItemOakPlanks, Count: 64}
-		cli.player.Inventory.Slots[2] = inventory.ItemStack{ItemID: inventory.ItemCobblestone, Count: 64}
-		cli.player.Inventory.Slots[3] = inventory.ItemStack{ItemID: inventory.ItemDirt, Count: 64}
-		cli.player.Inventory.Slots[4] = inventory.ItemStack{ItemID: 268, Count: 1} // Wooden Sword
-		cli.player.Inventory.Slots[5] = inventory.ItemStack{ItemID: 271, Count: 1} // Wooden Axe
-		cli.player.Inventory.Slots[6] = inventory.ItemStack{ItemID: 269, Count: 1} // Wooden Shovel
-		cli.player.Inventory.Slots[7] = inventory.ItemStack{ItemID: inventory.ItemCookedPorkchop, Count: 16}
-		cli.player.Inventory.Slots[8] = inventory.ItemStack{ItemID: inventory.ItemApple, Count: 16}
-		cli.player.Inventory.SelectedHotbar = 1 // Start on placeable Oak Planks by default
-
-		// Helper to spawn mob accurately resting on surface block
-		spawnMobOnSurface := func(mobType sim.MobType, ox, oz float64) {
-			mx := spawnPos.X + ox
-			mz := spawnPos.Z + oz
-			wx := int32(math.Floor(mx))
-			wz := int32(math.Floor(mz))
-			cp := world.BlockPos{X: wx, Y: 0, Z: wz}.ToChunkPos()
-			chk := cli.engine.GetChunk(cp)
-			if chk == nil {
-				chk = cli.genOverworld.GenerateChunk(cp)
-				cli.engine.LoadChunk(cp, chk)
-			}
-			surfY := spawnPos.Y
-			for y := int32(110); y >= 55; y-- {
-				b := chk.GetBlock(wx, y, wz)
-				if sim.IsSolidBlock(b) {
-					surfY = float64(y + 1)
-					break
-				}
-			}
-			cli.engine.SpawnMob(mobType, sim.Vec3{X: mx, Y: surfY, Z: mz})
-		}
-
-		// Spawn authentic natural herds and flocks around meadow
-		// 1. Cow Herd (3 cows)
-		spawnMobOnSurface(sim.MobCow, -6.5, 5.0)
-		spawnMobOnSurface(sim.MobCow, -8.0, 7.0)
-		spawnMobOnSurface(sim.MobCow, -5.0, 8.5)
-
-		// 2. Pig Herd (3 pigs)
-		spawnMobOnSurface(sim.MobPig, 6.0, 4.5)
-		spawnMobOnSurface(sim.MobPig, 8.0, 6.0)
-		spawnMobOnSurface(sim.MobPig, 5.0, 7.5)
-
-		// 3. Sheep Flock (4 sheep)
-		spawnMobOnSurface(sim.MobSheep, -12.0, -8.0)
-		spawnMobOnSurface(sim.MobSheep, -10.5, -10.0)
-		spawnMobOnSurface(sim.MobSheep, -13.5, -6.5)
-		spawnMobOnSurface(sim.MobSheep, -11.0, -5.0)
-
-		// 4. Chicken Flock (3 chickens)
-		spawnMobOnSurface(sim.MobChicken, 9.0, -7.0)
-		spawnMobOnSurface(sim.MobChicken, 11.0, -8.5)
-		spawnMobOnSurface(sim.MobChicken, 8.0, -10.0)
-
-		// 5. Hostile mobs spawned at distance (> 24 blocks)
-		spawnMobOnSurface(sim.MobZombie, 26.0, 26.0)
-		spawnMobOnSurface(sim.MobSkeleton, -28.0, 24.0)
-		spawnMobOnSurface(sim.MobCreeper, 30.0, -28.0)
-
-		// Pre-mesh immediate spawn sections synchronously so terrain is immediately visible
-		for i := 0; i < 25; i++ {
-			cli.EnsureChunksAroundPlayer(spawnPos.X, spawnPos.Z, 1)
-		}
+	if isSingleplayer && serverAddr == "" {
+		cli.scanSavedWorlds()
+	} else if serverAddr != "" {
+		cli.screenState = ScreenPlaying
 	}
 
 	return cli
@@ -354,6 +655,10 @@ func (c *Client) EnsureChunksAroundPlayer(playerX, playerZ float64, radius int32
 		for dz := -radius - 1; dz <= radius + 1; dz++ {
 			cp := world.ChunkPos{X: pcx + dx, Z: pcz + dz}
 			if !c.loadedChunks[cp] {
+				if existing := c.engine.GetChunk(cp); existing != nil {
+					c.loadedChunks[cp] = true
+					continue
+				}
 				chunk := generator.GenerateChunk(cp)
 				c.engine.LoadChunk(cp, chunk)
 				c.loadedChunks[cp] = true
@@ -372,14 +677,29 @@ func (c *Client) EnsureChunksAroundPlayer(playerX, playerZ float64, radius int32
 		return c.engine.GetBlock(x, y, z)
 	}
 
-	// Pass 2: Progressive section meshing (build at most 2 sections per frame, prioritizing surface sections sy=4,3,5 first)
+	// Pass 2: Progressive section meshing (build at most 2 sections per frame)
+	// Prioritize sections closest to player camera (covering Y=-64 up to Y=256)
+	camSY := int32(math.Floor(c.camera.Y / 16.0))
 	c.meshMu.RLock()
 	var unmeshed [][3]int32
-	preferredSY := []int32{4, 3, 5, 2, 6, 1, 7, 0}
+	allSY := []int32{
+		camSY, camSY + 1, camSY - 1, camSY + 2, camSY - 2,
+		camSY + 3, camSY - 3, camSY + 4, camSY - 4,
+		4, 3, 5, 2, 6, 1, 7, 0, -1, -2, -3, -4, 8, 9, 10, 11, 12, 13, 14, 15,
+	}
+	seenSY := make(map[int32]bool)
+	var orderedSY []int32
+	for _, sy := range allSY {
+		if sy >= -4 && sy <= 15 && !seenSY[sy] {
+			seenSY[sy] = true
+			orderedSY = append(orderedSY, sy)
+		}
+	}
+
 	for dx := -radius; dx <= radius; dx++ {
 		for dz := -radius; dz <= radius; dz++ {
 			cp := world.ChunkPos{X: pcx + dx, Z: pcz + dz}
-			for _, sy := range preferredSY {
+			for _, sy := range orderedSY {
 				key := [3]int32{cp.X, sy, cp.Z}
 				if c.meshCache[key] == nil {
 					unmeshed = append(unmeshed, key)
@@ -742,7 +1062,7 @@ func (c *Client) PhysicsStep(fwdInput, strafeInput float64, jumpRequested bool, 
 			} else {
 				c.player.Exhaustion += 0.05
 			}
-		} else if !c.player.OnGround {
+		} else {
 			// Air Gravity: Authentic Minecraft 32.0 m/s^2 (0.08 blocks/tick^2 * 400), terminal velocity -78.4 m/s
 			c.player.Velocity.Y -= 32.0 * dt
 			if c.player.Velocity.Y < -78.4 {
@@ -1540,11 +1860,27 @@ func (c *Client) UpdateRightClick(isRightDown bool, dt float64) {
 	// 2. Block Placement or Interactive Block Clicking (when Right Click is held)
 	if isRightDown {
 		if c.placeCooldown <= 0 {
-			// Check if clicking on Crafting Table
+			// Check if clicking on Crafting Table or Furnace
 			if c.hasTarget {
 				targetID := c.engine.GetBlock(c.targetedPos.X, c.targetedPos.Y, c.targetedPos.Z)
 				if targetID == 58 { // Crafting Table
-					c.showInventoryGUI = !c.showInventoryGUI
+					c.showInventoryGUI = true
+					c.isCraftingTableOpen = true
+					c.isFurnaceOpen = false
+					if c.wndRef != nil {
+						c.wndRef.SetMouseCaptured(false)
+					}
+					c.placeCooldown = 0.3
+					return
+				}
+				if targetID == 61 || targetID == 62 { // Furnace / Lit Furnace
+					c.showInventoryGUI = false
+					c.isCraftingTableOpen = false
+					c.isFurnaceOpen = true
+					c.currentFurnacePos = c.targetedPos
+					if c.wndRef != nil {
+						c.wndRef.SetMouseCaptured(false)
+					}
 					c.placeCooldown = 0.3
 					return
 				}
@@ -1739,6 +2075,34 @@ func (c *Client) RenderFrame() {
 			v1 := mesh.Vertices[mesh.Indices[i+1]]
 			v2 := mesh.Vertices[mesh.Indices[i+2]]
 
+			// Exact face normal culling for translucent water faces (skips non-facing surfaces & eliminates water z-fighting)
+			switch v0.FaceIndex {
+			case 0: // +X face (visible only if camX > v0.X)
+				if camX <= float64(v0.X) {
+					continue
+				}
+			case 1: // -X face (visible only if camX < v0.X)
+				if camX >= float64(v0.X) {
+					continue
+				}
+			case 2: // +Y face (top, visible only if camY > v0.Y)
+				if camY <= float64(v0.Y) {
+					continue
+				}
+			case 3: // -Y face (bottom, visible only if camY < v0.Y)
+				if camY >= float64(v0.Y) {
+					continue
+				}
+			case 4: // +Z face (visible only if camZ > v0.Z)
+				if camZ <= float64(v0.Z) {
+					continue
+				}
+			case 5: // -Z face (visible only if camZ < v0.Z)
+				if camZ >= float64(v0.Z) {
+					continue
+				}
+			}
+
 			vx0, vy0, vz0 := c.camera.ToViewSpace(float64(v0.X), float64(v0.Y), float64(v0.Z))
 			vx1, vy1, vz1 := c.camera.ToViewSpace(float64(v1.X), float64(v1.Y), float64(v1.Z))
 			vx2, vy2, vz2 := c.camera.ToViewSpace(float64(v2.X), float64(v2.Y), float64(v2.Z))
@@ -1816,9 +2180,20 @@ func (c *Client) RenderFrame() {
 		c.framebuf.DrawNetherPortalOverlay(float32(c.portalStandTime / 1.5))
 	}
 
-	// 6. Draw 2D Inventory & Crafting GUI if toggled (E key)
+	// 6. Draw 2D Inventory, Crafting Table, or Furnace GUI if toggled
 	if c.showInventoryGUI && c.player != nil && c.player.Inventory != nil {
-		c.framebuf.DrawInventoryGUI(c.player.Inventory)
+		mx, my := -1, -1
+		if c.wndRef != nil {
+			mx, my = c.wndRef.GetCursorClientPos(c.framebuf.Width, c.framebuf.Height)
+		}
+		c.framebuf.DrawCraftingGUI(c.player.Inventory, c.craftGrid[:], c.craftResult, c.isCraftingTableOpen, c.cursorItem, mx, my)
+	} else if c.isFurnaceOpen && c.player != nil && c.player.Inventory != nil && c.engine != nil {
+		mx, my := -1, -1
+		if c.wndRef != nil {
+			mx, my = c.wndRef.GetCursorClientPos(c.framebuf.Width, c.framebuf.Height)
+		}
+		furnace := c.engine.Furnaces[c.currentFurnacePos]
+		c.framebuf.DrawFurnaceGUI(furnace, c.player.Inventory, c.cursorItem, mx, my)
 	}
 
 	// 7. Draw F3 Debug Screen overlay if toggled (F3 key)
@@ -1931,7 +2306,7 @@ func (c *Client) drawMob(m *sim.MobEntity) {
 
 	yaw := float64(m.Yaw)
 	pitch := float64(m.Pitch)
-	hurtFlash := m.HurtTime > 0
+	hurtFlash := m.IsHurt()
 
 	// Leg-swing animation: pitch angle in degrees alternating dynamically
 	walkSwing := 0.0
@@ -3050,26 +3425,27 @@ func (c *Client) drawHeldItem() {
 
 	if selected.IsEmpty() {
 		// Steve's authentic first-person player arm / fist (prominent 3D angled limb)
-		c.framebuf.DrawRect(hx+35, hy+60, 80, 115, sleeveTone)
-		c.framebuf.DrawRect(hx+30, hy+54, 88, 7, cuffTone)
+		c.framebuf.DrawRect(hx+20, hy+40, 95, 140, sleeveTone)
+		c.framebuf.DrawRect(hx+15, hy+32, 102, 10, cuffTone)
 		// Forearm & wrist
-		c.framebuf.DrawRect(hx+40, hy+22, 65, 34, skinTone)
-		c.framebuf.DrawRect(hx+35, hy+4, 72, 22, skinShade)
+		c.framebuf.DrawRect(hx+25, hy-8, 80, 42, skinTone)
+		c.framebuf.DrawRect(hx+20, hy-28, 85, 26, skinShade)
 		// Knuckles & thumb details
-		c.framebuf.DrawRect(hx+32, hy+6, 20, 16, skinTone)
-		c.framebuf.DrawRect(hx+52, hy+1, 14, 8, skinTone)
-		c.framebuf.DrawRect(hx+68, hy+1, 14, 8, skinTone)
+		c.framebuf.DrawRect(hx+18, hy-26, 26, 20, skinTone)
+		c.framebuf.DrawRect(hx+42, hy-32, 18, 12, skinTone)
+		c.framebuf.DrawRect(hx+62, hy-32, 18, 12, skinTone)
 		return
 	}
 
 	// 1. Food Eating Hand & Jitter
 	if inventory.IsFood(selected.ItemID) {
-		fx := hx - 10
-		fy := hy - 15
+		fx := hx - 30
+		fy := hy - 35
 		if c.isEating {
-			fy -= 24 + int(math.Sin(c.eatTimer*40.0)*5.0)
-			fx -= 16 + int(math.Cos(c.eatTimer*40.0)*3.0)
+			fy -= 24 + int(math.Sin(c.eatTimer*40.0)*6.0)
+			fx -= 16 + int(math.Cos(c.eatTimer*40.0)*4.0)
 		}
+		foodScale := 8
 		sprite := render.GetItemSprite16x16(selected.ItemID)
 		for y := 0; y < 16; y++ {
 			for x := 0; x < 16; x++ {
@@ -3077,23 +3453,24 @@ func (c *Client) drawHeldItem() {
 				if (col >> 24) == 0 {
 					continue
 				}
-				sx := fx + x*5
-				sy := fy + y*5
-				c.framebuf.DrawRect(sx+1, sy+1, 5, 5, darkenColor(col, 0.65))
-				c.framebuf.DrawRect(sx, sy, 5, 5, col)
+				sx := fx + x*foodScale
+				sy := fy + y*foodScale
+				c.framebuf.DrawRect(sx+1, sy+1, foodScale, foodScale, darkenColor(col, 0.60))
+				c.framebuf.DrawRect(sx, sy, foodScale, foodScale, col)
 			}
 		}
 		// Steve's grasping hand holding bottom of food item
-		c.framebuf.DrawRect(fx+18, fy+52, 42, 26, skinTone)
-		c.framebuf.DrawRect(fx+28, fy+74, 56, 85, sleeveTone)
-		c.framebuf.DrawRect(fx+24, fy+70, 62, 6, cuffTone)
+		c.framebuf.DrawRect(fx+25, fy+90, 56, 36, skinTone)
+		c.framebuf.DrawRect(fx+38, fy+122, 70, 10, cuffTone)
+		c.framebuf.DrawRect(fx+42, fy+132, 85, 110, sleeveTone)
 		return
 	}
 
 	// 2. Torch (ID 50)
 	if selected.ItemID == 50 {
-		tx := hx + 10
-		ty := hy - 35
+		tx := hx - 10
+		ty := hy - 65
+		torchScale := 8
 		sprite := render.GetItemSprite16x16(selected.ItemID)
 		for y := 0; y < 16; y++ {
 			for x := 0; x < 16; x++ {
@@ -3101,50 +3478,56 @@ func (c *Client) drawHeldItem() {
 				if (col >> 24) == 0 {
 					continue
 				}
-				sx := tx + x*5
-				sy := ty + y*5
-				c.framebuf.DrawRect(sx+1, sy+1, 5, 5, darkenColor(col, 0.65))
-				c.framebuf.DrawRect(sx, sy, 5, 5, col)
+				sx := tx + x*torchScale
+				sy := ty + y*torchScale
+				c.framebuf.DrawRect(sx+1, sy+1, torchScale, torchScale, darkenColor(col, 0.60))
+				c.framebuf.DrawRect(sx, sy, torchScale, torchScale, col)
 			}
 		}
 		// Hand grasping lower post
-		c.framebuf.DrawRect(tx+24, ty+48, 34, 26, skinTone)
-		c.framebuf.DrawRect(tx+32, ty+72, 52, 85, sleeveTone)
-		c.framebuf.DrawRect(tx+28, ty+68, 58, 6, cuffTone)
+		c.framebuf.DrawRect(tx+32, ty+80, 48, 36, skinTone)
+		c.framebuf.DrawRect(tx+45, ty+112, 65, 10, cuffTone)
+		c.framebuf.DrawRect(tx+48, ty+122, 80, 110, sleeveTone)
 		return
 	}
 
-	// 3. Tools (Pickaxe, Sword, Axe, Shovel, Hoe)
+	// 3. Tools (Pickaxe, Sword, Axe, Shovel, Hoe) - authentic hero scale
 	props, isTool := inventory.GetToolProperties(selected.ItemID)
 	if isTool {
 		_ = props
 		sprite := render.GetItemSprite16x16(selected.ItemID)
-		toolX := hx - 40
-		toolY := hy - 50
-		// Render authentic upright tool sprite at authentic 5x scale (80x80 pixels)
+		toolScale := 9 // 9px per texel gives ~144x144px heroic sized weapon
+		toolX := hx - 65
+		toolY := hy - 80
 		for y := 0; y < 16; y++ {
 			for x := 0; x < 16; x++ {
 				col := sprite[y][x]
 				if (col >> 24) == 0 {
 					continue
 				}
-				sx := toolX + x*5
-				sy := toolY + y*5
-				c.framebuf.DrawRect(sx+1, sy+1, 5, 5, darkenColor(col, 0.65))
-				c.framebuf.DrawRect(sx, sy, 5, 5, col)
+				sx := toolX + x*toolScale
+				sy := toolY + y*toolScale
+				c.framebuf.DrawRect(sx+1, sy+1, toolScale, toolScale, darkenColor(col, 0.60))
+				c.framebuf.DrawRect(sx, sy, toolScale, toolScale, col)
 			}
 		}
-		// Steve's fist grasping the lower handle
-		c.framebuf.DrawRect(toolX+8, toolY+52, 34, 26, skinTone)
-		c.framebuf.DrawRect(toolX+18, toolY+74, 56, 90, sleeveTone)
-		c.framebuf.DrawRect(toolX+14, toolY+70, 62, 6, cuffTone)
+		// Steve's fist and forearm grasping the lower handle
+		handBaseX := toolX + 2*toolScale
+		handBaseY := toolY + 10*toolScale
+		c.framebuf.DrawRect(handBaseX-10, handBaseY-8, 52, 44, skinTone)
+		c.framebuf.DrawRect(handBaseX-6, handBaseY-16, 26, 14, skinShade)
+		c.framebuf.DrawRect(handBaseX+18, handBaseY-12, 18, 12, skinTone)
+		c.framebuf.DrawRect(handBaseX+15, handBaseY+30, 75, 48, skinTone)
+		c.framebuf.DrawRect(handBaseX+35, handBaseY+68, 70, 10, cuffTone)
+		c.framebuf.DrawRect(handBaseX+40, handBaseY+78, 85, 120, sleeveTone)
 		return
 	}
 
 	// 4. Non-block item materials (Diamond, Ingot, Coal, Redstone, Stick, Bone, etc.)
 	if !inventory.IsPlaceableBlock(selected.ItemID) {
-		ix := hx - 20
-		iy := hy - 35
+		ix := hx - 30
+		iy := hy - 50
+		itemScale := 8
 		sprite := render.GetItemSprite16x16(selected.ItemID)
 		for y := 0; y < 16; y++ {
 			for x := 0; x < 16; x++ {
@@ -3152,21 +3535,22 @@ func (c *Client) drawHeldItem() {
 				if (col >> 24) == 0 {
 					continue
 				}
-				sx := ix + x*5
-				sy := iy + y*5
-				c.framebuf.DrawRect(sx+1, sy+1, 5, 5, darkenColor(col, 0.65))
-				c.framebuf.DrawRect(sx, sy, 5, 5, col)
+				sx := ix + x*itemScale
+				sy := iy + y*itemScale
+				c.framebuf.DrawRect(sx+1, sy+1, itemScale, itemScale, darkenColor(col, 0.60))
+				c.framebuf.DrawRect(sx, sy, itemScale, itemScale, col)
 			}
 		}
-		c.framebuf.DrawRect(ix+18, iy+52, 40, 26, skinTone)
-		c.framebuf.DrawRect(ix+28, iy+74, 55, 85, sleeveTone)
-		c.framebuf.DrawRect(ix+24, iy+70, 60, 6, cuffTone)
+		c.framebuf.DrawRect(ix+26, iy+85, 52, 36, skinTone)
+		c.framebuf.DrawRect(ix+40, iy+118, 68, 10, cuffTone)
+		c.framebuf.DrawRect(ix+44, iy+128, 82, 110, sleeveTone)
 		return
 	}
 
-	// 5. Authentic 3D Isometric Textured Voxel Block (3x chunkier scale)
-	cx := hx - 25
-	cy := hy - 25
+	// 5. Authentic 3D Isometric Textured Voxel Block (Held in palm)
+	cx := hx - 55
+	cy := hy - 40
+	blockScale := 5 // 5px per texel gives ~80x80px isometric block
 
 	// Top Face (Diamond quad, Face 2, 1.0 full light)
 	for ty := 0; ty < 16; ty++ {
@@ -3174,9 +3558,9 @@ func (c *Client) drawHeldItem() {
 			u := float32(tx) / 16.0
 			v := float32(ty) / 16.0
 			col := render.SampleBlockColor(selected.ItemID, 2, u, v, 1.0)
-			sx := cx + (tx-ty)*3
-			sy := cy - 24 + (tx+ty)*3/2
-			c.framebuf.DrawRect(sx, sy, 3, 2, col)
+			sx := cx + (tx-ty)*blockScale
+			sy := cy - 35 + (tx+ty)*blockScale/2
+			c.framebuf.DrawRect(sx, sy, blockScale, (blockScale+1)/2, col)
 		}
 	}
 
@@ -3186,9 +3570,9 @@ func (c *Client) drawHeldItem() {
 			u := float32(tx) / 16.0
 			v := float32(ty) / 16.0
 			col := render.SampleBlockColor(selected.ItemID, 1, u, v, 0.80)
-			sx := cx - 48 + tx*3
-			sy := cy + (tx+ty*2)*3/2
-			c.framebuf.DrawRect(sx, sy, 3, 3, col)
+			sx := cx - 16*blockScale + tx*blockScale
+			sy := cy + (tx+ty*2)*blockScale/2
+			c.framebuf.DrawRect(sx, sy, blockScale, blockScale, col)
 		}
 	}
 
@@ -3198,16 +3582,16 @@ func (c *Client) drawHeldItem() {
 			u := float32(tx) / 16.0
 			v := float32(ty) / 16.0
 			col := render.SampleBlockColor(selected.ItemID, 0, u, v, 0.60)
-			sx := cx + tx*3
-			sy := cy + 24 - (tx-ty*2)*3/2
-			c.framebuf.DrawRect(sx, sy, 3, 3, col)
+			sx := cx + tx*blockScale
+			sy := cy + 32 - (tx-ty*2)*blockScale/2
+			c.framebuf.DrawRect(sx, sy, blockScale, blockScale, col)
 		}
 	}
 
-	// Steve's grasping hand holding bottom-right corner of the 3D block
-	c.framebuf.DrawRect(cx+18, cy+52, 42, 24, skinTone)
-	c.framebuf.DrawRect(cx+30, cy+72, 58, 85, sleeveTone)
-	c.framebuf.DrawRect(cx+26, cy+68, 64, 6, cuffTone)
+	// Steve's hand supporting and grasping the bottom of the block
+	c.framebuf.DrawRect(cx+10, cy+65, 58, 36, skinTone)
+	c.framebuf.DrawRect(cx+28, cy+95, 68, 10, cuffTone)
+	c.framebuf.DrawRect(cx+32, cy+105, 80, 110, sleeveTone)
 }
 
 func main() {
@@ -3229,6 +3613,7 @@ func main() {
 
 	if *benchmark {
 		log.Println("[Client] Running rendering benchmark (1000 frames)...")
+		client.StartSingleplayerWorld("benchmark_world", true, 12345, "Benchmark", 1)
 		start := time.Now()
 		for i := 0; i < 1000; i++ {
 			client.RenderFrame()
@@ -3252,6 +3637,9 @@ func main() {
 	log.Printf("==================================================")
 
 	if *cliMode {
+		if isSP && client.engine == nil {
+			client.StartSingleplayerWorld("cli_world", true, 12345, "CLI World", 0)
+		}
 		runInteractiveLoop(client)
 		return
 	}
@@ -3267,15 +3655,49 @@ func runGraphicalWindow(c *Client, w, h int) {
 	wnd, err := render.NewNativeWindow(title, w, h)
 	if err != nil {
 		log.Printf("[Client] Failed to open native graphical window: %v. Falling back to CLI.", err)
+		if c.isLocal && c.engine == nil {
+			c.StartSingleplayerWorld("cli_world", true, 12345, "CLI World", 0)
+		}
 		runInteractiveLoop(c)
 		return
 	}
 	defer wnd.Close()
+	c.wndRef = wnd
+
+	if c.screenState == ScreenTitle {
+		wnd.SetMouseCaptured(false)
+	}
 
 	log.Printf("[Client] Native 3D game window opened (%dx%d)! Controls: WASD to move, Space to jump, Mouse rotates camera directly, Left-click to mine, Right-click to place, 1-9 to select hotbar.", w, h)
 
 	// Single key-press actions
 	wnd.OnKeyClick = func(vkCode int) {
+		// Global hotkeys (Fullscreen F11 and Alt+Enter work on any screen)
+		if vkCode == 0x7A || (vkCode == 0x0D && wnd.IsKeyDown(0x12)) {
+			wnd.ToggleFullscreen()
+			return
+		}
+
+		if c.screenState == ScreenTitle {
+			if vkCode == 0x1B || vkCode == 0x51 { // Esc or Q: quit
+				wnd.Close()
+				os.Exit(0)
+			}
+			return
+		}
+		if c.screenState == ScreenWorldSelect {
+			if vkCode == 0x1B { // Esc: return to title
+				c.screenState = ScreenTitle
+			}
+			return
+		}
+		if c.screenState == ScreenNewWorld {
+			if vkCode == 0x1B { // Esc: return to world select
+				c.screenState = ScreenWorldSelect
+			}
+			return
+		}
+
 		if c.isChatOpen {
 			if vkCode == 0x1B { // Escape: cancel chat
 				c.isChatOpen = false
@@ -3291,27 +3713,35 @@ func runGraphicalWindow(c *Client, w, h int) {
 			c.PlaceBlockInFront()
 		case 0x45: // E: Toggle Inventory & Crafting GUI
 			if !c.showPauseMenu {
-				c.showInventoryGUI = !c.showInventoryGUI
-				wnd.SetMouseCaptured(!c.showInventoryGUI)
+				if c.showInventoryGUI || c.isFurnaceOpen {
+					c.CloseCurrentGUI()
+				} else {
+					c.showInventoryGUI = true
+					c.isCraftingTableOpen = false
+					c.isFurnaceOpen = false
+					wnd.SetMouseCaptured(false)
+				}
 			}
 		case 0x54: // T: Open Chat
-			if !c.showPauseMenu && !c.showInventoryGUI {
+			if !c.showPauseMenu && !c.showInventoryGUI && !c.isFurnaceOpen {
 				c.isChatOpen = true
 				c.chatInput = ""
 				wnd.SetMouseCaptured(false)
 			}
 		case 0xBF: // / (Slash): Open Command Line
-			if !c.showPauseMenu && !c.showInventoryGUI {
+			if !c.showPauseMenu && !c.showInventoryGUI && !c.isFurnaceOpen {
 				c.isChatOpen = true
 				c.chatInput = "/"
 				wnd.SetMouseCaptured(false)
 			}
 		case 0x1B: // Escape: Close GUI or toggle Pause Menu
-			if c.showInventoryGUI {
-				c.showInventoryGUI = false
-				wnd.SetMouseCaptured(true)
+			if c.showInventoryGUI || c.isFurnaceOpen {
+				c.CloseCurrentGUI()
 			} else {
 				c.showPauseMenu = !c.showPauseMenu
+				if c.engine != nil {
+					c.engine.SetPaused(c.showPauseMenu)
+				}
 				wnd.SetMouseCaptured(!c.showPauseMenu)
 			}
 		case 0x72: // F3: Toggle Debug Screen
@@ -3326,16 +3756,13 @@ func runGraphicalWindow(c *Client, w, h int) {
 			}
 		case 0x51: // Q: Quit immediately if in pause menu, or throw/drop held item in game
 			if c.showPauseMenu {
-				wnd.Close()
-				os.Exit(0)
-			} else if !c.showInventoryGUI && !c.isChatOpen {
+				c.SaveAndQuitToTitle()
+			} else if !c.showInventoryGUI && !c.isFurnaceOpen && !c.isChatOpen {
 				c.DropHeldItem(wnd.IsKeyDown(0x11)) // Ctrl+Q drops full stack
 			}
 		case 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39: // 1-9
 			idx := vkCode - 0x31 + 1
-			if c.showInventoryGUI {
-				c.TryQuickCraft(idx)
-			} else if c.player != nil && !c.showPauseMenu {
+			if c.player != nil && !c.showPauseMenu && !c.showInventoryGUI && !c.isFurnaceOpen {
 				c.player.Inventory.SelectedHotbar = idx - 1
 			}
 		}
@@ -3343,7 +3770,7 @@ func runGraphicalWindow(c *Client, w, h int) {
 
 	// Mouse wheel hotbar switching
 	wnd.OnMouseWheel = func(delta int) {
-		if c.showPauseMenu || c.showInventoryGUI || c.isChatOpen || c.player == nil {
+		if c.screenState != ScreenPlaying || c.showPauseMenu || c.showInventoryGUI || c.isFurnaceOpen || c.isChatOpen || c.player == nil {
 			return
 		}
 		if delta > 0 {
@@ -3353,8 +3780,52 @@ func runGraphicalWindow(c *Client, w, h int) {
 		}
 	}
 
-	// Character input for in-game chat and slash commands
+	// Character input
 	wnd.OnCharInput = func(ch rune) {
+		if c.screenState == ScreenNewWorld {
+			if ch == '\r' || ch == '\n' { // Enter: create world
+				dirName := fmt.Sprintf("world_%d", time.Now().Unix())
+				var seed int64
+				if c.newWorldSeedText != "" {
+					if sVal, err := strconv.ParseInt(c.newWorldSeedText, 10, 64); err == nil {
+						seed = sVal
+					}
+				}
+				c.StartSingleplayerWorld(dirName, true, seed, c.newWorldName, c.newWorldMode)
+				return
+			}
+			if ch == 27 { // Escape: cancel
+				c.screenState = ScreenWorldSelect
+				return
+			}
+			if ch == '\t' { // Tab: toggle between name and seed input
+				c.newWorldActiveBox = 1 - c.newWorldActiveBox
+				return
+			}
+			if ch == '\b' { // Backspace
+				if c.newWorldActiveBox == 0 {
+					if len(c.newWorldName) > 0 {
+						r := []rune(c.newWorldName)
+						c.newWorldName = string(r[:len(r)-1])
+					}
+				} else {
+					if len(c.newWorldSeedText) > 0 {
+						r := []rune(c.newWorldSeedText)
+						c.newWorldSeedText = string(r[:len(r)-1])
+					}
+				}
+				return
+			}
+			if ch >= 32 {
+				if c.newWorldActiveBox == 0 {
+					c.newWorldName += string(ch)
+				} else {
+					c.newWorldSeedText += string(ch)
+				}
+			}
+			return
+		}
+
 		if !c.isChatOpen {
 			return
 		}
@@ -3384,48 +3855,286 @@ func runGraphicalWindow(c *Client, w, h int) {
 		}
 	}
 
-	// Mouse button clicks (instant single-tap actions)
+	// Mouse button clicks
 	wnd.OnMouseClick = func(btn int) {
-		if c.isChatOpen {
-			return
-		}
-		if c.showPauseMenu {
+		mx, my := wnd.GetCursorClientPos(c.framebuf.Width, c.framebuf.Height)
+
+		if c.screenState == ScreenTitle {
 			if btn == 1 {
-				mx, my := wnd.GetCursorClientPos(c.framebuf.Width, c.framebuf.Height)
-				// Check "Back to Game" button
-				b := c.backBtnRect
-				if mx >= b[0] && mx <= b[0]+b[2] && my >= b[1] && my <= b[1]+b[3] {
-					c.showPauseMenu = false
-					wnd.SetMouseCaptured(true)
+				// Singleplayer button
+				if mx >= c.titleSpBtn[0] && mx <= c.titleSpBtn[0]+c.titleSpBtn[2] && my >= c.titleSpBtn[1] && my <= c.titleSpBtn[1]+c.titleSpBtn[3] {
+					c.scanSavedWorlds()
+					c.screenState = ScreenWorldSelect
 					return
 				}
-				// Check "Quit Game" button
-				q := c.quitBtnRect
-				if mx >= q[0] && mx <= q[0]+q[2] && my >= q[1] && my <= q[1]+q[3] {
+				// Multiplayer button
+				if mx >= c.titleMpBtn[0] && mx <= c.titleMpBtn[0]+c.titleMpBtn[2] && my >= c.titleMpBtn[1] && my <= c.titleMpBtn[1]+c.titleMpBtn[3] {
+					c.serverAddr = "127.0.0.1:25565"
+					if err := c.Connect(); err != nil {
+						log.Printf("[Client] Failed to connect: %v", err)
+					} else {
+						c.screenState = ScreenPlaying
+						wnd.SetMouseCaptured(true)
+					}
+					return
+				}
+				// Quit button
+				if mx >= c.titleQuitBtn[0] && mx <= c.titleQuitBtn[0]+c.titleQuitBtn[2] && my >= c.titleQuitBtn[1] && my <= c.titleQuitBtn[1]+c.titleQuitBtn[3] {
 					wnd.Close()
 					os.Exit(0)
 				}
 			}
 			return
 		}
-		if c.showInventoryGUI {
+
+		if c.screenState == ScreenWorldSelect {
+			if btn == 1 {
+				for i, r := range c.wsRects {
+					if mx >= r[0] && mx <= r[0]+r[2] && my >= r[1] && my <= r[1]+r[3] {
+						c.selectedWorldIdx = i
+						return
+					}
+				}
+				if mx >= c.wsPlayBtn[0] && mx <= c.wsPlayBtn[0]+c.wsPlayBtn[2] && my >= c.wsPlayBtn[1] && my <= c.wsPlayBtn[1]+c.wsPlayBtn[3] {
+					if c.selectedWorldIdx >= 0 && c.selectedWorldIdx < len(c.availableWorlds) {
+						target := c.availableWorlds[c.selectedWorldIdx]
+						c.StartSingleplayerWorld(target.DirName, false, 0, target.LevelName, target.GameMode)
+					}
+					return
+				}
+				if mx >= c.wsNewBtn[0] && mx <= c.wsNewBtn[0]+c.wsNewBtn[2] && my >= c.wsNewBtn[1] && my <= c.wsNewBtn[1]+c.wsNewBtn[3] {
+					c.newWorldName = "新世界"
+					c.newWorldMode = 0
+					c.newWorldSeedText = ""
+					c.newWorldActiveBox = 0
+					c.screenState = ScreenNewWorld
+					return
+				}
+				if mx >= c.wsBackBtn[0] && mx <= c.wsBackBtn[0]+c.wsBackBtn[2] && my >= c.wsBackBtn[1] && my <= c.wsBackBtn[1]+c.wsBackBtn[3] {
+					c.screenState = ScreenTitle
+					return
+				}
+			}
 			return
 		}
+
+		if c.screenState == ScreenNewWorld {
+			if btn == 1 {
+				if mx >= c.nwNameBox[0] && mx <= c.nwNameBox[0]+c.nwNameBox[2] && my >= c.nwNameBox[1] && my <= c.nwNameBox[1]+c.nwNameBox[3] {
+					c.newWorldActiveBox = 0
+					return
+				}
+				if mx >= c.nwSeedBox[0] && mx <= c.nwSeedBox[0]+c.nwSeedBox[2] && my >= c.nwSeedBox[1] && my <= c.nwSeedBox[1]+c.nwSeedBox[3] {
+					c.newWorldActiveBox = 1
+					return
+				}
+				if mx >= c.nwModeBtn[0] && mx <= c.nwModeBtn[0]+c.nwModeBtn[2] && my >= c.nwModeBtn[1] && my <= c.nwModeBtn[1]+c.nwModeBtn[3] {
+					c.newWorldMode = 1 - c.newWorldMode
+					return
+				}
+				if mx >= c.nwCreateBtn[0] && mx <= c.nwCreateBtn[0]+c.nwCreateBtn[2] && my >= c.nwCreateBtn[1] && my <= c.nwCreateBtn[1]+c.nwCreateBtn[3] {
+					dirName := fmt.Sprintf("world_%d", time.Now().Unix())
+					var seed int64
+					if c.newWorldSeedText != "" {
+						if sVal, err := strconv.ParseInt(c.newWorldSeedText, 10, 64); err == nil {
+							seed = sVal
+						}
+					}
+					c.StartSingleplayerWorld(dirName, true, seed, c.newWorldName, c.newWorldMode)
+					return
+				}
+				if mx >= c.nwCancelBtn[0] && mx <= c.nwCancelBtn[0]+c.nwCancelBtn[2] && my >= c.nwCancelBtn[1] && my <= c.nwCancelBtn[1]+c.nwCancelBtn[3] {
+					c.screenState = ScreenWorldSelect
+					return
+				}
+			}
+			return
+		}
+
+		if c.isChatOpen {
+			return
+		}
+
+		if c.showPauseMenu {
+			if btn == 1 {
+				b := c.backBtnRect
+				if mx >= b[0] && mx <= b[0]+b[2] && my >= b[1] && my <= b[1]+b[3] {
+					c.showPauseMenu = false
+					if c.engine != nil {
+						c.engine.SetPaused(false)
+					}
+					wnd.SetMouseCaptured(true)
+					return
+				}
+				q := c.quitBtnRect
+				if mx >= q[0] && mx <= q[0]+q[2] && my >= q[1] && my <= q[1]+q[3] {
+					c.SaveAndQuitToTitle()
+					wnd.SetMouseCaptured(false)
+					return
+				}
+			}
+			return
+		}
+
+		if c.showInventoryGUI && c.player != nil && c.player.Inventory != nil {
+			hit := render.HitTestCraftingGUI(c.framebuf.Width, c.framebuf.Height, mx, my, c.isCraftingTableOpen)
+			if hit.Type == render.SlotNone {
+				return
+			}
+			if btn == 1 { // Left click
+				if hit.Type == render.SlotCraftResult {
+					if !c.craftResult.IsEmpty() {
+						canCraft := false
+						if c.cursorItem.IsEmpty() {
+							canCraft = true
+						} else if c.cursorItem.ItemID == c.craftResult.ItemID && c.cursorItem.Count+c.craftResult.Count <= 64 {
+							canCraft = true
+						}
+						if canCraft {
+							if c.cursorItem.IsEmpty() {
+								c.cursorItem = c.craftResult
+							} else {
+								c.cursorItem.Count += c.craftResult.Count
+							}
+							sound.PlayHardwareFeedback("minecraft:item.craft")
+							gridSize := 4
+							if c.isCraftingTableOpen {
+								gridSize = 9
+							}
+							for i := 0; i < gridSize; i++ {
+								if c.craftGrid[i].Count > 0 {
+									c.craftGrid[i].Count--
+									if c.craftGrid[i].Count <= 0 {
+										c.craftGrid[i] = inventory.ItemStack{}
+									}
+								}
+							}
+							c.updateCraftResult()
+						}
+					}
+					return
+				}
+				if hit.Type == render.SlotCraftGrid {
+					handleSlotLeftClick(&c.cursorItem, &c.craftGrid[hit.Index])
+					c.updateCraftResult()
+					return
+				}
+				if hit.Type == render.SlotInventory {
+					if wnd.IsKeyDown(0x10) { // Shift-click quick transfer
+						if hit.Index < 9 { // Hotbar -> Main
+							for s := 9; s < 36; s++ {
+								if c.player.Inventory.Slots[s].IsEmpty() {
+									c.player.Inventory.Slots[s] = c.player.Inventory.Slots[hit.Index]
+									c.player.Inventory.Slots[hit.Index] = inventory.ItemStack{}
+									break
+								}
+							}
+						} else { // Main -> Hotbar
+							for s := 0; s < 9; s++ {
+								if c.player.Inventory.Slots[s].IsEmpty() {
+									c.player.Inventory.Slots[s] = c.player.Inventory.Slots[hit.Index]
+									c.player.Inventory.Slots[hit.Index] = inventory.ItemStack{}
+									break
+								}
+							}
+						}
+					} else {
+						handleSlotLeftClick(&c.cursorItem, &c.player.Inventory.Slots[hit.Index])
+					}
+					return
+				}
+			} else if btn == 2 { // Right click
+				if hit.Type == render.SlotCraftGrid {
+					handleSlotRightClick(&c.cursorItem, &c.craftGrid[hit.Index])
+					c.updateCraftResult()
+					return
+				}
+				if hit.Type == render.SlotInventory {
+					handleSlotRightClick(&c.cursorItem, &c.player.Inventory.Slots[hit.Index])
+					return
+				}
+			}
+			return
+		}
+
+		if c.isFurnaceOpen && c.engine != nil && c.player != nil && c.player.Inventory != nil {
+			furnace := c.engine.GetOrCreateFurnace(c.currentFurnacePos)
+			hit := render.HitTestFurnaceGUI(c.framebuf.Width, c.framebuf.Height, mx, my)
+			if hit.Type == render.SlotNone {
+				return
+			}
+			if btn == 1 { // Left click
+				if hit.Type == render.SlotFurnaceOutput {
+					if !furnace.OutputSlot.IsEmpty() {
+						if c.cursorItem.IsEmpty() {
+							c.cursorItem = furnace.OutputSlot
+							furnace.OutputSlot = inventory.ItemStack{}
+						} else if c.cursorItem.ItemID == furnace.OutputSlot.ItemID && c.cursorItem.Count+furnace.OutputSlot.Count <= 64 {
+							c.cursorItem.Count += furnace.OutputSlot.Count
+							furnace.OutputSlot = inventory.ItemStack{}
+						}
+					}
+					return
+				}
+				if hit.Type == render.SlotFurnaceInput {
+					handleSlotLeftClick(&c.cursorItem, &furnace.InputSlot)
+					return
+				}
+				if hit.Type == render.SlotFurnaceFuel {
+					handleSlotLeftClick(&c.cursorItem, &furnace.FuelSlot)
+					return
+				}
+				if hit.Type == render.SlotInventory {
+					handleSlotLeftClick(&c.cursorItem, &c.player.Inventory.Slots[hit.Index])
+					return
+				}
+			} else if btn == 2 { // Right click
+				if hit.Type == render.SlotFurnaceInput {
+					handleSlotRightClick(&c.cursorItem, &furnace.InputSlot)
+					return
+				}
+				if hit.Type == render.SlotFurnaceFuel {
+					handleSlotRightClick(&c.cursorItem, &furnace.FuelSlot)
+					return
+				}
+				if hit.Type == render.SlotInventory {
+					handleSlotRightClick(&c.cursorItem, &c.player.Inventory.Slots[hit.Index])
+					return
+				}
+			}
+			return
+		}
+
 		if !wnd.MouseCaptured {
 			wnd.SetMouseCaptured(true)
 		}
 		if btn == 1 {
-			// Check if attacking living mob in front
 			if c.AttackMob() {
 				return
 			}
-			// Trigger arm swing on click
 			if !c.isSwinging {
 				c.isSwinging = true
 				c.swingProgress = 0.0
 			}
 		} else if btn == 2 {
-			// Right click: Place block immediately if cooldown ready
+			if c.hasTarget && c.engine != nil {
+				targetID := c.engine.GetBlock(c.targetedPos.X, c.targetedPos.Y, c.targetedPos.Z)
+				if targetID == 58 { // Crafting Table
+					c.showInventoryGUI = true
+					c.isCraftingTableOpen = true
+					c.isFurnaceOpen = false
+					wnd.SetMouseCaptured(false)
+					return
+				}
+				if targetID == 61 || targetID == 62 { // Furnace
+					c.showInventoryGUI = false
+					c.isCraftingTableOpen = false
+					c.isFurnaceOpen = true
+					c.currentFurnacePos = c.targetedPos
+					wnd.SetMouseCaptured(false)
+					return
+				}
+			}
 			if c.placeCooldown <= 0 {
 				c.UpdateRaycastTarget()
 				if c.PlaceBlockInFront() {
@@ -3440,13 +4149,18 @@ func runGraphicalWindow(c *Client, w, h int) {
 	lastTime := time.Now()
 
 	for wnd.PollEvents() {
+		// Detect window resize (Fullscreen toggle or maximize) and resize framebuffer & camera
+		if wnd.Width > 0 && wnd.Height > 0 && (wnd.Width != c.framebuf.Width || wnd.Height != c.framebuf.Height) {
+			c.framebuf = render.NewFramebuffer(wnd.Width, wnd.Height)
+		}
+
 		now := time.Now()
 		dt := now.Sub(lastTime).Seconds()
 		if dt <= 0 {
 			dt = 0.001
 		}
 		if dt > 0.05 {
-			dt = 0.05 // Cap max dt to avoid physics skipping
+			dt = 0.05
 		}
 		lastTime = now
 
@@ -3456,6 +4170,30 @@ func runGraphicalWindow(c *Client, w, h int) {
 			if c.equipProgress > 1.0 {
 				c.equipProgress = 1.0
 			}
+		}
+
+		if c.screenState == ScreenTitle {
+			time.Sleep(16 * time.Millisecond)
+			mx, my := wnd.GetCursorClientPos(c.framebuf.Width, c.framebuf.Height)
+			c.titleSpBtn, c.titleMpBtn, c.titleQuitBtn = c.framebuf.DrawTitleScreen(mx, my)
+			wnd.Present(c.framebuf)
+			continue
+		}
+
+		if c.screenState == ScreenWorldSelect {
+			time.Sleep(16 * time.Millisecond)
+			mx, my := wnd.GetCursorClientPos(c.framebuf.Width, c.framebuf.Height)
+			c.wsPlayBtn, c.wsNewBtn, c.wsBackBtn, c.wsRects = c.framebuf.DrawWorldSelectScreen(c.availableWorlds, c.selectedWorldIdx, mx, my)
+			wnd.Present(c.framebuf)
+			continue
+		}
+
+		if c.screenState == ScreenNewWorld {
+			time.Sleep(16 * time.Millisecond)
+			mx, my := wnd.GetCursorClientPos(c.framebuf.Width, c.framebuf.Height)
+			c.nwCreateBtn, c.nwCancelBtn, c.nwModeBtn, c.nwNameBox, c.nwSeedBox = c.framebuf.DrawNewWorldScreen(c.newWorldName, c.newWorldMode, c.newWorldSeedText, c.newWorldActiveBox, mx, my)
+			wnd.Present(c.framebuf)
+			continue
 		}
 
 		// If Pause Menu is open, freeze world controls and display interactive Pause Menu
@@ -3468,8 +4206,8 @@ func runGraphicalWindow(c *Client, w, h int) {
 			continue
 		}
 
-		// If Inventory & Crafting GUI is open, freeze world controls and display GUI
-		if c.showInventoryGUI {
+		// If Inventory / Crafting Table / Furnace GUI is open
+		if c.showInventoryGUI || c.isFurnaceOpen {
 			time.Sleep(16 * time.Millisecond)
 			c.RenderFrame()
 			wnd.Present(c.framebuf)

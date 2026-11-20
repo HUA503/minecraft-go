@@ -71,6 +71,21 @@ func (s *Section) SetBlock(localX, localY, localZ int, state int32) {
 	s.BlockStates.Set(idx, state)
 }
 
+func (s *Section) SetBiome(bx, by, bz int, biomeID int32) {
+	idx := (by << 4) | (bz << 2) | bx
+	if idx >= 0 && idx < 64 {
+		s.Biomes.Set(idx, biomeID)
+	}
+}
+
+func (s *Section) GetBiome(bx, by, bz int) int32 {
+	idx := (by << 4) | (bz << 2) | bx
+	if idx >= 0 && idx < 64 {
+		return s.Biomes.Get(idx)
+	}
+	return 1
+}
+
 // Chunk represents a full 16x384x16 vertical column of 24 sections.
 type Chunk struct {
 	Pos            ChunkPos
@@ -123,6 +138,46 @@ func (c *Chunk) SetBlock(x, y, z int32, state int32) {
 		c.ModifiedBlocks = make(map[BlockPos]int32)
 	}
 	c.ModifiedBlocks[BlockPos{X: x, Y: y, Z: z}] = state
+}
+
+// SetBiome sets the biome ID for the 4x4 vertical column containing (x, z) at section y.
+func (c *Chunk) SetBiome(x, y, z int32, biomeID int32) {
+	if y < MinWorldY || y > MaxWorldY {
+		return
+	}
+	secIdx := int(math.Floor(float64(y)/16.0)) - MinSectionY
+	if secIdx < 0 || secIdx >= NumSections {
+		return
+	}
+	sec := c.Sections[secIdx]
+	if sec == nil {
+		sec = NewSection(secIdx)
+		c.Sections[secIdx] = sec
+	}
+	bx := int((x & 15) >> 2)
+	bz := int((z & 15) >> 2)
+	for by := 0; by < 4; by++ {
+		sec.SetBiome(bx, by, bz, biomeID)
+	}
+}
+
+// GetBiome returns the biome ID for the 4x4x4 block volume containing (x, y, z).
+func (c *Chunk) GetBiome(x, y, z int32) int32 {
+	if y < MinWorldY || y > MaxWorldY {
+		return 1 // Plains
+	}
+	secIdx := int(math.Floor(float64(y)/16.0)) - MinSectionY
+	if secIdx < 0 || secIdx >= NumSections {
+		return 1
+	}
+	sec := c.Sections[secIdx]
+	if sec == nil {
+		return 1
+	}
+	bx := int((x & 15) >> 2)
+	by := int((y & 15) >> 2)
+	bz := int((z & 15) >> 2)
+	return sec.GetBiome(bx, by, bz)
 }
 
 // ToNBT serializes a Chunk to standard Minecraft Anvil NBT format (DataVersion 5023).

@@ -154,3 +154,71 @@ func TestRegionInPlaceOverwriteNoBloat(t *testing.T) {
 		t.Fatalf("file size bloated on repeated chunk writes! size1=%d, sizeFinal=%d", size1, sizeFinal)
 	}
 }
+
+func TestSaveAndLoadLevelWithPlayer(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "level_save_test")
+	if err != nil {
+		t.Fatalf("MkdirTemp failed: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	sm, err := NewSaveManager(tmpDir)
+	if err != nil {
+		t.Fatalf("NewSaveManager failed: %v", err)
+	}
+	defer sm.Close()
+
+	original := &LevelData{
+		Seed:      123456789,
+		Time:      5000,
+		DayTime:   1200,
+		SpawnX:    10,
+		SpawnY:    64,
+		SpawnZ:    -20,
+		LevelName: "Test World",
+		GameMode:  0,
+		Player: &PlayerSaveData{
+			X:        12.5,
+			Y:        65.0,
+			Z:        -18.3,
+			Yaw:      45.0,
+			Pitch:    10.0,
+			Health:   18.5,
+			Hunger:   16,
+			GameMode: 0,
+			Inventory: []SavedItemStack{
+				{Slot: 0, ItemID: 270, Count: 1, Damage: 5},
+				{Slot: 1, ItemID: 4, Count: 64, Damage: 0},
+				{Slot: 9, ItemID: 265, Count: 12, Damage: 0},
+			},
+		},
+	}
+
+	if err := sm.SaveLevel(original); err != nil {
+		t.Fatalf("SaveLevel failed: %v", err)
+	}
+
+	loaded, err := sm.LoadLevel()
+	if err != nil {
+		t.Fatalf("LoadLevel failed: %v", err)
+	}
+
+	if loaded.Seed != original.Seed {
+		t.Errorf("Seed mismatch: got %d, want %d", loaded.Seed, original.Seed)
+	}
+	if loaded.LevelName != original.LevelName {
+		t.Errorf("LevelName mismatch: got %s, want %s", loaded.LevelName, original.LevelName)
+	}
+	if loaded.Player == nil {
+		t.Fatalf("Player data was not loaded")
+	}
+	if loaded.Player.X != original.Player.X || loaded.Player.Health != original.Player.Health {
+		t.Errorf("Player pos/health mismatch: got X=%.1f, Health=%.1f", loaded.Player.X, loaded.Player.Health)
+	}
+	if len(loaded.Player.Inventory) != len(original.Player.Inventory) {
+		t.Fatalf("Player inventory length mismatch: got %d, want %d", len(loaded.Player.Inventory), len(original.Player.Inventory))
+	}
+	if loaded.Player.Inventory[2].ItemID != 265 || loaded.Player.Inventory[2].Count != 12 {
+		t.Errorf("Player inventory item mismatch: %+v", loaded.Player.Inventory[2])
+	}
+}

@@ -69,9 +69,23 @@ type MobEntity struct {
 	IsIdle         bool    // Idle/grazing vs active walking
 	TargetYaw      float32 // Target heading towards which animal smoothly steers
 	HurtTime       int     // Authentic Minecraft hurt flash timer in ticks (10 ticks = 0.5s)
+	LastHurtTime   time.Time // Real-time timestamp of damage to guarantee flash duration resets
 	BurningTicks   int     // Daylight / fire burning tick counter
 	IsAggro        bool    // Hostile aggro state (e.g. Enderman stared at)
 	TeleportTimer  int     // Enderman teleport cooldown
+}
+
+// IsHurt returns whether the mob is currently in the authentic 0.5s hurt flash window.
+// Guaranteed to return false and reset HurtTime once 500ms has elapsed.
+func (m *MobEntity) IsHurt() bool {
+	if m.HurtTime <= 0 {
+		return false
+	}
+	if !m.LastHurtTime.IsZero() && time.Since(m.LastHurtTime) > 500*time.Millisecond {
+		m.HurtTime = 0
+		return false
+	}
+	return true
 }
 
 // NewMobEntity creates an initialized mob.
@@ -505,6 +519,7 @@ func (m *MobEntity) tickEndermanAI(engine *Engine, player *PlayerEntity, dist fl
 	if b == 8 || b == 9 {
 		m.Health -= 2.0
 		m.HurtTime = 10
+		m.LastHurtTime = time.Now()
 		m.teleportRandomly(engine)
 		return
 	}

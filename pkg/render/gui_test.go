@@ -1,0 +1,95 @@
+package render
+
+import (
+	"testing"
+	"time"
+
+	"github.com/HUA503/minecraft-go/pkg/inventory"
+)
+
+func TestGUIHitTestingAndDrawing(t *testing.T) {
+	fb := NewFramebuffer(320, 240)
+	inv := inventory.NewPlayerInventory()
+
+	// 1. Test Crafting GUI Hit Testing
+	// Center of screen
+	gx := 320/2 - 280/2
+	gy := 240/2 - 220/2
+
+	// Hit inside hotbar slot 0
+	hitHotbar := HitTestCraftingGUI(320, 240, gx+18+2, gy+164+2, false)
+	if hitHotbar.Type != SlotInventory || hitHotbar.Index != 0 {
+		t.Fatalf("expected hotbar slot 0, got %+v", hitHotbar)
+	}
+
+	// Hit inside main inventory slot 9
+	hitMain := HitTestCraftingGUI(320, 240, gx+18+2, gy+86+2, false)
+	if hitMain.Type != SlotInventory || hitMain.Index != 9 {
+		t.Fatalf("expected main slot 9, got %+v", hitMain)
+	}
+
+	// Hit inside 2x2 crafting grid slot 0
+	hitCraft := HitTestCraftingGUI(320, 240, gx+40+2, gy+24+2, false)
+	if hitCraft.Type != SlotCraftGrid || hitCraft.Index != 0 {
+		t.Fatalf("expected craft grid slot 0, got %+v", hitCraft)
+	}
+
+	// Hit inside 2x2 result slot
+	hitRes := HitTestCraftingGUI(320, 240, gx+40+48+32+2, gy+24+10+2, false)
+	if hitRes.Type != SlotCraftResult {
+		t.Fatalf("expected craft result slot, got %+v", hitRes)
+	}
+
+	// Hit outside
+	hitOut := HitTestCraftingGUI(320, 240, 2, 2, false)
+	if hitOut.Type != SlotNone {
+		t.Fatalf("expected slot none for outside, got %+v", hitOut)
+	}
+
+	// 2. Test Furnace GUI Hit Testing
+	hitIn := HitTestFurnaceGUI(320, 240, gx+80+2, gy+20+2)
+	if hitIn.Type != SlotFurnaceInput {
+		t.Fatalf("expected furnace input slot, got %+v", hitIn)
+	}
+	hitFuel := HitTestFurnaceGUI(320, 240, gx+80+2, gy+62+2)
+	if hitFuel.Type != SlotFurnaceFuel {
+		t.Fatalf("expected furnace fuel slot, got %+v", hitFuel)
+	}
+	hitFurnaceOut := HitTestFurnaceGUI(320, 240, gx+144+2, gy+36+2)
+	if hitFurnaceOut.Type != SlotFurnaceOutput {
+		t.Fatalf("expected furnace output slot, got %+v", hitFurnaceOut)
+	}
+
+	// 3. Test Drawing without panics
+	craftGrid := make([]inventory.ItemStack, 4)
+	craftGrid[0] = inventory.ItemStack{ItemID: inventory.ItemOakLog, Count: 1}
+	craftResult := inventory.ItemStack{ItemID: inventory.ItemOakPlanks, Count: 4}
+
+	fb.DrawCraftingGUI(inv, craftGrid, craftResult, false, inventory.ItemStack{}, 100, 100)
+
+	furnace := inventory.NewFurnaceBlockEntity()
+	furnace.InputSlot = inventory.ItemStack{ItemID: 15, Count: 5}
+	furnace.FuelSlot = inventory.ItemStack{ItemID: inventory.ItemCoal, Count: 2}
+	furnace.BurnTimeRemaining = 800
+	furnace.MaxBurnTime = 1600
+	furnace.CookTimeProgress = 100
+	fb.DrawFurnaceGUI(furnace, inv, inventory.ItemStack{}, 120, 120)
+
+	spBtn, mpBtn, qBtn := fb.DrawTitleScreen(50, 50)
+	if spBtn[2] <= 0 || mpBtn[2] <= 0 || qBtn[2] <= 0 {
+		t.Fatalf("title screen buttons invalid")
+	}
+
+	worlds := []WorldInfo{
+		{DirName: "world1", LevelName: "Survival World", GameMode: 0, LastTime: time.Now()},
+	}
+	pBtn, nBtn, bBtn, wRects := fb.DrawWorldSelectScreen(worlds, 0, 100, 100)
+	if pBtn[2] <= 0 || nBtn[2] <= 0 || bBtn[2] <= 0 || len(wRects) != 1 {
+		t.Fatalf("world select screen elements invalid")
+	}
+
+	cBtn, canBtn, mBtn, _, _ := fb.DrawNewWorldScreen("New World", 0, "12345", 0, 100, 100)
+	if cBtn[2] <= 0 || canBtn[2] <= 0 || mBtn[2] <= 0 {
+		t.Fatalf("new world screen elements invalid")
+	}
+}

@@ -109,6 +109,20 @@ func (c *CompoundTag) Get(key string) Tag {
 	return c.Value[key]
 }
 
+func (c *CompoundTag) GetByte(key string) int8 {
+	if t, ok := c.Get(key).(*ByteTag); ok {
+		return t.Value
+	}
+	return 0
+}
+
+func (c *CompoundTag) GetShort(key string) int16 {
+	if t, ok := c.Get(key).(*ShortTag); ok {
+		return t.Value
+	}
+	return 0
+}
+
 func (c *CompoundTag) GetString(key string) string {
 	if t, ok := c.Get(key).(*StringTag); ok {
 		return t.Value

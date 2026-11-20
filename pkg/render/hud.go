@@ -524,8 +524,29 @@ var font5x7 = map[rune][7]uint8{
 	'?': {0b01110, 0b10001, 0b00010, 0b00100, 0b00100, 0b00000, 0b00100},
 }
 
-// DrawChar5x7 renders a single 5x7 character scaled with optional drop shadow.
+// DrawChar5x7 renders a single 5x7 character scaled with optional drop shadow, or 11x11 CJK glyph.
 func (fb *Framebuffer) DrawChar5x7(x, y int, ch rune, col uint32, scale int) int {
+	if ch > 0x7F {
+		glyph := GetCJKGlyph(ch)
+		for row := 0; row < 11; row++ {
+			bits := glyph[row]
+			for cIdx := 0; cIdx < 11; cIdx++ {
+				if (bits & (1 << (10 - cIdx))) != 0 {
+					py := y + (row-2)*scale
+					if scale == 1 {
+						px := x + cIdx
+						if px >= 0 && px < fb.Width && py >= 0 && py < fb.Height {
+							fb.Color[py*fb.Width+px] = col
+						}
+					} else {
+						fb.DrawRect(x+cIdx*scale, py, scale, scale, col)
+					}
+				}
+			}
+		}
+		return 12 * scale
+	}
+
 	if ch >= 'a' && ch <= 'z' {
 		ch = ch - 'a' + 'A'
 	}
@@ -574,7 +595,15 @@ func (fb *Framebuffer) DrawText5x7(x, y int, text string, col uint32, scale int)
 
 // MeasureText5x7 returns the pixel width of the text when rendered at the specified scale.
 func MeasureText5x7(text string, scale int) int {
-	return len(text) * 6 * scale
+	width := 0
+	for _, ch := range text {
+		if ch > 0x7F {
+			width += 12 * scale
+		} else {
+			width += 6 * scale
+		}
+	}
+	return width
 }
 
 // DrawButton renders an authentic Minecraft beveled button with hover styling.
@@ -625,30 +654,30 @@ func (fb *Framebuffer) DrawPauseMenu(mouseX, mouseY int) (backBtnRect [4]int, qu
 		fb.Color[i] = 0xFF000000 | (r << 16) | (g << 8) | b
 	}
 
-	// 2. Title: "GAME PAUSED" (large scale 2)
-	title := "GAME PAUSED"
+	// 2. Title: "游戏暂停" (large scale 2)
+	title := "游戏暂停"
 	titleWidth := MeasureText5x7(title, 2)
 	titleX := (fb.Width - titleWidth) / 2
 	titleY := fb.Height/4 - 20
 	fb.DrawText5x7(titleX, titleY, title, 0xFFFFFFFF, 2)
 
-	// 3. Button 1: "BACK TO GAME"
+	// 3. Button 1: "返回游戏"
 	btnW := 220
 	btnH := 28
 	btnX := (fb.Width - btnW) / 2
 	btn1Y := fb.Height/2 - 30
 	hover1 := mouseX >= btnX && mouseX <= btnX+btnW && mouseY >= btn1Y && mouseY <= btn1Y+btnH
-	fb.DrawButton(btnX, btn1Y, btnW, btnH, "BACK TO GAME", hover1)
+	fb.DrawButton(btnX, btn1Y, btnW, btnH, "返回游戏", hover1)
 	backBtnRect = [4]int{btnX, btn1Y, btnW, btnH}
 
-	// 4. Button 2: "QUIT GAME (PRESS Q)"
+	// 4. Button 2: "保存并退出"
 	btn2Y := fb.Height/2 + 10
 	hover2 := mouseX >= btnX && mouseX <= btnX+btnW && mouseY >= btn2Y && mouseY <= btn2Y+btnH
-	fb.DrawButton(btnX, btn2Y, btnW, btnH, "QUIT GAME (PRESS Q)", hover2)
+	fb.DrawButton(btnX, btn2Y, btnW, btnH, "保存并退出", hover2)
 	quitBtnRect = [4]int{btnX, btn2Y, btnW, btnH}
 
 	// 5. Bottom Instructions hint
-	hint := "PRESS ESC TO RESUME - PRESS Q TO QUIT"
+	hint := "按 ESC 返回游戏 - 按 Q 立即退出"
 	hintWidth := MeasureText5x7(hint, 1)
 	hintX := (fb.Width - hintWidth) / 2
 	hintY := fb.Height - 32

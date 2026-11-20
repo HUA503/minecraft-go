@@ -192,6 +192,11 @@ func (g *Generator) generateOverworld(c *world.Chunk, cp world.ChunkPos) {
 			}
 			cols[lx][lz] = ColInfo{Height: height, Biome: biome}
 
+			// Explicitly record 3D biome into chunk container
+			for secY := int32(-64); secY < 320; secY += 16 {
+				c.SetBiome(toI32(wx), secY, toI32(wz), int32(biome))
+			}
+
 			// Bedrock floor at -64
 			c.SetBlock(toI32(wx), -64, toI32(wz), BlockBedrock)
 

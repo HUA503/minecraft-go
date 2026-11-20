@@ -10,6 +10,24 @@ import (
 	"github.com/HUA503/minecraft-go/pkg/nbt"
 )
 
+// SavedItemStack holds an item stack for persistent storage.
+type SavedItemStack struct {
+	Slot   int
+	ItemID int32
+	Count  int
+	Damage int
+}
+
+// PlayerSaveData holds persistent player information matching vanilla Minecraft level.dat.
+type PlayerSaveData struct {
+	X, Y, Z    float64
+	Yaw, Pitch float32
+	Health     float32
+	Hunger     int
+	GameMode   int // 0: Survival, 1: Creative
+	Inventory  []SavedItemStack
+}
+
 // LevelData holds top-level world metadata.
 type LevelData struct {
 	Seed      int64
@@ -19,6 +37,8 @@ type LevelData struct {
 	SpawnY    int32
 	SpawnZ    int32
 	LevelName string
+	GameMode  int // 0: Survival, 1: Creative
+	Player    *PlayerSaveData
 }
 
 // SaveManager coordinates persistence for chunks and world level data in Anvil MCA format.
@@ -110,6 +130,43 @@ func (sm *SaveManager) SaveLevel(data *LevelData) error {
 	dataTag.Put("SpawnY", &nbt.IntTag{Value: data.SpawnY})
 	dataTag.Put("SpawnZ", &nbt.IntTag{Value: data.SpawnZ})
 	dataTag.Put("LevelName", &nbt.StringTag{Value: data.LevelName})
+	dataTag.Put("GameType", &nbt.IntTag{Value: int32(data.GameMode)})
+
+	if data.Player != nil {
+		pTag := nbt.NewCompound()
+		posList := &nbt.ListTag{ElementType: nbt.TagDouble}
+		posList.Elements = []nbt.Tag{
+			&nbt.DoubleTag{Value: data.Player.X},
+			&nbt.DoubleTag{Value: data.Player.Y},
+			&nbt.DoubleTag{Value: data.Player.Z},
+		}
+		pTag.Put("Pos", posList)
+
+		rotList := &nbt.ListTag{ElementType: nbt.TagFloat}
+		rotList.Elements = []nbt.Tag{
+			&nbt.FloatTag{Value: data.Player.Yaw},
+			&nbt.FloatTag{Value: data.Player.Pitch},
+		}
+		pTag.Put("Rotation", rotList)
+		pTag.Put("Health", &nbt.FloatTag{Value: data.Player.Health})
+		pTag.Put("foodLevel", &nbt.IntTag{Value: int32(data.Player.Hunger)})
+		pTag.Put("playerGameType", &nbt.IntTag{Value: int32(data.Player.GameMode)})
+
+		invList := &nbt.ListTag{ElementType: nbt.TagCompound}
+		for _, it := range data.Player.Inventory {
+			if it.Count > 0 && it.ItemID > 0 {
+				itemTag := nbt.NewCompound()
+				itemTag.Put("Slot", &nbt.ByteTag{Value: int8(it.Slot)})
+				itemTag.Put("id", &nbt.IntTag{Value: it.ItemID})
+				itemTag.Put("Count", &nbt.ByteTag{Value: int8(it.Count)})
+				itemTag.Put("Damage", &nbt.ShortTag{Value: int16(it.Damage)})
+				invList.Elements = append(invList.Elements, itemTag)
+			}
+		}
+		pTag.Put("Inventory", invList)
+		dataTag.Put("Player", pTag)
+	}
+
 	root.Put("Data", dataTag)
 
 	datPath := filepath.Join(sm.worldDir, "level.dat")
@@ -143,7 +200,7 @@ func (sm *SaveManager) LoadLevel() (*LevelData, error) {
 		return nil, fmt.Errorf("invalid level.dat: missing Data compound")
 	}
 
-	return &LevelData{
+	res := &LevelData{
 		Seed:      dataTag.GetLong("RandomSeed"),
 		Time:      dataTag.GetLong("Time"),
 		DayTime:   dataTag.GetLong("DayTime"),
@@ -151,7 +208,63 @@ func (sm *SaveManager) LoadLevel() (*LevelData, error) {
 		SpawnY:    dataTag.GetInt("SpawnY"),
 		SpawnZ:    dataTag.GetInt("SpawnZ"),
 		LevelName: dataTag.GetString("LevelName"),
-	}, nil
+		GameMode:  int(dataTag.GetInt("GameType")),
+	}
+
+	if pTag, ok := dataTag.Get("Player").(*nbt.CompoundTag); ok && pTag != nil {
+		pd := &PlayerSaveData{
+			Health:   20.0,
+			Hunger:   20,
+			GameMode: int(pTag.GetInt("playerGameType")),
+		}
+		if hTag, hasH := pTag.Get("Health").(*nbt.FloatTag); hasH {
+			pd.Health = hTag.Value
+		}
+		if fTag, hasF := pTag.Get("foodLevel").(*nbt.IntTag); hasF {
+			pd.Hunger = int(fTag.Value)
+		}
+
+		if posList, ok := pTag.Get("Pos").(*nbt.ListTag); ok && len(posList.Elements) >= 3 {
+			if d0, ok := posList.Elements[0].(*nbt.DoubleTag); ok {
+				pd.X = d0.Value
+			}
+			if d1, ok := posList.Elements[1].(*nbt.DoubleTag); ok {
+				pd.Y = d1.Value
+			}
+			if d2, ok := posList.Elements[2].(*nbt.DoubleTag); ok {
+				pd.Z = d2.Value
+			}
+		}
+
+		if rotList, ok := pTag.Get("Rotation").(*nbt.ListTag); ok && len(rotList.Elements) >= 2 {
+			if r0, ok := rotList.Elements[0].(*nbt.FloatTag); ok {
+				pd.Yaw = r0.Value
+			}
+			if r1, ok := rotList.Elements[1].(*nbt.FloatTag); ok {
+				pd.Pitch = r1.Value
+			}
+		}
+
+		if invList, ok := pTag.Get("Inventory").(*nbt.ListTag); ok {
+			for _, itemRaw := range invList.Elements {
+				if itemComp, ok := itemRaw.(*nbt.CompoundTag); ok {
+					slot := int(itemComp.GetByte("Slot"))
+					id := itemComp.GetInt("id")
+					cnt := int(itemComp.GetByte("Count"))
+					dmg := int(itemComp.GetShort("Damage"))
+					pd.Inventory = append(pd.Inventory, SavedItemStack{
+						Slot:   slot,
+						ItemID: id,
+						Count:  cnt,
+						Damage: dmg,
+					})
+				}
+			}
+		}
+		res.Player = pd
+	}
+
+	return res, nil
 }
 
 // Close closes all open region files.

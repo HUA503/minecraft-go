@@ -165,4 +165,15 @@ func TestBiomeSamplingAndOres(t *testing.T) {
 	if !foundOre {
 		t.Fatalf("expected ores generated in overworld chunks")
 	}
+
+	// Verify chunk sections store the sampled biomes
+	chk := gen.GenerateChunk(world.ChunkPos{X: 0, Z: 0})
+	bAtSurface := chk.GetBiome(4, 64, 4)
+	if bAtSurface < 0 || bAtSurface > 7 {
+		t.Fatalf("expected valid biome ID (0..7) in chunk section container, got %d", bAtSurface)
+	}
+	bInCave := chk.GetBiome(4, -32, 4)
+	if bInCave < 0 || bInCave > 7 {
+		t.Fatalf("expected valid biome ID (0..7) in cave section container, got %d", bInCave)
+	}
 }

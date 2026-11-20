@@ -812,6 +812,7 @@ func (fb *Framebuffer) DrawVoxelTrianglePerspective(v0, v1, v2 ScreenVertex) {
 						fb.Color[idx] = pixelCol
 					} else {
 						// Translucent alpha blending (e.g. water surface)
+						// Do not overwrite depth buffer for translucent pixels to eliminate all z-fighting and flickering
 						bg := fb.Color[idx]
 						bgr := (bg >> 16) & 0xFF
 						bgg := (bg >> 8) & 0xFF

@@ -28,14 +28,31 @@ const (
 	ItemTorch         int32 = 50
 	ItemStick         int32 = 280
 	ItemWoodenPickaxe int32 = 270
+	ItemWoodenSword   int32 = 268
+	ItemWoodenShovel  int32 = 269
+	ItemWoodenAxe     int32 = 271
 	ItemStonePickaxe  int32 = 274
+	ItemStoneSword    int32 = 272
+	ItemStoneShovel   int32 = 273
+	ItemStoneAxe      int32 = 275
 	ItemIronPickaxe   int32 = 257
+	ItemIronSword     int32 = 267
+	ItemIronShovel    int32 = 256
+	ItemIronAxe       int32 = 258
 	ItemDiamondPickaxe int32 = 278
+	ItemDiamondSword  int32 = 276
+	ItemDiamondShovel int32 = 277
+	ItemDiamondAxe    int32 = 279
 	ItemIronIngot     int32 = 265
+	ItemGoldIngot     int32 = 266
 	ItemDiamond       int32 = 264
 	ItemCoal          int32 = 263
 	ItemApple         int32 = 260
 	ItemBread         int32 = 297
+	ItemIronBlock     int32 = 42
+	ItemGoldBlock     int32 = 41
+	ItemDiamondBlock  int32 = 57
+	ItemChest         int32 = 54
 	ItemRawPorkchop   int32 = 319
 	ItemCookedPorkchop int32 = 320
 	ItemRawBeef       int32 = 363
@@ -214,4 +231,78 @@ func (inv *PlayerInventory) RemoveItem(slotIdx int, count int) error {
 		*slot = ItemStack{}
 	}
 	return nil
+}
+
+// HandleSlotLeftClick handles authentic Minecraft left-click item interaction on a slot.
+func HandleSlotLeftClick(cursor *ItemStack, slot *ItemStack) {
+	if cursor.IsEmpty() {
+		if !slot.IsEmpty() {
+			*cursor = *slot
+			*slot = ItemStack{}
+		}
+		return
+	}
+	if slot.IsEmpty() {
+		*slot = *cursor
+		*cursor = ItemStack{}
+		return
+	}
+	maxStack := GetMaxStackSize(slot.ItemID)
+	if cursor.ItemID == slot.ItemID && cursor.Damage == slot.Damage {
+		space := maxStack - slot.Count
+		if space > 0 {
+			toAdd := cursor.Count
+			if toAdd > space {
+				toAdd = space
+			}
+			slot.Count += toAdd
+			cursor.Count -= toAdd
+			if cursor.Count <= 0 {
+				*cursor = ItemStack{}
+			}
+		}
+	} else {
+		tmp := *slot
+		*slot = *cursor
+		*cursor = tmp
+	}
+}
+
+// HandleSlotRightClick handles authentic Minecraft right-click item interaction on a slot.
+func HandleSlotRightClick(cursor *ItemStack, slot *ItemStack) {
+	if cursor.IsEmpty() {
+		if !slot.IsEmpty() {
+			half := (slot.Count + 1) / 2
+			*cursor = ItemStack{
+				ItemID: slot.ItemID,
+				Count:  half,
+				Damage: slot.Damage,
+			}
+			slot.Count -= half
+			if slot.Count <= 0 {
+				*slot = ItemStack{}
+			}
+		}
+		return
+	}
+	maxStack := GetMaxStackSize(cursor.ItemID)
+	if slot.IsEmpty() {
+		*slot = ItemStack{
+			ItemID: cursor.ItemID,
+			Count:  1,
+			Damage: cursor.Damage,
+		}
+		cursor.Count--
+		if cursor.Count <= 0 {
+			*cursor = ItemStack{}
+		}
+		return
+	}
+	if slot.ItemID == cursor.ItemID && slot.Damage == cursor.Damage && slot.Count < maxStack {
+		slot.Count++
+		cursor.Count--
+		if cursor.Count <= 0 {
+			*cursor = ItemStack{}
+		}
+	}
 }

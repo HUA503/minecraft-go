@@ -54,7 +54,7 @@ const (
 	WS_OVERLAPPEDWINDOW = 0x00CF0000
 	WS_VISIBLE          = 0x10000000
 	WS_POPUP            = 0x80000000
-	GWL_STYLE           = 0xFFFFFFF0 // (DWORD)-16
+	GWL_STYLE           = ^uintptr(15) // Sign-extended (int32)-16 for 64-bit Windows
 	HWND_TOP            = 0
 	SWP_FRAMECHANGED    = 0x0020
 	SWP_SHOWWINDOW      = 0x0040

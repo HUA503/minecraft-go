@@ -261,12 +261,12 @@ func ResolveMovementCollision(pos Vec3, delta Vec3, isSolid func(x, y, z int32) 
 	for _, b := range solidBoxes {
 		if pBox.Min.X < b.Max.X-epsilon && pBox.Max.X > b.Min.X+epsilon &&
 			pBox.Min.Z < b.Max.Z-epsilon && pBox.Max.Z > b.Min.Z+epsilon {
-			if dy < 0 {
+			if dy <= 0 {
 				// Only floor blocks below player's mid-body can impede downward movement
-				if b.Max.Y <= pBox.Min.Y+0.6 {
-					if pBox.Min.Y >= b.Max.Y-epsilon {
+				if b.Max.Y <= pBox.Min.Y+0.6 && b.Max.Y >= pBox.Min.Y-1.2 {
+					if pBox.Min.Y >= b.Max.Y-0.05 {
 						maxDown := b.Max.Y - pBox.Min.Y
-						if maxDown > dy {
+						if maxDown >= dy {
 							dy = maxDown
 							onGround = true
 						}
@@ -276,16 +276,11 @@ func ResolveMovementCollision(pos Vec3, delta Vec3, isSolid func(x, y, z int32) 
 					}
 				}
 			} else if dy > 0 {
-				// Only ceiling blocks strictly above player's waist can impede upward movement
-				if b.Min.Y >= pBox.Min.Y+1.0 {
-					if pBox.Max.Y <= b.Min.Y+epsilon {
-						maxUp := b.Min.Y - pBox.Max.Y
-						if maxUp < dy {
-							dy = maxUp
-							hitCeiling = true
-						}
-					} else if pBox.Max.Y > b.Min.Y {
-						dy = b.Min.Y - pBox.Max.Y
+				// Only ceiling blocks strictly above player's head can impede upward movement
+				if b.Min.Y >= pBox.Max.Y-epsilon {
+					maxUp := b.Min.Y - pBox.Max.Y
+					if maxUp < dy {
+						dy = maxUp
 						hitCeiling = true
 					}
 				}
@@ -407,10 +402,18 @@ func ResolveMovementCollision(pos Vec3, delta Vec3, isSolid func(x, y, z int32) 
 
 	// Extra ground stability check (feet resting on solid block, only when not jumping upward)
 	if !onGround && delta.Y <= 0 {
-		feetX := int32(math.Floor(pos.X))
-		feetY := int32(math.Floor(pos.Y - 0.05))
-		feetZ := int32(math.Floor(pos.Z))
-		if isSolid(feetX, feetY, feetZ) && math.Abs(pos.Y-float64(feetY+1)) < 0.05 {
+		checkFoot := func(px, pz float64) bool {
+			fx := int32(math.Floor(px))
+			fy := int32(math.Floor(pos.Y - 0.05))
+			fz := int32(math.Floor(pz))
+			return isSolid(fx, fy, fz) && math.Abs(pos.Y-float64(fy+1)) < 0.10
+		}
+		if checkFoot(pos.X-halfW*0.8, pos.Z-halfW*0.8) ||
+			checkFoot(pos.X+halfW*0.8, pos.Z-halfW*0.8) ||
+			checkFoot(pos.X-halfW*0.8, pos.Z+halfW*0.8) ||
+			checkFoot(pos.X+halfW*0.8, pos.Z+halfW*0.8) ||
+			checkFoot(pos.X, pos.Z) {
+			feetY := int32(math.Floor(pos.Y - 0.05))
 			pos.Y = float64(feetY + 1)
 			onGround = true
 		}

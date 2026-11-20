@@ -29,6 +29,7 @@ type PlayerEntity struct {
 	FallDistance float32
 	IsAlive      bool
 	ClientDriven bool
+	GameMode     int // 0: Survival, 1: Creative, 2: Adventure, 3: Spectator
 	Inventory    *inventory.PlayerInventory
 }
 
@@ -101,6 +102,8 @@ type Engine struct {
 	Events           chan WorldEvent
 	stopChan         chan struct{}
 	Storage          *world.SaveManager
+	Furnaces         map[world.BlockPos]*inventory.FurnaceBlockEntity
+	IsPaused         bool
 }
 
 func NewEngine() *Engine {
@@ -119,6 +122,7 @@ func NewEngine() *Engine {
 		WorldTime:        6000, // Canonical Minecraft noon daylight
 		Events:           make(chan WorldEvent, 1024),
 		stopChan:         make(chan struct{}),
+		Furnaces:         make(map[world.BlockPos]*inventory.FurnaceBlockEntity),
 	}
 	eng.DimensionWorlds[0] = eng.World
 	eng.DimensionWorlds[1] = make(map[world.ChunkPos]*world.Chunk)
@@ -143,13 +147,7 @@ func (e *Engine) SetWorldTime(t int64) {
 	}
 }
 
-func (e *Engine) SpawnItemDrop(itemID int32, count int, pos Vec3, vel Vec3) *ItemDrop {
-	return e.SpawnItemDropWithDelay(itemID, count, pos, vel, 0.3)
-}
-
-func (e *Engine) SpawnItemDropWithDelay(itemID int32, count int, pos Vec3, vel Vec3, delay float64) *ItemDrop {
-	e.mu.Lock()
-	defer e.mu.Unlock()
+func (e *Engine) spawnItemDropLocked(itemID int32, count int, pos Vec3, vel Vec3, delay float64) *ItemDrop {
 	id := e.nextItemDropID
 	e.nextItemDropID++
 	drop := &ItemDrop{
@@ -163,6 +161,16 @@ func (e *Engine) SpawnItemDropWithDelay(itemID int32, count int, pos Vec3, vel V
 	}
 	e.ItemDrops[id] = drop
 	return drop
+}
+
+func (e *Engine) SpawnItemDrop(itemID int32, count int, pos Vec3, vel Vec3) *ItemDrop {
+	return e.SpawnItemDropWithDelay(itemID, count, pos, vel, 0.3)
+}
+
+func (e *Engine) SpawnItemDropWithDelay(itemID int32, count int, pos Vec3, vel Vec3, delay float64) *ItemDrop {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.spawnItemDropLocked(itemID, count, pos, vel, delay)
 }
 
 func (e *Engine) GetItemDrops() []ItemDrop {
@@ -197,6 +205,7 @@ func (e *Engine) DamageMob(mobID int32, damage float32) (drops []inventory.ItemS
 	}
 	mob.Health -= damage
 	mob.HurtTime = 10
+	mob.LastHurtTime = time.Now()
 	if mob.Health <= 0 {
 		mob.Health = 0
 		mob.IsAlive = false
@@ -265,6 +274,7 @@ func (e *Engine) AttackMobInFront(origin, look Vec3, reach float64, damage float
 
 	closestMob.Health -= damage
 	closestMob.HurtTime = 10
+	closestMob.LastHurtTime = time.Now()
 	knockback := look.Scale(0.25)
 	knockback.Y = 0.12
 	closestMob.Velocity = closestMob.Velocity.Add(knockback)
@@ -319,6 +329,15 @@ func (e *Engine) SaveAll() error {
 func (e *Engine) LoadChunk(cp world.ChunkPos, c *world.Chunk) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	if existing, ok := e.World[cp]; ok && existing != nil {
+		return
+	}
+	if e.Storage != nil {
+		if loaded, err := e.Storage.LoadChunk(cp); err == nil && loaded != nil {
+			e.World[cp] = loaded
+			return
+		}
+	}
 	e.World[cp] = c
 }
 
@@ -339,9 +358,8 @@ func (e *Engine) GetChunk(cp world.ChunkPos) *world.Chunk {
 	return chunk
 }
 
-func (e *Engine) GetBlock(x, y, z int32) int32 {
+func (e *Engine) getBlockLocked(x, y, z int32) int32 {
 	cp := world.BlockPos{X: x, Y: y, Z: z}.ToChunkPos()
-	e.mu.Lock()
 	chunk, ok := e.World[cp]
 	if (!ok || chunk == nil) && e.Storage != nil {
 		if loaded, err := e.Storage.LoadChunk(cp); err == nil && loaded != nil {
@@ -350,16 +368,20 @@ func (e *Engine) GetBlock(x, y, z int32) int32 {
 			ok = true
 		}
 	}
-	e.mu.Unlock()
 	if !ok || chunk == nil {
 		return 0
 	}
 	return chunk.GetBlock(x, y, z)
 }
 
-func (e *Engine) SetBlock(x, y, z int32, state int32) {
-	cp := world.BlockPos{X: x, Y: y, Z: z}.ToChunkPos()
+func (e *Engine) GetBlock(x, y, z int32) int32 {
 	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.getBlockLocked(x, y, z)
+}
+
+func (e *Engine) setBlockLocked(x, y, z int32, state int32) {
+	cp := world.BlockPos{X: x, Y: y, Z: z}.ToChunkPos()
 	chunk, ok := e.World[cp]
 	if (!ok || chunk == nil) && e.Storage != nil {
 		if loaded, err := e.Storage.LoadChunk(cp); err == nil && loaded != nil {
@@ -373,7 +395,6 @@ func (e *Engine) SetBlock(x, y, z int32, state int32) {
 		e.World[cp] = chunk
 	}
 	chunk.SetBlock(x, y, z, state)
-	e.mu.Unlock()
 
 	// Broadcast block update event
 	select {
@@ -386,6 +407,12 @@ func (e *Engine) SetBlock(x, y, z int32, state int32) {
 	}
 }
 
+func (e *Engine) SetBlock(x, y, z int32, state int32) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.setBlockLocked(x, y, z, state)
+}
+
 // UnloadChunk purges a distant chunk from active simulation, saving it to disk if dirty.
 func (e *Engine) UnloadChunk(pos world.ChunkPos) {
 	e.mu.Lock()
@@ -394,7 +421,9 @@ func (e *Engine) UnloadChunk(pos world.ChunkPos) {
 		if e.Storage != nil && chunk != nil && chunk.IsDirty {
 			_ = e.Storage.SaveChunk(chunk)
 		}
-		delete(e.World, pos)
+		if e.Storage != nil || (chunk != nil && !chunk.IsDirty) {
+			delete(e.World, pos)
+		}
 	}
 }
 
@@ -406,6 +435,23 @@ func (e *Engine) BreakBlockWithTool(playerID int32, pos world.BlockPos, toolID i
 	}
 
 	e.SetBlock(pos.X, pos.Y, pos.Z, 0) // Air
+	if origBlock == 61 || origBlock == 62 {
+		e.mu.Lock()
+		if f, ok := e.Furnaces[pos]; ok && f != nil {
+			dropPos := Vec3{X: float64(pos.X) + 0.5, Y: float64(pos.Y) + 0.5, Z: float64(pos.Z) + 0.5}
+			if !f.InputSlot.IsEmpty() {
+				e.spawnItemDropLocked(f.InputSlot.ItemID, f.InputSlot.Count, dropPos, Vec3{Y: 0.1}, 0.2)
+			}
+			if !f.FuelSlot.IsEmpty() {
+				e.spawnItemDropLocked(f.FuelSlot.ItemID, f.FuelSlot.Count, dropPos, Vec3{Y: 0.1}, 0.2)
+			}
+			if !f.OutputSlot.IsEmpty() {
+				e.spawnItemDropLocked(f.OutputSlot.ItemID, f.OutputSlot.Count, dropPos, Vec3{Y: 0.1}, 0.2)
+			}
+			delete(e.Furnaces, pos)
+		}
+		e.mu.Unlock()
+	}
 
 	canHarvest := inventory.CanHarvestBlock(toolID, origBlock)
 	var dropItem int32
@@ -428,7 +474,7 @@ func (e *Engine) BreakBlockWithTool(playerID int32, pos world.BlockPos, toolID i
 			dropItem = inventory.ItemDiamond
 		case 58: // Crafting Table
 			dropItem = inventory.ItemCraftingTable
-		case 61: // Furnace
+		case 61, 62: // Furnace, Lit Furnace -> drops Furnace (61)
 			dropItem = inventory.ItemFurnace
 		case 31: // Tall Grass -> Wheat Seeds
 			dropItem = 295
@@ -474,6 +520,23 @@ func (e *Engine) BreakBlock(playerID int32, pos world.BlockPos) int32 {
 	}
 
 	e.SetBlock(pos.X, pos.Y, pos.Z, 0) // Air
+	if origBlock == 61 || origBlock == 62 {
+		e.mu.Lock()
+		if f, ok := e.Furnaces[pos]; ok && f != nil {
+			dropPos := Vec3{X: float64(pos.X) + 0.5, Y: float64(pos.Y) + 0.5, Z: float64(pos.Z) + 0.5}
+			if !f.InputSlot.IsEmpty() {
+				e.spawnItemDropLocked(f.InputSlot.ItemID, f.InputSlot.Count, dropPos, Vec3{Y: 0.1}, 0.2)
+			}
+			if !f.FuelSlot.IsEmpty() {
+				e.spawnItemDropLocked(f.FuelSlot.ItemID, f.FuelSlot.Count, dropPos, Vec3{Y: 0.1}, 0.2)
+			}
+			if !f.OutputSlot.IsEmpty() {
+				e.spawnItemDropLocked(f.OutputSlot.ItemID, f.OutputSlot.Count, dropPos, Vec3{Y: 0.1}, 0.2)
+			}
+			delete(e.Furnaces, pos)
+		}
+		e.mu.Unlock()
+	}
 
 	// Determine drop item
 	dropItem := origBlock
@@ -534,6 +597,14 @@ func (e *Engine) PlaceBlock(playerID int32, pos world.BlockPos, blockID int32) b
 	e.mu.Unlock()
 
 	e.SetBlock(pos.X, pos.Y, pos.Z, blockID)
+	if blockID == 61 {
+		e.mu.Lock()
+		if e.Furnaces == nil {
+			e.Furnaces = make(map[world.BlockPos]*inventory.FurnaceBlockEntity)
+		}
+		e.Furnaces[pos] = inventory.NewFurnaceBlockEntity()
+		e.mu.Unlock()
+	}
 	return true
 }
 
@@ -732,7 +803,7 @@ func (e *Engine) MovePlayerRelative(id int32, delta Vec3, yaw, pitch float32) (V
 			p.FallDistance = 0
 		} else if ground {
 			p.Velocity.Y = 0
-			if p.FallDistance > 3.0 {
+			if p.GameMode != 1 && p.FallDistance > 3.0 {
 				fallDmg := p.FallDistance - 3.0
 				p.Health -= fallDmg
 				if p.Health <= 0 {
@@ -775,9 +846,20 @@ func (e *Engine) MovePlayerRelative(id int32, delta Vec3, yaw, pitch float32) (V
 	return resolvedPos, ground, hitCeiling
 }
 
+// SetPaused toggles singleplayer simulation pause state.
+func (e *Engine) SetPaused(paused bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.IsPaused = paused
+}
+
 // Tick executes a single 50ms simulation step.
 func (e *Engine) Tick() {
 	e.mu.Lock()
+	if e.IsPaused {
+		e.mu.Unlock()
+		return
+	}
 	e.TickCount++
 	e.WorldTime = (e.WorldTime + 1) % 24000
 
@@ -935,6 +1017,26 @@ func (e *Engine) Tick() {
 		}
 	}
 
+	// Tick active Furnaces
+	for pos, f := range e.Furnaces {
+		if f != nil {
+			changed := f.Tick()
+			if changed {
+				curBlock := e.getBlockLocked(pos.X, pos.Y, pos.Z)
+				if f.IsBurning() && curBlock == 61 {
+					e.setBlockLocked(pos.X, pos.Y, pos.Z, 62) // Lit furnace
+				} else if !f.IsBurning() && curBlock == 62 {
+					e.setBlockLocked(pos.X, pos.Y, pos.Z, 61) // Unlit furnace
+				}
+			}
+		}
+	}
+
+	// Periodic natural mob spawning & despawning every 60 ticks (3 seconds)
+	if e.TickCount%60 == 0 && len(e.Players) > 0 {
+		e.tickNaturalMobSpawningLocked()
+	}
+
 	// Tick Ender Dragon Boss when in End dimension
 	if e.CurrentDimension == 2 && e.EnderDragon != nil {
 		e.tickEnderDragon()
@@ -972,6 +1074,130 @@ func (e *Engine) StartTickLoop() {
 
 func (e *Engine) Stop() {
 	close(e.stopChan)
+}
+
+// GetOrCreateFurnace retrieves or creates a FurnaceBlockEntity at pos.
+func (e *Engine) GetOrCreateFurnace(pos world.BlockPos) *inventory.FurnaceBlockEntity {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.Furnaces == nil {
+		e.Furnaces = make(map[world.BlockPos]*inventory.FurnaceBlockEntity)
+	}
+	f, ok := e.Furnaces[pos]
+	if !ok || f == nil {
+		f = inventory.NewFurnaceBlockEntity()
+		e.Furnaces[pos] = f
+	}
+	return f
+}
+
+func (e *Engine) tickNaturalMobSpawningLocked() {
+	// 1. Despawn distant mobs (> 128 blocks from all alive players)
+	for id, m := range e.Mobs {
+		if !m.IsAlive {
+			delete(e.Mobs, id)
+			continue
+		}
+		tooFar := true
+		for _, p := range e.Players {
+			if p.IsAlive && m.Position.DistanceTo(p.Position) < 128.0 {
+				tooFar = false
+				break
+			}
+		}
+		if tooFar {
+			delete(e.Mobs, id)
+		}
+	}
+
+	// 2. Count current mobs in dimension
+	hostileCount := 0
+	passiveCount := 0
+	for _, m := range e.Mobs {
+		if !m.IsAlive {
+			continue
+		}
+		switch m.Type {
+		case MobZombie, MobSkeleton, MobCreeper, MobSpider, MobEnderman:
+			hostileCount++
+		case MobCow, MobPig, MobSheep, MobChicken:
+			passiveCount++
+		}
+	}
+
+	// Pick a player to spawn around
+	var targetPlayer *PlayerEntity
+	for _, p := range e.Players {
+		if p.IsAlive {
+			targetPlayer = p
+			break
+		}
+	}
+	if targetPlayer == nil {
+		return
+	}
+
+	pPos := targetPlayer.Position
+	randAngle := float64(e.TickCount%360) * math.Pi / 180.0
+	randDist := 28.0 + float64((e.TickCount*17)%20)
+	sx := pPos.X + randDist*math.Cos(randAngle)
+	sz := pPos.Z + randDist*math.Sin(randAngle)
+	wx := int32(math.Floor(sx))
+	wz := int32(math.Floor(sz))
+
+	// Find top surface block
+	var surfY float64 = -999
+	for y := int32(110); y >= -50; y-- {
+		b := e.getBlockLocked(wx, y, wz)
+		above := e.getBlockLocked(wx, y+1, wz)
+		above2 := e.getBlockLocked(wx, y+2, wz)
+		if IsSolidBlock(b) && (above == 0 || above == 31 || above == 37 || above == 38) && above2 == 0 {
+			surfY = float64(y + 1)
+			break
+		}
+	}
+	if surfY < -60 {
+		return
+	}
+
+	spawnPos := Vec3{X: sx, Y: surfY, Z: sz}
+	daytime := e.WorldTime % 24000
+	isNight := daytime >= 13000 && daytime <= 23000
+
+	if e.CurrentDimension == 1 { // Nether
+		if hostileCount < 20 {
+			mobType := MobSkeleton
+			if (e.TickCount % 3) == 0 {
+				mobType = MobEnderman
+			}
+			e.spawnMobLocked(mobType, spawnPos)
+		}
+	} else if e.CurrentDimension == 2 { // The End
+		if hostileCount < 25 {
+			e.spawnMobLocked(MobEnderman, spawnPos)
+		}
+	} else { // Overworld
+		if isNight && hostileCount < 25 {
+			mobTypes := []MobType{MobZombie, MobSkeleton, MobSpider, MobCreeper, MobEnderman}
+			choice := mobTypes[(int(e.TickCount) % len(mobTypes))]
+			e.spawnMobLocked(choice, spawnPos)
+		} else if !isNight && passiveCount < 20 {
+			ground := e.getBlockLocked(wx, int32(surfY-1), wz)
+			if ground == 2 { // Grass block
+				animals := []MobType{MobCow, MobPig, MobSheep, MobChicken}
+				choice := animals[(int(e.TickCount) % len(animals))]
+				e.spawnMobLocked(choice, spawnPos)
+			}
+		}
+	}
+}
+
+func (e *Engine) spawnMobLocked(mobType MobType, pos Vec3) *MobEntity {
+	id := e.nextMobID
+	e.nextMobID++
+	m := NewMobEntity(id, mobType, pos)
+	e.Mobs[id] = m
+	return m
 }
 
 // ConsumeFood eats one unit of food from player's inventory, restoring hunger and saturation points.
@@ -1190,8 +1416,8 @@ func (e *Engine) tickEnderDragon() {
 		if dragon.DeathTicks >= 100 {
 			dragon.IsAlive = false
 			dragon.IsDying = false
-			// Spawn massive XP orbs
-			e.SpawnItemDrop(264, 64, Vec3{X: 0, Y: 68, Z: 0}, Vec3{Y: 0.2}) // Diamonds celebration
+			// Spawn massive XP/celebration drops without deadlocking
+			e.spawnItemDropLocked(264, 64, Vec3{X: 0, Y: 68, Z: 0}, Vec3{Y: 0.2}, 0.3)
 		}
 		return
 	}

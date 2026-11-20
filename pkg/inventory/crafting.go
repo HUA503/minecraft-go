@@ -102,6 +102,164 @@ func (cm *CraftingManager) registerDefaults() {
 		Pattern: []int32{ItemCoal, ItemStick},
 		Output:  ItemStack{ItemID: ItemTorch, Count: 4},
 	})
+
+	// 9. Swords (1x3: 2 material over 1 stick)
+	cm.Recipes = append(cm.Recipes,
+		Recipe{
+			Width:   1,
+			Height:  3,
+			Pattern: []int32{ItemOakPlanks, ItemOakPlanks, ItemStick},
+			Output:  ItemStack{ItemID: ItemWoodenSword, Count: 1},
+		},
+		Recipe{
+			Width:   1,
+			Height:  3,
+			Pattern: []int32{ItemCobblestone, ItemCobblestone, ItemStick},
+			Output:  ItemStack{ItemID: ItemStoneSword, Count: 1},
+		},
+		Recipe{
+			Width:   1,
+			Height:  3,
+			Pattern: []int32{ItemIronIngot, ItemIronIngot, ItemStick},
+			Output:  ItemStack{ItemID: ItemIronSword, Count: 1},
+		},
+		Recipe{
+			Width:   1,
+			Height:  3,
+			Pattern: []int32{ItemDiamond, ItemDiamond, ItemStick},
+			Output:  ItemStack{ItemID: ItemDiamondSword, Count: 1},
+		},
+	)
+
+	// 10. Shovels (1x3: 1 material over 2 sticks)
+	cm.Recipes = append(cm.Recipes,
+		Recipe{
+			Width:   1,
+			Height:  3,
+			Pattern: []int32{ItemOakPlanks, ItemStick, ItemStick},
+			Output:  ItemStack{ItemID: ItemWoodenShovel, Count: 1},
+		},
+		Recipe{
+			Width:   1,
+			Height:  3,
+			Pattern: []int32{ItemCobblestone, ItemStick, ItemStick},
+			Output:  ItemStack{ItemID: ItemStoneShovel, Count: 1},
+		},
+		Recipe{
+			Width:   1,
+			Height:  3,
+			Pattern: []int32{ItemIronIngot, ItemStick, ItemStick},
+			Output:  ItemStack{ItemID: ItemIronShovel, Count: 1},
+		},
+		Recipe{
+			Width:   1,
+			Height:  3,
+			Pattern: []int32{ItemDiamond, ItemStick, ItemStick},
+			Output:  ItemStack{ItemID: ItemDiamondShovel, Count: 1},
+		},
+	)
+
+	// 11. Axes (2x3: 3 material, 2 sticks)
+	cm.Recipes = append(cm.Recipes,
+		Recipe{
+			Width:  2,
+			Height: 3,
+			Pattern: []int32{
+				ItemOakPlanks, ItemOakPlanks,
+				ItemOakPlanks, ItemStick,
+				ItemAir, ItemStick,
+			},
+			Output: ItemStack{ItemID: ItemWoodenAxe, Count: 1},
+		},
+		Recipe{
+			Width:  2,
+			Height: 3,
+			Pattern: []int32{
+				ItemCobblestone, ItemCobblestone,
+				ItemCobblestone, ItemStick,
+				ItemAir, ItemStick,
+			},
+			Output: ItemStack{ItemID: ItemStoneAxe, Count: 1},
+		},
+		Recipe{
+			Width:  2,
+			Height: 3,
+			Pattern: []int32{
+				ItemIronIngot, ItemIronIngot,
+				ItemIronIngot, ItemStick,
+				ItemAir, ItemStick,
+			},
+			Output: ItemStack{ItemID: ItemIronAxe, Count: 1},
+		},
+		Recipe{
+			Width:  2,
+			Height: 3,
+			Pattern: []int32{
+				ItemDiamond, ItemDiamond,
+				ItemDiamond, ItemStick,
+				ItemAir, ItemStick,
+			},
+			Output: ItemStack{ItemID: ItemDiamondAxe, Count: 1},
+		},
+	)
+
+	// 12. Iron Pickaxe (3x3)
+	cm.Recipes = append(cm.Recipes, Recipe{
+		Width:  3,
+		Height: 3,
+		Pattern: []int32{
+			ItemIronIngot, ItemIronIngot, ItemIronIngot,
+			ItemAir, ItemStick, ItemAir,
+			ItemAir, ItemStick, ItemAir,
+		},
+		Output: ItemStack{ItemID: ItemIronPickaxe, Count: 1},
+	})
+
+	// 13. Blocks (3x3: 9 ingots / gems)
+	cm.Recipes = append(cm.Recipes,
+		Recipe{
+			Width:  3,
+			Height: 3,
+			Pattern: []int32{
+				ItemIronIngot, ItemIronIngot, ItemIronIngot,
+				ItemIronIngot, ItemIronIngot, ItemIronIngot,
+				ItemIronIngot, ItemIronIngot, ItemIronIngot,
+			},
+			Output: ItemStack{ItemID: ItemIronBlock, Count: 1},
+		},
+		Recipe{
+			Width:  3,
+			Height: 3,
+			Pattern: []int32{
+				ItemGoldIngot, ItemGoldIngot, ItemGoldIngot,
+				ItemGoldIngot, ItemGoldIngot, ItemGoldIngot,
+				ItemGoldIngot, ItemGoldIngot, ItemGoldIngot,
+			},
+			Output: ItemStack{ItemID: ItemGoldBlock, Count: 1},
+		},
+		Recipe{
+			Width:  3,
+			Height: 3,
+			Pattern: []int32{
+				ItemDiamond, ItemDiamond, ItemDiamond,
+				ItemDiamond, ItemDiamond, ItemDiamond,
+				ItemDiamond, ItemDiamond, ItemDiamond,
+			},
+			Output: ItemStack{ItemID: ItemDiamondBlock, Count: 1},
+		},
+	)
+
+	// 14. Chest (3x3: 8 planks hollow)
+	cm.Recipes = append(cm.Recipes, Recipe{
+		Width:  3,
+		Height: 3,
+		Pattern: []int32{
+			ItemOakPlanks, ItemOakPlanks, ItemOakPlanks,
+			ItemOakPlanks, ItemAir, ItemOakPlanks,
+			ItemOakPlanks, ItemOakPlanks, ItemOakPlanks,
+		},
+		Output: ItemStack{ItemID: ItemChest, Count: 1},
+	})
 }
 
 // MatchCrafting finds matching recipe for grid (gridSize = 2 for 2x2, 3 for 3x3).
