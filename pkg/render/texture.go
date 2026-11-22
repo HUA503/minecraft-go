@@ -465,11 +465,11 @@ func initDefaultTextures() {
 	var dandelionTex BlockTexture
 	for y := 0; y < 16; y++ {
 		for x := 0; x < 16; x++ {
-			if y <= 8 && (x == 7 || x == 8) {
-				// Green stem
+			if y >= 7 && (x == 7 || x == 8) {
+				// Green stem (bottom)
 				dandelionTex[y][x] = 0xFF4E9333
-			} else if y >= 9 && y <= 14 && x >= 5 && x <= 10 {
-				// Yellow dandelion blossom
+			} else if y >= 1 && y <= 6 && x >= 5 && x <= 10 {
+				// Yellow dandelion blossom (top)
 				h := texHash(x, y, 3737) % 3
 				switch h {
 				case 0:
@@ -490,12 +490,12 @@ func initDefaultTextures() {
 	var poppyTex BlockTexture
 	for y := 0; y < 16; y++ {
 		for x := 0; x < 16; x++ {
-			if y <= 7 && (x == 7 || x == 8) {
-				// Green stem
+			if y >= 7 && (x == 7 || x == 8) {
+				// Green stem (bottom)
 				poppyTex[y][x] = 0xFF3D7828
-			} else if y >= 8 && y <= 13 && x >= 5 && x <= 10 {
-				// Red petals
-				if x >= 7 && x <= 8 && y >= 9 && y <= 10 {
+			} else if y >= 2 && y <= 6 && x >= 5 && x <= 10 {
+				// Red petals (top)
+				if x >= 7 && x <= 8 && y >= 4 && y <= 5 {
 					poppyTex[y][x] = 0xFF221111 // Dark flower core
 				} else {
 					h := texHash(x, y, 3838) % 3
@@ -980,8 +980,14 @@ func initOfficialBlockTextures() {
 	loadSingle(57, "diamond_block")
 	loadBlock(58, "crafting_table_top", "oak_planks", "crafting_table_side")
 	loadBlock(61, "furnace_top", "furnace_top", "furnace_front")
+	loadSingle(65, "ladder")
+	loadSingle(82, "clay")
+	loadSingle(83, "sugar_cane")
+	loadBlock(86, "pumpkin_top", "pumpkin_top", "pumpkin_side")
 	loadSingle(87, "netherrack")
+	loadSingle(88, "soul_sand")
 	loadSingle(89, "glowstone")
+	loadBlock(103, "melon_top", "melon_top", "melon_side")
 	loadSingle(121, "end_stone")
 }
 

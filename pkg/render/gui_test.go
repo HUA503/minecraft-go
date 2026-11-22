@@ -13,29 +13,32 @@ func TestGUIHitTestingAndDrawing(t *testing.T) {
 
 	// 1. Test Crafting GUI Hit Testing
 	// Center of screen
-	gx := 320/2 - 280/2
-	gy := 240/2 - 220/2
+	scale := CalculateGUIScaleFromDimensions(320, 240)
+	gw := 176 * scale
+	gh := 166 * scale
+	gx := 320/2 - gw/2
+	gy := 240/2 - gh/2
 
 	// Hit inside hotbar slot 0
-	hitHotbar := HitTestCraftingGUI(320, 240, gx+18+2, gy+164+2, false)
+	hitHotbar := HitTestCraftingGUI(320, 240, gx+8+2, gy+142+2, false)
 	if hitHotbar.Type != SlotInventory || hitHotbar.Index != 0 {
 		t.Fatalf("expected hotbar slot 0, got %+v", hitHotbar)
 	}
 
 	// Hit inside main inventory slot 9
-	hitMain := HitTestCraftingGUI(320, 240, gx+18+2, gy+86+2, false)
+	hitMain := HitTestCraftingGUI(320, 240, gx+8+2, gy+84+2, false)
 	if hitMain.Type != SlotInventory || hitMain.Index != 9 {
 		t.Fatalf("expected main slot 9, got %+v", hitMain)
 	}
 
 	// Hit inside 2x2 crafting grid slot 0
-	hitCraft := HitTestCraftingGUI(320, 240, gx+40+2, gy+24+2, false)
+	hitCraft := HitTestCraftingGUI(320, 240, gx+40+2, gy+22+2, false)
 	if hitCraft.Type != SlotCraftGrid || hitCraft.Index != 0 {
 		t.Fatalf("expected craft grid slot 0, got %+v", hitCraft)
 	}
 
 	// Hit inside 2x2 result slot
-	hitRes := HitTestCraftingGUI(320, 240, gx+40+48+32+2, gy+24+10+2, false)
+	hitRes := HitTestCraftingGUI(320, 240, gx+124+2, gy+31+2, false)
 	if hitRes.Type != SlotCraftResult {
 		t.Fatalf("expected craft result slot, got %+v", hitRes)
 	}
@@ -47,15 +50,15 @@ func TestGUIHitTestingAndDrawing(t *testing.T) {
 	}
 
 	// 2. Test Furnace GUI Hit Testing
-	hitIn := HitTestFurnaceGUI(320, 240, gx+80+2, gy+20+2)
+	hitIn := HitTestFurnaceGUI(320, 240, gx+56+2, gy+17+2)
 	if hitIn.Type != SlotFurnaceInput {
 		t.Fatalf("expected furnace input slot, got %+v", hitIn)
 	}
-	hitFuel := HitTestFurnaceGUI(320, 240, gx+80+2, gy+62+2)
+	hitFuel := HitTestFurnaceGUI(320, 240, gx+56+2, gy+53+2)
 	if hitFuel.Type != SlotFurnaceFuel {
 		t.Fatalf("expected furnace fuel slot, got %+v", hitFuel)
 	}
-	hitFurnaceOut := HitTestFurnaceGUI(320, 240, gx+144+2, gy+36+2)
+	hitFurnaceOut := HitTestFurnaceGUI(320, 240, gx+116+2, gy+35+2)
 	if hitFurnaceOut.Type != SlotFurnaceOutput {
 		t.Fatalf("expected furnace output slot, got %+v", hitFurnaceOut)
 	}

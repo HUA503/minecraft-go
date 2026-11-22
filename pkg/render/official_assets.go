@@ -419,20 +419,44 @@ func GetOfficialItemTextureName(itemID int32) string {
 		return "golden_boots"
 
 	// --- Other Essentials ---
+	case 322:
+		return "golden_apple"
 	case 325:
 		return "bucket"
 	case 326:
 		return "water_bucket"
 	case 327:
 		return "lava_bucket"
+	case 296:
+		return "wheat"
+	case 295:
+		return "wheat_seeds"
+	case 318:
+		return "flint"
 	case 332:
 		return "snowball"
+	case 336:
+		return "brick"
+	case 337:
+		return "clay_ball"
+	case 340:
+		return "book"
 	case 344:
 		return "egg"
 	case 368:
 		return "ender_pearl"
 	case 359:
 		return "shears"
+	case 324:
+		return "oak_door"
+	case 330:
+		return "iron_door"
+	case 83:
+		return "sugar_cane"
+	case 86:
+		return "pumpkin"
+	case 103:
+		return "melon_slice"
 
 	// Flat foliage / flora
 	case 37:

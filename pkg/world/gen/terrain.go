@@ -56,6 +56,9 @@ const (
 	BlockRedstoneOre      int32 = 73
 	BlockLapisOre         int32 = 74
 	BlockCactus           int32 = 81
+	BlockSugarCane        int32 = 83
+	BlockPumpkin          int32 = 86
+	BlockMelon            int32 = 103
 	BlockNetherrack       int32 = 87
 	BlockSoulSand         int32 = 88
 	BlockGlowstone        int32 = 89
@@ -389,8 +392,11 @@ func (g *Generator) generateOverworld(c *world.Chunk, cp world.ChunkPos) {
 					} else {
 						g.growOakTree(c, toI32(wx), h+1, toI32(wz))
 					}
-				} else if treeChance > 0.05 {
+				} else if treeChance > 0.12 {
 					c.SetBlock(toI32(wx), h+1, toI32(wz), BlockTallGrass)
+				} else if treeChance < -0.45 {
+					// Wild melon patches in warm forest
+					c.SetBlock(toI32(wx), h+1, toI32(wz), BlockMelon)
 				}
 			case BiomeBirchForest:
 				treeChance := g.noise.Noise2D(wx*0.32, wz*0.32)
@@ -410,6 +416,8 @@ func (g *Generator) generateOverworld(c *world.Chunk, cp world.ChunkPos) {
 				treeChance := g.noise.Noise2D(wx*0.3, wz*0.3)
 				if treeChance > 0.45 {
 					g.growSwampTree(c, toI32(wx), h+1, toI32(wz))
+				} else if treeChance < -0.3 {
+					c.SetBlock(toI32(wx), h+1, toI32(wz), BlockLilyPad)
 				}
 			case BiomeDesert:
 				cactChance := g.noise.Noise2D(wx*0.2, wz*0.2)
@@ -424,7 +432,10 @@ func (g *Generator) generateOverworld(c *world.Chunk, cp world.ChunkPos) {
 					g.growOakTree(c, toI32(wx), h+1, toI32(wz))
 				} else {
 					flowerNoise := g.noise.Noise2D(wx*0.08, wz*0.08)
-					if flowerNoise > 0.35 {
+					if flowerNoise > 0.62 {
+						// Rare wild pumpkin patches
+						c.SetBlock(toI32(wx), h+1, toI32(wz), BlockPumpkin)
+					} else if flowerNoise > 0.35 {
 						detail := g.noise.Noise2D(wx*0.7+20.0, wz*0.7+20.0)
 						if detail > 0.15 {
 							c.SetBlock(toI32(wx), h+1, toI32(wz), BlockTallGrass)
@@ -435,6 +446,26 @@ func (g *Generator) generateOverworld(c *world.Chunk, cp world.ChunkPos) {
 						} else {
 							c.SetBlock(toI32(wx), h+1, toI32(wz), BlockDandelion)
 						}
+					}
+				}
+			}
+
+			// Shoreline sugar cane along water edges
+			if h == seaLevel {
+				nearWater := false
+				if lx > 0 && cols[lx-1][lz].Height < seaLevel {
+					nearWater = true
+				} else if lx < 15 && cols[lx+1][lz].Height < seaLevel {
+					nearWater = true
+				} else if lz > 0 && cols[lx][lz-1].Height < seaLevel {
+					nearWater = true
+				} else if lz < 15 && cols[lx][lz+1].Height < seaLevel {
+					nearWater = true
+				}
+				if nearWater && g.noise.Noise2D(wx*0.4+50.0, wz*0.4+50.0) > 0.35 {
+					caneHeight := 2 + int(math.Abs(g.noise.Noise2D(wx, wz))*2.0)
+					for cy := int32(1); cy <= int32(caneHeight); cy++ {
+						c.SetBlock(toI32(wx), h+cy, toI32(wz), BlockSugarCane)
 					}
 				}
 			}

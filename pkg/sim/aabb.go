@@ -81,6 +81,10 @@ func IsSolidBlock(blockID int32) bool {
 		return false
 	case 50: // Torch
 		return false
+	case 65: // Ladder
+		return false
+	case 83: // Sugar Cane
+		return false
 	default:
 		return true
 	}
@@ -224,8 +228,8 @@ func Raycast(origin Vec3, dir Vec3, maxDistance float64, isSolid func(x, y, z in
 }
 
 // ResolveMovementCollision implements Minecraft standard Axis-Aligned Bounding Box (AABB)
-// swept collision resolution. Resolves Y, X, and Z axes independently so players slide
-// smoothly along walls, stand firmly on ground, and never clip through blocks.
+// swept collision resolution with continuous sub-stepping. Resolves Y, X, and Z axes independently
+// so players slide smoothly along walls, stand firmly on ground, and never clip through blocks or terrain.
 // Returns resolved position, whether player is on ground, and whether ceiling was hit.
 func ResolveMovementCollision(pos Vec3, delta Vec3, isSolid func(x, y, z int32) bool) (Vec3, bool, bool) {
 	const halfW = 0.3
@@ -235,172 +239,174 @@ func ResolveMovementCollision(pos Vec3, delta Vec3, isSolid func(x, y, z int32) 
 	onGround := false
 	hitCeiling := false
 
-	// Search bounding box for nearby candidate solid blocks
-	minX := int32(math.Floor(pos.X + math.Min(0, delta.X) - halfW - 1))
-	maxX := int32(math.Ceil(pos.X + math.Max(0, delta.X) + halfW + 1))
-	minY := int32(math.Floor(pos.Y + math.Min(0, delta.Y) - 1))
-	maxY := int32(math.Ceil(pos.Y + math.Max(0, delta.Y) + height + 1))
-	minZ := int32(math.Floor(pos.Z + math.Min(0, delta.Z) - halfW - 1))
-	maxZ := int32(math.Ceil(pos.Z + math.Max(0, delta.Z) + halfW + 1))
-
-	var solidBoxes []AABB
-	for by := minY; by <= maxY; by++ {
-		for bz := minZ; bz <= maxZ; bz++ {
-			for bx := minX; bx <= maxX; bx++ {
-				if isSolid(bx, by, bz) {
-					solidBoxes = append(solidBoxes, NewBlockAABB(bx, by, bz))
-				}
-			}
+	// Substep large movements to prevent high-velocity tunneling / wall clipping
+	maxComponent := math.Max(math.Abs(delta.X), math.Max(math.Abs(delta.Y), math.Abs(delta.Z)))
+	substeps := 1
+	if maxComponent > 0.20 {
+		substeps = int(math.Ceil(maxComponent / 0.18))
+		if substeps > 10 {
+			substeps = 10
 		}
 	}
 
-	pBox := NewPlayerAABB(pos)
+	stepDelta := Vec3{
+		X: delta.X / float64(substeps),
+		Y: delta.Y / float64(substeps),
+		Z: delta.Z / float64(substeps),
+	}
 
-	// 1. Resolve Y axis first (gravity / jump / landing)
-	dy := delta.Y
-	for _, b := range solidBoxes {
-		if pBox.Min.X < b.Max.X-epsilon && pBox.Max.X > b.Min.X+epsilon &&
-			pBox.Min.Z < b.Max.Z-epsilon && pBox.Max.Z > b.Min.Z+epsilon {
-			if dy <= 0 {
-				// Only floor blocks below player's mid-body can impede downward movement
-				if b.Max.Y <= pBox.Min.Y+0.6 && b.Max.Y >= pBox.Min.Y-1.2 {
-					if pBox.Min.Y >= b.Max.Y-0.05 {
+	for s := 0; s < substeps; s++ {
+		// 1. Gather all solid candidate boxes in expanded neighborhood of current step
+		minX := int32(math.Floor(pos.X + math.Min(0, stepDelta.X) - halfW - 1))
+		maxX := int32(math.Ceil(pos.X + math.Max(0, stepDelta.X) + halfW + 1))
+		minY := int32(math.Floor(pos.Y + math.Min(0, stepDelta.Y) - 1))
+		maxY := int32(math.Ceil(pos.Y + math.Max(0, stepDelta.Y) + height + 1))
+		minZ := int32(math.Floor(pos.Z + math.Min(0, stepDelta.Z) - halfW - 1))
+		maxZ := int32(math.Ceil(pos.Z + math.Max(0, stepDelta.Z) + halfW + 1))
+
+		var solidBoxes []AABB
+		for by := minY; by <= maxY; by++ {
+			for bz := minZ; bz <= maxZ; bz++ {
+				for bx := minX; bx <= maxX; bx++ {
+					if isSolid(bx, by, bz) {
+						solidBoxes = append(solidBoxes, NewBlockAABB(bx, by, bz))
+					}
+				}
+			}
+		}
+
+		pBox := NewPlayerAABB(pos)
+
+		// 2. Resolve Y axis swept collision (gravity / landing / ceiling)
+		dy := stepDelta.Y
+		for _, b := range solidBoxes {
+			// Check horizontal overlap between player and block box
+			if pBox.Min.X < b.Max.X-epsilon && pBox.Max.X > b.Min.X+epsilon &&
+				pBox.Min.Z < b.Max.Z-epsilon && pBox.Max.Z > b.Min.Z+epsilon {
+				if dy < 0 {
+					// Moving down: can only collide with floor blocks where top surface is at or below player's feet
+					if b.Max.Y <= pBox.Min.Y+epsilon {
 						maxDown := b.Max.Y - pBox.Min.Y
-						if maxDown >= dy {
+						if maxDown > dy {
 							dy = maxDown
 							onGround = true
 						}
-					} else if pBox.Min.Y < b.Max.Y {
-						dy = b.Max.Y - pBox.Min.Y
+					}
+				} else if dy > 0 {
+					// Moving up: can only collide with ceiling blocks where bottom surface is at or above player's head
+					if b.Min.Y >= pBox.Max.Y-epsilon {
+						maxUp := b.Min.Y - pBox.Max.Y
+						if maxUp < dy {
+							dy = maxUp
+							hitCeiling = true
+						}
+					}
+				}
+			}
+		}
+		pos.Y += dy
+		pBox = NewPlayerAABB(pos)
+
+		// 3. Resolve X axis swept collision (sliding along X walls)
+		dx := stepDelta.X
+		for _, b := range solidBoxes {
+			// Check vertical and Z overlap
+			if pBox.Min.Y < b.Max.Y-epsilon && pBox.Max.Y > b.Min.Y+epsilon &&
+				pBox.Min.Z < b.Max.Z-epsilon && pBox.Max.Z > b.Min.Z+epsilon {
+				if dx > 0 {
+					// Moving right (+X): block is to the right
+					if b.Min.X >= pBox.Max.X-epsilon {
+						maxRight := b.Min.X - pBox.Max.X
+						if maxRight < dx {
+							dx = maxRight
+						}
+					}
+				} else if dx < 0 {
+					// Moving left (-X): block is to the left
+					if b.Max.X <= pBox.Min.X+epsilon {
+						maxLeft := b.Max.X - pBox.Min.X
+						if maxLeft > dx {
+							dx = maxLeft
+						}
+					}
+				}
+			}
+		}
+		pos.X += dx
+		pBox = NewPlayerAABB(pos)
+
+		// 4. Resolve Z axis swept collision (sliding along Z walls)
+		dz := stepDelta.Z
+		for _, b := range solidBoxes {
+			// Check vertical and X overlap
+			if pBox.Min.X < b.Max.X-epsilon && pBox.Max.X > b.Min.X+epsilon &&
+				pBox.Min.Y < b.Max.Y-epsilon && pBox.Max.Y > b.Min.Y+epsilon {
+				if dz > 0 {
+					// Moving forward (+Z): block is ahead
+					if b.Min.Z >= pBox.Max.Z-epsilon {
+						maxFwd := b.Min.Z - pBox.Max.Z
+						if maxFwd < dz {
+							dz = maxFwd
+						}
+					}
+				} else if dz < 0 {
+					// Moving back (-Z): block is behind
+					if b.Max.Z <= pBox.Min.Z+epsilon {
+						maxBack := b.Max.Z - pBox.Min.Z
+						if maxBack > dz {
+							dz = maxBack
+						}
+					}
+				}
+			}
+		}
+		pos.Z += dz
+		pBox = NewPlayerAABB(pos)
+
+		// 5. Anti-penetration safety push-out: if player box penetrates any solid block, push along shallowest axis
+		for _, b := range solidBoxes {
+			if pBox.Min.X < b.Max.X-epsilon && pBox.Max.X > b.Min.X+epsilon &&
+				pBox.Min.Y < b.Max.Y-epsilon && pBox.Max.Y > b.Min.Y+epsilon &&
+				pBox.Min.Z < b.Max.Z-epsilon && pBox.Max.Z > b.Min.Z+epsilon {
+
+				overlapX1 := b.Max.X - pBox.Min.X
+				overlapX2 := pBox.Max.X - b.Min.X
+				overlapY1 := b.Max.Y - pBox.Min.Y
+				overlapY2 := pBox.Max.Y - b.Min.Y
+				overlapZ1 := b.Max.Z - pBox.Min.Z
+				overlapZ2 := pBox.Max.Z - b.Min.Z
+
+				minPushX, signX := overlapX1, 1.0
+				if overlapX2 < minPushX {
+					minPushX, signX = overlapX2, -1.0
+				}
+				minPushY, signY := overlapY1, 1.0
+				if overlapY2 < minPushY {
+					minPushY, signY = overlapY2, -1.0
+				}
+				minPushZ, signZ := overlapZ1, 1.0
+				if overlapZ2 < minPushZ {
+					minPushZ, signZ = overlapZ2, -1.0
+				}
+
+				if minPushY <= minPushX && minPushY <= minPushZ && minPushY < 0.5 {
+					pos.Y += signY * minPushY
+					pBox = NewPlayerAABB(pos)
+					if signY > 0 && stepDelta.Y <= 0 {
 						onGround = true
 					}
-				}
-			} else if dy > 0 {
-				// Only ceiling blocks strictly above player's head can impede upward movement
-				if b.Min.Y >= pBox.Max.Y-epsilon {
-					maxUp := b.Min.Y - pBox.Max.Y
-					if maxUp < dy {
-						dy = maxUp
-						hitCeiling = true
-					}
+				} else if minPushX <= minPushZ && minPushX < 0.5 {
+					pos.X += signX * minPushX
+					pBox = NewPlayerAABB(pos)
+				} else if minPushZ < 0.5 {
+					pos.Z += signZ * minPushZ
+					pBox = NewPlayerAABB(pos)
 				}
 			}
 		}
 	}
-	pos.Y += dy
-	pBox = NewPlayerAABB(pos)
 
-	// 2. Resolve X axis (sliding along X walls)
-	dx := delta.X
-	for _, b := range solidBoxes {
-		// A wall must vertically overlap the player's body (excluding floor below feet)
-		if pBox.Min.Y+0.05 < b.Max.Y && pBox.Max.Y-0.05 > b.Min.Y &&
-			pBox.Min.Z < b.Max.Z-epsilon && pBox.Max.Z > b.Min.Z+epsilon {
-			if dx > 0 {
-				if pBox.Max.X <= b.Min.X+epsilon {
-					maxRight := b.Min.X - pBox.Max.X
-					if maxRight < dx {
-						dx = maxRight
-					}
-				} else if pBox.Max.X > b.Min.X && pBox.Min.X < b.Min.X {
-					dx = 0
-				}
-			} else if dx < 0 {
-				if pBox.Min.X >= b.Max.X-epsilon {
-					maxLeft := b.Max.X - pBox.Min.X
-					if maxLeft > dx {
-						dx = maxLeft
-					}
-				} else if pBox.Min.X < b.Max.X && pBox.Max.X > b.Max.X {
-					dx = 0
-				}
-			}
-		}
-	}
-	pos.X += dx
-	pBox = NewPlayerAABB(pos)
-
-	// 3. Resolve Z axis (sliding along Z walls)
-	dz := delta.Z
-	for _, b := range solidBoxes {
-		// A wall must vertically overlap the player's body (excluding floor below feet)
-		if pBox.Min.X < b.Max.X-epsilon && pBox.Max.X > b.Min.X+epsilon &&
-			pBox.Min.Y+0.05 < b.Max.Y && pBox.Max.Y-0.05 > b.Min.Y {
-			if dz > 0 {
-				if pBox.Max.Z <= b.Min.Z+epsilon {
-					maxFwd := b.Min.Z - pBox.Max.Z
-					if maxFwd < dz {
-						dz = maxFwd
-					}
-				} else if pBox.Max.Z > b.Min.Z && pBox.Min.Z < b.Min.Z {
-					dz = 0
-				}
-			} else if dz < 0 {
-				if pBox.Min.Z >= b.Max.Z-epsilon {
-					maxBack := b.Max.Z - pBox.Min.Z
-					if maxBack > dz {
-						dz = maxBack
-					}
-				} else if pBox.Min.Z < b.Max.Z && pBox.Max.Z > b.Max.Z {
-					dz = 0
-				}
-			}
-		}
-	}
-	pos.Z += dz
-	pBox = NewPlayerAABB(pos)
-
-	// 4. Anti-penetration push-out: if player's box still overlaps any solid block, push out along shortest axis
-	for _, b := range solidBoxes {
-		if pBox.Min.X < b.Max.X-epsilon && pBox.Max.X > b.Min.X+epsilon &&
-			pBox.Min.Y < b.Max.Y-epsilon && pBox.Max.Y > b.Min.Y+epsilon &&
-			pBox.Min.Z < b.Max.Z-epsilon && pBox.Max.Z > b.Min.Z+epsilon {
-
-			overlapX1 := b.Max.X - pBox.Min.X
-			overlapX2 := pBox.Max.X - b.Min.X
-			overlapY1 := b.Max.Y - pBox.Min.Y
-			overlapY2 := pBox.Max.Y - b.Min.Y
-			overlapZ1 := b.Max.Z - pBox.Min.Z
-			overlapZ2 := pBox.Max.Z - b.Min.Z
-
-			minPushX := overlapX1
-			signX := 1.0
-			if overlapX2 < minPushX {
-				minPushX = overlapX2
-				signX = -1.0
-			}
-
-			minPushY := overlapY1
-			signY := 1.0
-			if overlapY2 < minPushY {
-				minPushY = overlapY2
-				signY = -1.0
-			}
-
-			minPushZ := overlapZ1
-			signZ := 1.0
-			if overlapZ2 < minPushZ {
-				minPushZ = overlapZ2
-				signZ = -1.0
-			}
-
-			if minPushY < minPushX && minPushY < minPushZ && minPushY < 0.8 {
-				pos.Y += signY * minPushY
-				pBox = NewPlayerAABB(pos)
-				if signY > 0 && delta.Y <= 0 {
-					onGround = true
-				}
-			} else if minPushX < minPushZ && minPushX < 0.8 {
-				pos.X += signX * minPushX
-				pBox = NewPlayerAABB(pos)
-			} else if minPushZ < 0.8 {
-				pos.Z += signZ * minPushZ
-				pBox = NewPlayerAABB(pos)
-			}
-		}
-	}
-
-	// Extra ground stability check (feet resting on solid block, only when not jumping upward)
+	// 6. Ground contact stability check
 	if !onGround && delta.Y <= 0 {
 		checkFoot := func(px, pz float64) bool {
 			fx := int32(math.Floor(px))

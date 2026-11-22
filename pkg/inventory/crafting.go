@@ -260,6 +260,176 @@ func (cm *CraftingManager) registerDefaults() {
 		},
 		Output: ItemStack{ItemID: ItemChest, Count: 1},
 	})
+
+	// 15. Torch (1x2 vertical: Coal over Stick)
+	cm.Recipes = append(cm.Recipes, Recipe{
+		Width:   1,
+		Height:  2,
+		Pattern: []int32{ItemCoal, ItemStick},
+		Output:  ItemStack{ItemID: ItemTorch, Count: 4},
+	})
+
+	// 16. Bread (3x1: 3 Wheat)
+	cm.Recipes = append(cm.Recipes, Recipe{
+		Width:   3,
+		Height:  1,
+		Pattern: []int32{ItemWheat, ItemWheat, ItemWheat},
+		Output:  ItemStack{ItemID: ItemBread, Count: 1},
+	})
+
+	// 17. Bucket (3x2: 3 Iron Ingots in V shape)
+	cm.Recipes = append(cm.Recipes, Recipe{
+		Width:  3,
+		Height: 2,
+		Pattern: []int32{
+			ItemIronIngot, ItemAir, ItemIronIngot,
+			ItemAir, ItemIronIngot, ItemAir,
+		},
+		Output: ItemStack{ItemID: ItemBucket, Count: 1},
+	})
+
+	// 18. Shears (2x2 diagonal Iron Ingots)
+	cm.Recipes = append(cm.Recipes, Recipe{
+		Width:  2,
+		Height: 2,
+		Pattern: []int32{
+			ItemAir, ItemIronIngot,
+			ItemIronIngot, ItemAir,
+		},
+		Output: ItemStack{ItemID: ItemShears, Count: 1},
+	})
+
+	// 19. Golden Apple (3x3: 8 Gold Ingots surrounding Apple)
+	cm.Recipes = append(cm.Recipes, Recipe{
+		Width:  3,
+		Height: 3,
+		Pattern: []int32{
+			ItemGoldIngot, ItemGoldIngot, ItemGoldIngot,
+			ItemGoldIngot, ItemApple, ItemGoldIngot,
+			ItemGoldIngot, ItemGoldIngot, ItemGoldIngot,
+		},
+		Output: ItemStack{ItemID: ItemGoldenApple, Count: 1},
+	})
+
+	// 20. Iron Armor Set
+	cm.Recipes = append(cm.Recipes,
+		// Iron Helmet
+		Recipe{
+			Width:  3,
+			Height: 2,
+			Pattern: []int32{
+				ItemIronIngot, ItemIronIngot, ItemIronIngot,
+				ItemIronIngot, ItemAir, ItemIronIngot,
+			},
+			Output: ItemStack{ItemID: ItemIronHelmet, Count: 1},
+		},
+		// Iron Chestplate
+		Recipe{
+			Width:  3,
+			Height: 3,
+			Pattern: []int32{
+				ItemIronIngot, ItemAir, ItemIronIngot,
+				ItemIronIngot, ItemIronIngot, ItemIronIngot,
+				ItemIronIngot, ItemIronIngot, ItemIronIngot,
+			},
+			Output: ItemStack{ItemID: ItemIronChestplate, Count: 1},
+		},
+		// Iron Leggings
+		Recipe{
+			Width:  3,
+			Height: 3,
+			Pattern: []int32{
+				ItemIronIngot, ItemIronIngot, ItemIronIngot,
+				ItemIronIngot, ItemAir, ItemIronIngot,
+				ItemIronIngot, ItemAir, ItemIronIngot,
+			},
+			Output: ItemStack{ItemID: ItemIronLeggings, Count: 1},
+		},
+		// Iron Boots
+		Recipe{
+			Width:  3,
+			Height: 2,
+			Pattern: []int32{
+				ItemIronIngot, ItemAir, ItemIronIngot,
+				ItemIronIngot, ItemAir, ItemIronIngot,
+			},
+			Output: ItemStack{ItemID: ItemIronBoots, Count: 1},
+		},
+	)
+
+	// 21. Diamond Armor Set
+	cm.Recipes = append(cm.Recipes,
+		// Diamond Helmet
+		Recipe{
+			Width:  3,
+			Height: 2,
+			Pattern: []int32{
+				ItemDiamond, ItemDiamond, ItemDiamond,
+				ItemDiamond, ItemAir, ItemDiamond,
+			},
+			Output: ItemStack{ItemID: ItemDiamondHelmet, Count: 1},
+		},
+		// Diamond Chestplate
+		Recipe{
+			Width:  3,
+			Height: 3,
+			Pattern: []int32{
+				ItemDiamond, ItemAir, ItemDiamond,
+				ItemDiamond, ItemDiamond, ItemDiamond,
+				ItemDiamond, ItemDiamond, ItemDiamond,
+			},
+			Output: ItemStack{ItemID: ItemDiamondChestplate, Count: 1},
+		},
+		// Diamond Leggings
+		Recipe{
+			Width:  3,
+			Height: 3,
+			Pattern: []int32{
+				ItemDiamond, ItemDiamond, ItemDiamond,
+				ItemDiamond, ItemAir, ItemDiamond,
+				ItemDiamond, ItemAir, ItemDiamond,
+			},
+			Output: ItemStack{ItemID: ItemDiamondLeggings, Count: 1},
+		},
+		// Diamond Boots
+		Recipe{
+			Width:  3,
+			Height: 2,
+			Pattern: []int32{
+				ItemDiamond, ItemAir, ItemDiamond,
+				ItemDiamond, ItemAir, ItemDiamond,
+			},
+			Output: ItemStack{ItemID: ItemDiamondBoots, Count: 1},
+		},
+	)
+
+	// 22. Wooden Slab & Stone Slab
+	cm.Recipes = append(cm.Recipes,
+		Recipe{
+			Width:   3,
+			Height:  1,
+			Pattern: []int32{ItemOakPlanks, ItemOakPlanks, ItemOakPlanks},
+			Output:  ItemStack{ItemID: ItemOakSlab, Count: 6},
+		},
+		Recipe{
+			Width:   3,
+			Height:  1,
+			Pattern: []int32{ItemStone, ItemStone, ItemStone},
+			Output:  ItemStack{ItemID: ItemStoneSlab, Count: 6},
+		},
+	)
+
+	// 23. Ladder (7 Sticks in H pattern)
+	cm.Recipes = append(cm.Recipes, Recipe{
+		Width:  3,
+		Height: 3,
+		Pattern: []int32{
+			ItemStick, ItemAir, ItemStick,
+			ItemStick, ItemStick, ItemStick,
+			ItemStick, ItemAir, ItemStick,
+		},
+		Output: ItemStack{ItemID: ItemLadder, Count: 3},
+	})
 }
 
 // MatchCrafting finds matching recipe for grid (gridSize = 2 for 2x2, 3 for 3x3).

@@ -1,6 +1,7 @@
 package render
 
 import (
+	"fmt"
 	"strconv"
 	"time"
 
@@ -90,16 +91,24 @@ func (fb *Framebuffer) DrawRawImageScaled(x, y, scale int, img *RawImage) {
 
 // DrawCrosshair renders the official Mojang crosshair centered on the screen.
 func (fb *Framebuffer) DrawCrosshair() {
+	fb.DrawCrosshairScaled(1)
+}
+
+// DrawCrosshairScaled renders the official Mojang crosshair centered on the screen scaled by scale factor.
+func (fb *Framebuffer) DrawCrosshairScaled(scale int) {
+	if scale <= 0 {
+		scale = 1
+	}
 	cx := fb.Width / 2
 	cy := fb.Height / 2
 	if crosshairImg, ok := GetOfficialImage("gui/sprites/hud/crosshair.png"); ok {
-		fb.DrawRawImage(cx-crosshairImg.Width/2, cy-crosshairImg.Height/2, crosshairImg)
+		fb.DrawRawImageScaled(cx-(crosshairImg.Width*scale)/2, cy-(crosshairImg.Height*scale)/2, scale, crosshairImg)
 		return
 	}
 	// Fallback vector crosshair
 	crosshairColor := uint32(0xFFFFFFFF)
-	fb.DrawRect(cx-4, cy, 9, 1, crosshairColor)
-	fb.DrawRect(cx, cy-4, 1, 9, crosshairColor)
+	fb.DrawRect(cx-4*scale, cy, 9*scale, scale, crosshairColor)
+	fb.DrawRect(cx, cy-4*scale, scale, 9*scale, crosshairColor)
 }
 
 // 3x5 bitmap font for digits 0-9
@@ -136,25 +145,68 @@ func (fb *Framebuffer) DrawDigit(x, y int, digit int, col uint32) {
 	}
 }
 
+// DrawDigitScaled renders a single 3x5 font character scaled by scale factor.
+func (fb *Framebuffer) DrawDigitScaled(x, y int, digit int, col uint32, scale int) {
+	if digit < 0 || digit > 9 || scale <= 0 {
+		return
+	}
+	if scale == 1 {
+		fb.DrawDigit(x, y, digit, col)
+		return
+	}
+	glyph := font3x5[digit]
+	for row := 0; row < 5; row++ {
+		bits := glyph[row]
+		for colIdx := 0; colIdx < 3; colIdx++ {
+			if (bits & (1 << (2 - colIdx))) != 0 {
+				fb.DrawRect(x+colIdx*scale, y+row*scale, scale, scale, col)
+			}
+		}
+	}
+}
+
 // DrawNumber renders a right-aligned integer number with shadow.
 func (fb *Framebuffer) DrawNumber(x, y int, num int, col uint32) {
-	if num < 0 {
+	fb.DrawNumberScaled(x, y, num, col, 1)
+}
+
+// DrawNumberScaled renders a right-aligned integer number with shadow scaled by scale.
+func (fb *Framebuffer) DrawNumberScaled(x, y int, num int, col uint32, scale int) {
+	if num < 0 || scale <= 0 {
 		return
 	}
 	s := strconv.Itoa(num)
-	startX := x - len(s)*4 + 1
+	startX := x - len(s)*4*scale + scale
 	for i, ch := range s {
 		d := int(ch - '0')
 		// Drop shadow
-		fb.DrawDigit(startX+i*4+1, y+1, d, 0xFF000000)
+		fb.DrawDigitScaled(startX+i*4*scale+scale, y+scale, d, 0xFF000000, scale)
 		// Character
-		fb.DrawDigit(startX+i*4, y, d, col)
+		fb.DrawDigitScaled(startX+i*4*scale, y, d, col, scale)
 	}
 }
 
 // DrawItemIcon renders an authentic 16x16 pixel-art item sprite or 3D isometric voxel block icon.
 func (fb *Framebuffer) DrawItemIcon(x, y int, itemID int32) {
 	fb.DrawItemSprite16x16(x, y, itemID)
+}
+
+// DrawItemIconScaled renders an item icon scaled by scale factor.
+func (fb *Framebuffer) DrawItemIconScaled(x, y int, itemID int32, scale int) {
+	if scale <= 1 {
+		fb.DrawItemSprite16x16(x, y, itemID)
+		return
+	}
+	sprite := GetItemSprite16x16(itemID)
+	for sy := 0; sy < 16; sy++ {
+		for sx := 0; sx < 16; sx++ {
+			col := sprite[sy][sx]
+			if (col >> 24) == 0 {
+				continue
+			}
+			fb.DrawRect(x+sx*scale, y+sy*scale, scale, scale, col)
+		}
+	}
 }
 
 // Authentic 9x9 Minecraft Java Edition Bitmaps for Hearts & Food Icons (Used as primary/fallback sprites)
@@ -228,18 +280,45 @@ var (
 )
 
 func (fb *Framebuffer) draw9x9Bitmap(x, y int, bmp [9][9]uint32) {
+	fb.draw9x9BitmapScaled(x, y, 1, bmp)
+}
+
+func (fb *Framebuffer) draw9x9BitmapScaled(x, y int, scale int, bmp [9][9]uint32) {
+	if scale <= 1 {
+		for r := 0; r < 9; r++ {
+			for c := 0; c < 9; c++ {
+				col := bmp[r][c]
+				if col != 0 {
+					px := x + c
+					py := y + r
+					if px >= 0 && px < fb.Width && py >= 0 && py < fb.Height {
+						fb.Color[py*fb.Width+px] = col
+					}
+				}
+			}
+		}
+		return
+	}
 	for r := 0; r < 9; r++ {
 		for c := 0; c < 9; c++ {
 			col := bmp[r][c]
 			if col != 0 {
-				px := x + c
-				py := y + r
-				if px >= 0 && px < fb.Width && py >= 0 && py < fb.Height {
-					fb.Color[py*fb.Width+px] = col
-				}
+				fb.DrawRect(x+c*scale, y+r*scale, scale, scale, col)
 			}
 		}
 	}
+}
+
+// CalculateGUIScale computes Minecraft's authentic GUI Scale factor based on framebuffer dimensions.
+func (fb *Framebuffer) CalculateGUIScale() int {
+	scale := 1
+	for scale < 1000 && fb.Width/(scale+1) >= 320 && fb.Height/(scale+1) >= 240 {
+		scale++
+	}
+	if scale < 1 {
+		scale = 1
+	}
+	return scale
 }
 
 // DrawHUD renders crosshair, health bar, hunger bar, and 9 empty hotbar slots.
@@ -263,47 +342,49 @@ func (fb *Framebuffer) DrawFullHUD(
 	selectedSlot int,
 	slots [9]inventory.ItemStack,
 ) {
+	scale := fb.CalculateGUIScale()
+
 	// 1. Center Crosshair
-	fb.DrawCrosshair()
+	fb.DrawCrosshairScaled(scale)
 
 	// 2. Hotbar dimensions & placement
-	hotbarW := 182
-	hotbarH := 22
+	hotbarW := 182 * scale
+	hotbarH := 22 * scale
 	hotbarX := fb.Width/2 - hotbarW/2
-	hotbarY := fb.Height - 32
+	hotbarY := fb.Height - hotbarH - 4*scale
 
 	// Render official hotbar texture (182x22)
 	if hotbarImg, ok := GetOfficialImage("gui/sprites/hud/hotbar.png"); ok {
-		fb.DrawRawImage(hotbarX, hotbarY, hotbarImg)
+		fb.DrawRawImageScaled(hotbarX, hotbarY, scale, hotbarImg)
 	} else {
 		fb.DrawRect(hotbarX, hotbarY, hotbarW, hotbarH, 0x88404040)
 		for i := 0; i < 9; i++ {
-			fb.DrawRect(hotbarX+i*20+2, hotbarY+2, 18, 18, 0xFF222222)
+			fb.DrawRect(hotbarX+i*20*scale+2*scale, hotbarY+2*scale, 18*scale, 18*scale, 0xFF222222)
 		}
 	}
 
 	// Render official selected slot highlight (24x23)
 	if selImg, ok := GetOfficialImage("gui/sprites/hud/hotbar_selection.png"); ok {
-		fb.DrawRawImage(hotbarX+selectedSlot*20-1, hotbarY-1, selImg)
+		fb.DrawRawImageScaled(hotbarX+selectedSlot*20*scale-1*scale, hotbarY-1*scale, scale, selImg)
 	} else {
-		slotX := hotbarX + selectedSlot*20 + 2
-		slotY := hotbarY + 2
-		fb.DrawRect(slotX-1, slotY-1, 20, 2, 0xFFFFFFFF)
-		fb.DrawRect(slotX-1, slotY+17, 20, 2, 0xFFFFFFFF)
-		fb.DrawRect(slotX-1, slotY-1, 2, 20, 0xFFFFFFFF)
-		fb.DrawRect(slotX+17, slotY-1, 2, 20, 0xFFFFFFFF)
+		slotX := hotbarX + selectedSlot*20*scale + 2*scale
+		slotY := hotbarY + 2*scale
+		fb.DrawRect(slotX-scale, slotY-scale, 20*scale, 2*scale, 0xFFFFFFFF)
+		fb.DrawRect(slotX-scale, slotY+17*scale, 20*scale, 2*scale, 0xFFFFFFFF)
+		fb.DrawRect(slotX-scale, slotY-scale, 2*scale, 20*scale, 0xFFFFFFFF)
+		fb.DrawRect(slotX+17*scale, slotY-scale, 2*scale, 20*scale, 0xFFFFFFFF)
 	}
 
 	// 3. Hotbar Item Icons, Count, and Durability
 	for i := 0; i < 9; i++ {
-		slotX := hotbarX + i*20 + 3
-		slotY := hotbarY + 3
+		slotX := hotbarX + i*20*scale + 3*scale
+		slotY := hotbarY + 3*scale
 		item := slots[i]
 		if !item.IsEmpty() {
-			fb.DrawItemIcon(slotX, slotY, item.ItemID)
+			fb.DrawItemIconScaled(slotX, slotY, item.ItemID, scale)
 			// Render count text in lower right corner
 			if item.Count > 1 {
-				fb.DrawNumber(slotX+15, slotY+11, item.Count, 0xFFFFFFFF)
+				fb.DrawNumberScaled(slotX+15*scale, slotY+11*scale, item.Count, 0xFFFFFFFF, scale)
 			}
 			// Durability bar for damaged tools
 			props, isTool := inventory.GetToolProperties(item.ItemID)
@@ -312,15 +393,15 @@ func (fb *Framebuffer) DrawFullHUD(
 				if durRatio < 0 {
 					durRatio = 0
 				}
-				barW := int(durRatio * 13.0)
-				fb.DrawRect(slotX+1, slotY+13, 14, 2, 0xFF000000)
+				barW := int(durRatio * 13.0 * float32(scale))
+				fb.DrawRect(slotX+1*scale, slotY+13*scale, 14*scale, 2*scale, 0xFF000000)
 				barCol := uint32(0xFF00FF00)
 				if durRatio < 0.25 {
 					barCol = 0xFFFF0000
 				} else if durRatio < 0.50 {
 					barCol = 0xFFFFFF00
 				}
-				fb.DrawRect(slotX+1, slotY+13, barW, 1, barCol)
+				fb.DrawRect(slotX+1*scale, slotY+13*scale, barW, 1*scale, barCol)
 			}
 		}
 	}
@@ -331,20 +412,20 @@ func (fb *Framebuffer) DrawFullHUD(
 	}
 
 	// 4. Experience Bar (182x5) between hotbar and health/hunger
-	expBarW := 182
-	expBarH := 5
+	expBarW := 182 * scale
+	expBarH := 5 * scale
 	expBarX := hotbarX
-	expBarY := hotbarY - 7
+	expBarY := hotbarY - expBarH - 2*scale
 
 	if expBg, ok := GetOfficialImage("gui/sprites/hud/experience_bar_background.png"); ok {
-		fb.DrawRawImage(expBarX, expBarY, expBg)
+		fb.DrawRawImageScaled(expBarX, expBarY, scale, expBg)
 	} else {
 		// Pixel-accurate Minecraft Experience Bar Background (182x5)
 		fb.DrawRect(expBarX, expBarY, expBarW, expBarH, 0xFF000000)
-		fb.DrawRect(expBarX+1, expBarY+1, expBarW-2, expBarH-2, 0xFF3B4036)
+		fb.DrawRect(expBarX+scale, expBarY+scale, expBarW-2*scale, expBarH-2*scale, 0xFF3B4036)
 		for s := 1; s < 10; s++ {
-			nx := expBarX + s*18
-			fb.DrawRect(nx, expBarY+1, 1, 3, 0xFF222620)
+			nx := expBarX + s*18*scale
+			fb.DrawRect(nx, expBarY+scale, scale, 3*scale, 0xFF222620)
 		}
 	}
 
@@ -354,13 +435,13 @@ func (fb *Framebuffer) DrawFullHUD(
 		if fillW > expBarW {
 			fillW = expBarW
 		}
-		if fillW > 2 {
-			fb.DrawRect(expBarX+1, expBarY+1, fillW-2, 1, 0xFFB4FF42) // Top bright lime highlight
-			fb.DrawRect(expBarX+1, expBarY+2, fillW-2, 2, 0xFF80FF20) // Vibrant Minecraft lime green
+		if fillW > 2*scale {
+			fb.DrawRect(expBarX+scale, expBarY+scale, fillW-2*scale, scale, 0xFFB4FF42) // Top bright lime highlight
+			fb.DrawRect(expBarX+scale, expBarY+2*scale, fillW-2*scale, 2*scale, 0xFF80FF20) // Vibrant Minecraft lime green
 			for s := 1; s < 10; s++ {
-				nx := expBarX + s*18
-				if nx < expBarX+fillW-1 {
-					fb.DrawRect(nx, expBarY+1, 1, 3, 0xFF356610)
+				nx := expBarX + s*18*scale
+				if nx < expBarX+fillW-scale {
+					fb.DrawRect(nx, expBarY+scale, scale, 3*scale, 0xFF356610)
 				}
 			}
 		}
@@ -369,15 +450,15 @@ func (fb *Framebuffer) DrawFullHUD(
 	// Experience Level Number (Centered right above experience bar)
 	if level > 0 {
 		lvlStr := strconv.Itoa(level)
-		numW := MeasureText5x7(lvlStr, 1)
-		lx := hotbarX + 91 - numW/2
-		ly := expBarY - 7
-		fb.DrawText5x7(lx, ly, lvlStr, 0xFF80FF20, 1) // Vibrant lime green text with drop shadow
+		numW := MeasureText5x7(lvlStr, scale)
+		lx := hotbarX + (expBarW-numW)/2
+		ly := expBarY - 7*scale
+		fb.DrawText5x7(lx, ly, lvlStr, 0xFF80FF20, scale) // Vibrant lime green text with drop shadow
 	}
 
 	// 5. Health Bar (aligned with left of hotbar, 10 hearts spaced by 8px)
 	heartStartX := hotbarX
-	hudBaseY := hotbarY - 18
+	hudBaseY := expBarY - 10*scale
 	heartContainer, hasHeartContainer := GetOfficialImage("gui/sprites/hud/heart/container.png")
 	heartFull, hasHeartFull := GetOfficialImage("gui/sprites/hud/heart/full.png")
 	heartHalf, hasHeartHalf := GetOfficialImage("gui/sprites/hud/heart/half.png")
@@ -386,35 +467,35 @@ func (fb *Framebuffer) DrawFullHUD(
 	hasHalfHeart := (int(health) % 2) == 1
 
 	for i := 0; i < 10; i++ {
-		hx := heartStartX + i*8
+		hx := heartStartX + i*8*scale
 		hy := hudBaseY
 		if health <= 4.0 {
 			// Minecraft Java edition authentic heart shaking at low health
-			shake := (i*7 + int(time.Now().UnixMilli()/70)) % 3
-			hy += shake - 1
+			shake := ((i*7 + int(time.Now().UnixMilli()/70)) % 3) * scale
+			hy += shake - scale
 		}
 		if hasHeartContainer {
-			fb.DrawRawImage(hx, hy, heartContainer)
+			fb.DrawRawImageScaled(hx, hy, scale, heartContainer)
 		} else {
-			fb.draw9x9Bitmap(hx, hy, HeartContainerBitmap)
+			fb.draw9x9BitmapScaled(hx, hy, scale, HeartContainerBitmap)
 		}
 		if i < fullHearts {
 			if hasHeartFull {
-				fb.DrawRawImage(hx, hy, heartFull)
+				fb.DrawRawImageScaled(hx, hy, scale, heartFull)
 			} else {
-				fb.draw9x9Bitmap(hx, hy, HeartFullBitmap)
+				fb.draw9x9BitmapScaled(hx, hy, scale, HeartFullBitmap)
 			}
 		} else if i == fullHearts && hasHalfHeart {
 			if hasHeartHalf {
-				fb.DrawRawImage(hx, hy, heartHalf)
+				fb.DrawRawImageScaled(hx, hy, scale, heartHalf)
 			} else {
-				fb.draw9x9Bitmap(hx, hy, HeartHalfBitmap)
+				fb.draw9x9BitmapScaled(hx, hy, scale, HeartHalfBitmap)
 			}
 		}
 	}
 
 	// 6. Hunger Bar (aligned with right of hotbar, drawn right-to-left)
-	hungerStartX := hotbarX + 182 - 9
+	hungerStartX := hotbarX + hotbarW - 9*scale
 	foodEmpty, hasFoodEmpty := GetOfficialImage("gui/sprites/hud/food_empty.png")
 	foodFull, hasFoodFull := GetOfficialImage("gui/sprites/hud/food_full.png")
 	foodHalf, hasFoodHalf := GetOfficialImage("gui/sprites/hud/food_half.png")
@@ -423,24 +504,24 @@ func (fb *Framebuffer) DrawFullHUD(
 	hasHalfFood := (hunger % 2) == 1
 
 	for i := 0; i < 10; i++ {
-		hx := hungerStartX - i*8
+		hx := hungerStartX - i*8*scale
 		hy := hudBaseY
 		if hasFoodEmpty {
-			fb.DrawRawImage(hx, hy, foodEmpty)
+			fb.DrawRawImageScaled(hx, hy, scale, foodEmpty)
 		} else {
-			fb.draw9x9Bitmap(hx, hy, FoodEmptyBitmap)
+			fb.draw9x9BitmapScaled(hx, hy, scale, FoodEmptyBitmap)
 		}
 		if i < fullFood {
 			if hasFoodFull {
-				fb.DrawRawImage(hx, hy, foodFull)
+				fb.DrawRawImageScaled(hx, hy, scale, foodFull)
 			} else {
-				fb.draw9x9Bitmap(hx, hy, FoodFullBitmap)
+				fb.draw9x9BitmapScaled(hx, hy, scale, FoodFullBitmap)
 			}
 		} else if i == fullFood && hasHalfFood {
 			if hasFoodHalf {
-				fb.DrawRawImage(hx, hy, foodHalf)
+				fb.DrawRawImageScaled(hx, hy, scale, foodHalf)
 			} else {
-				fb.draw9x9Bitmap(hx, hy, FoodHalfBitmap)
+				fb.draw9x9BitmapScaled(hx, hy, scale, FoodHalfBitmap)
 			}
 		}
 	}
@@ -841,6 +922,61 @@ func (fb *Framebuffer) DrawPauseMenu(mouseX, mouseY int) (backBtnRect [4]int, qu
 	fb.DrawText5x7(hintX, hintY, hint, 0xFFAAAAAA, 1)
 
 	return backBtnRect, quitBtnRect
+}
+
+// DrawDeathScreen renders the authentic Minecraft "You died!" / "你死了！" screen.
+// Returns the clickable bounding boxes [4]int{x, y, w, h} for [respawnBtn, titleBtn].
+func (fb *Framebuffer) DrawDeathScreen(score int, mouseX, mouseY int) (respawnBtn [4]int, titleBtn [4]int) {
+	scale := fb.CalculateGUIScale()
+
+	// 1. Deep crimson / red translucent overlay
+	for i := 0; i < len(fb.Color); i++ {
+		c := fb.Color[i]
+		r := ((c >> 16) & 0xFF) / 3
+		g := ((c >> 8) & 0xFF) / 8
+		b := (c & 0xFF) / 8
+		outR := r + 0x78
+		if outR > 255 {
+			outR = 255
+		}
+		fb.Color[i] = 0xFF000000 | (uint32(outR) << 16) | (uint32(g) << 8) | uint32(b)
+	}
+
+	// 2. Title: "你死了！" in dramatic large red-shadowed text
+	title := "你死了！"
+	titleScale := scale * 2
+	if titleScale < 2 {
+		titleScale = 2
+	}
+	titleW := MeasureText5x7(title, titleScale)
+	tx := (fb.Width - titleW) / 2
+	ty := fb.Height/4 - 15*scale
+	fb.DrawText5x7(tx, ty, title, 0xFFFFFFFF, titleScale)
+
+	// 3. Score
+	scoreStr := fmt.Sprintf("分数: %d", score)
+	sw := MeasureText5x7(scoreStr, scale)
+	fb.DrawText5x7((fb.Width-sw)/2, ty+34*scale, scoreStr, 0xFFE0E0E0, scale)
+
+	// 4. Buttons: "重生" and "返回标题画面"
+	btnW := 200 * scale
+	if btnW > fb.Width-40 {
+		btnW = fb.Width - 40
+	}
+	btnH := 20 * scale
+	btnX := (fb.Width - btnW) / 2
+	btn1Y := fb.Height/2 - 10*scale
+	btn2Y := btn1Y + 26*scale
+
+	hover1 := mouseX >= btnX && mouseX <= btnX+btnW && mouseY >= btn1Y && mouseY <= btn1Y+btnH
+	fb.DrawButton(btnX, btn1Y, btnW, btnH, "重生", hover1)
+	respawnBtn = [4]int{btnX, btn1Y, btnW, btnH}
+
+	hover2 := mouseX >= btnX && mouseX <= btnX+btnW && mouseY >= btn2Y && mouseY <= btn2Y+btnH
+	fb.DrawButton(btnX, btn2Y, btnW, btnH, "返回标题画面", hover2)
+	titleBtn = [4]int{btnX, btn2Y, btnW, btnH}
+
+	return respawnBtn, titleBtn
 }
 
 // DebugInfo holds data shown on the Minecraft F3 debug screen.

@@ -68,6 +68,10 @@ func IsOpaqueCube(blockID int32) bool {
 		return false
 	case 50: // Torch
 		return false
+	case 65: // Ladder
+		return false
+	case 83: // Sugar Cane
+		return false
 	default:
 		return true
 	}
@@ -76,7 +80,7 @@ func IsOpaqueCube(blockID int32) bool {
 // IsFoliage returns true if the block is rendered as crossed diagonal quads.
 func IsFoliage(blockID int32) bool {
 	switch blockID {
-	case 31, 32, 37, 38, 50:
+	case 31, 32, 37, 38, 50, 65, 83:
 		return true
 	default:
 		return false

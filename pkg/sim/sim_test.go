@@ -246,6 +246,24 @@ func TestMovementCollisionNoClipping(t *testing.T) {
 	if math.Abs(resPos.Y-64.0) > 1e-3 {
 		t.Fatalf("player feet should rest exactly on floor Y=64.0, got %f", resPos.Y)
 	}
+
+	// 3. High-velocity fall from height (e.g. falling 10 blocks in a lag spike)
+	highPlayer := eng.AddPlayer("FallenSteve", [16]byte{6}, Vec3{X: 10.0, Y: 75.0, Z: 10.0})
+	resHighPos, highGround, _ := eng.MovePlayerRelative(highPlayer.ID, Vec3{X: 0, Y: -15.0, Z: 0}, 0, 0)
+	if !highGround {
+		t.Fatalf("high velocity fall should be caught by floor and flagged onGround")
+	}
+	if math.Abs(resHighPos.Y-64.0) > 1e-3 {
+		t.Fatalf("high velocity fall should stop exactly at floor Y=64.0, got %f", resHighPos.Y)
+	}
+
+	// 4. Sprinting diagonally into wall corner
+	cornerPlayer := eng.AddPlayer("CornerSteve", [16]byte{7}, Vec3{X: 10.0, Y: 64.0, Z: 9.0})
+	resCornerPos, _, _ := eng.MovePlayerRelative(cornerPlayer.ID, Vec3{X: 2.0, Y: 0, Z: 2.0}, 0, 0)
+	// Block at (11, 64, 10) prevents passing (X <= 10.7, Z <= 9.7)
+	if resCornerPos.X > 10.701 && resCornerPos.Z > 9.701 {
+		t.Fatalf("corner penetration occurred! Pos=%v", resCornerPos)
+	}
 }
 
 func TestAuthenticMiningAndToolProgression(t *testing.T) {

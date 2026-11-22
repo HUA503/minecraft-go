@@ -101,9 +101,10 @@ type Client struct {
 	genEnd           *gen.Generator
 	currentDim       gen.Dimension
 	portalStandTime  float64
-	loadedChunks     map[world.ChunkPos]bool
-	lastChunkX       int32
-	lastChunkZ       int32
+	loadedChunks        map[world.ChunkPos]bool
+	lastChunkX          int32
+	lastChunkZ          int32
+	lastChunkStreamTime time.Time
 	// Authentic Minecraft Mining State
 	isMining         bool
 	breakProgress    float64 // 0.0 to 1.0
@@ -139,6 +140,8 @@ type Client struct {
 	targetFov        float64
 	equipProgress    float64
 	lastSelectedSlot int
+	respawnBtnRect   [4]int
+	deathTitleBtnRect [4]int
 }
 
 // findSafeSpawnPoint discovers an authentic, randomized safe surface spawn location in the procedural world.
@@ -453,6 +456,35 @@ func (c *Client) StartSingleplayerWorld(worldDirName string, isNew bool, newSeed
 	}
 }
 
+// RespawnLocalPlayer resurrects the local player at a safe spawn location, resets vital stats, and reloads surrounding chunks.
+func (c *Client) RespawnLocalPlayer() {
+	if c.player == nil || c.engine == nil {
+		return
+	}
+	spawnPos := findSafeSpawnPoint(c.genOverworld, c.engine)
+	c.engine.RespawnPlayer(c.player.ID, spawnPos)
+	c.player.Health = 20.0
+	c.player.Hunger = 20
+	c.player.Saturation = 5.0
+	c.player.Exhaustion = 0
+	c.player.IsAlive = true
+	c.player.Position = spawnPos
+	c.player.Velocity = sim.Vec3{}
+	c.player.FallDistance = 0
+	c.player.OnGround = true
+
+	c.camera.X = spawnPos.X
+	c.camera.Y = spawnPos.Y + 1.62
+	c.camera.Z = spawnPos.Z
+	c.hurtFlashTimer = 0
+
+	c.meshMu.Lock()
+	c.meshCache = make(map[[3]int32]*render.Mesh)
+	c.meshMu.Unlock()
+
+	c.EnsureChunksAroundPlayer(spawnPos.X, spawnPos.Z, 3)
+}
+
 func (c *Client) SaveAndQuitToTitle() {
 	if c.engine != nil {
 		c.engine.SaveAll()
@@ -477,20 +509,27 @@ func (c *Client) SaveAndQuitToTitle() {
 			if c.genOverworld != nil {
 				seed = c.genOverworld.Seed
 			}
+			saveHealth := c.player.Health
+			saveX, saveY, saveZ := c.player.Position.X, c.player.Position.Y, c.player.Position.Z
+			if saveHealth <= 0 {
+				saveHealth = 20.0
+				sp := findSafeSpawnPoint(c.genOverworld, c.engine)
+				saveX, saveY, saveZ = sp.X, sp.Y, sp.Z
+			}
 			lvl := &world.LevelData{
 				Seed:      seed,
-				SpawnX:    int32(c.player.Position.X),
-				SpawnY:    int32(c.player.Position.Y),
-				SpawnZ:    int32(c.player.Position.Z),
+				SpawnX:    int32(saveX),
+				SpawnY:    int32(saveY),
+				SpawnZ:    int32(saveZ),
 				LevelName: c.currentWorldName,
 				GameMode:  gm,
 				Player: &world.PlayerSaveData{
-					X:         c.player.Position.X,
-					Y:         c.player.Position.Y,
-					Z:         c.player.Position.Z,
+					X:         saveX,
+					Y:         saveY,
+					Z:         saveZ,
 					Yaw:       float32(c.camera.Yaw),
 					Pitch:     float32(c.camera.Pitch),
-					Health:    c.player.Health,
+					Health:    saveHealth,
 					Hunger:    c.player.Hunger,
 					GameMode:  gm,
 					Inventory: savedInv,
@@ -984,7 +1023,7 @@ func (c *Client) checkWaterState() (inWater bool, atSurface bool) {
 
 // PhysicsStep executes one delta-time scaled physics step with authentic Minecraft Java Edition physics.
 func (c *Client) PhysicsStep(fwdInput, strafeInput float64, jumpRequested bool, dt float64) {
-	if c.player == nil {
+	if c.player == nil || c.player.Health <= 0 {
 		return
 	}
 
@@ -1018,10 +1057,28 @@ func (c *Client) PhysicsStep(fwdInput, strafeInput float64, jumpRequested bool, 
 		return
 	}
 
+	// 0.5 Ladder Detection & Climbing (Authentic Minecraft: touching ladder allows climbing with +3.0 m/s when Space or W is held, and halts falling)
+	onLadder := false
+	if c.engine != nil {
+		bx := int32(math.Floor(c.player.Position.X))
+		by := int32(math.Floor(c.player.Position.Y))
+		bz := int32(math.Floor(c.player.Position.Z))
+		onLadder = c.engine.GetBlock(bx, by, bz) == 65 || c.engine.GetBlock(bx, by+1, bz) == 65
+	}
+
 	// 1. Water Detection & Aquatic Physics vs Air Gravity
 	inWater, atSurface := c.checkWaterState()
 
-	if inWater {
+	if onLadder {
+		c.player.FallDistance = 0
+		if jumpRequested || fwdInput > 0 {
+			c.player.Velocity.Y = 3.0
+		} else if c.isSneaking {
+			c.player.Velocity.Y = 0 // Cling stationary to ladder when sneaking
+		} else {
+			c.player.Velocity.Y = -2.0 // Slow steady slide down ladder
+		}
+	} else if inWater {
 		c.player.FallDistance = 0 // No fall damage in water
 		if jumpRequested {
 			// Swimming upward in water: continuous upward propulsion while holding Space
@@ -1271,8 +1328,16 @@ func (c *Client) PhysicsStep(fwdInput, strafeInput float64, jumpRequested bool, 
 		}
 	}
 
-	// Stream chunks as player moves
-	c.EnsureChunksAroundPlayer(resolvedPos.X, resolvedPos.Z, 3)
+	// Stream chunks throttled (only when crossing chunk boundaries or periodically every 120ms)
+	pcx := int32(math.Floor(resolvedPos.X / 16.0))
+	pcz := int32(math.Floor(resolvedPos.Z / 16.0))
+	nowTime := time.Now()
+	if pcx != c.lastChunkX || pcz != c.lastChunkZ || nowTime.Sub(c.lastChunkStreamTime) > 120*time.Millisecond {
+		c.lastChunkX = pcx
+		c.lastChunkZ = pcz
+		c.lastChunkStreamTime = nowTime
+		c.EnsureChunksAroundPlayer(resolvedPos.X, resolvedPos.Z, 3)
+	}
 
 	// Send authoritative position update to multiplayer server
 	if c.conn != nil && c.player != nil {
@@ -1691,7 +1756,7 @@ func (c *Client) ExecuteCommand(input string) {
 
 	case "/kill":
 		if len(parts) >= 2 && (parts[1] == "@e[type=ender_dragon]" || parts[1] == "dragon") {
-			if c.engine != nil && c.engine.EnderDragon != nil {
+			if c.engine != nil && c.engine.GetEnderDragon() != nil {
 				c.engine.DamageEnderDragon(200.0)
 				c.AddChatMessage("[Kill] Slew Ender Dragon!")
 			}
@@ -2133,6 +2198,20 @@ func (c *Client) RenderFrame() {
 		}
 	}
 
+	// 4.7 Death Screen
+	if c.player != nil && c.player.Health <= 0 {
+		mx, my := -1, -1
+		if c.wndRef != nil {
+			mx, my = c.wndRef.GetCursorClientPos(c.framebuf.Width, c.framebuf.Height)
+		}
+		score := 0
+		if c.player != nil {
+			score = c.player.Level*100 + int(c.player.ExpProgress*100)
+		}
+		c.respawnBtnRect, c.deathTitleBtnRect = c.framebuf.DrawDeathScreen(score, mx, my)
+		return
+	}
+
 	// 5. Draw 2D HUD (Centered crosshair, conditional 20 HP hearts, 20 hunger drumsticks, experience bar, level, hotbar)
 	gameMode := 0
 	health := float32(20.0)
@@ -2179,7 +2258,7 @@ func (c *Client) RenderFrame() {
 		if c.wndRef != nil {
 			mx, my = c.wndRef.GetCursorClientPos(c.framebuf.Width, c.framebuf.Height)
 		}
-		furnace := c.engine.Furnaces[c.currentFurnacePos]
+		furnace := c.engine.GetOrCreateFurnace(c.currentFurnacePos)
 		c.framebuf.DrawFurnaceGUI(furnace, c.player.Inventory, c.cursorItem, mx, my)
 	}
 
@@ -2952,43 +3031,43 @@ func (c *Client) drawPlayerModel() {
 		torsoPitch = 12.0
 	}
 
-	// 1. Head (rotates with camera yaw & pitch)
-	c.render3DBox(pos.X, pos.Y+1.45+yOffset, pos.Z, 0.22, 0.22, 0.22, yaw, pitch, headHair, headSkin, headSkin)
+	// 1. Head (rotates with camera yaw & pitch; 0.5x0.5x0.5m Minecraft Java scale)
+	c.render3DBox(pos.X, pos.Y+1.67+yOffset, pos.Z, 0.25, 0.25, 0.25, yaw, pitch, headHair, headSkin, headSkin)
 
-	// 2. Torso (rotates with body yaw & sneak pitch)
-	c.render3DBox(pos.X, pos.Y+0.88+yOffset, pos.Z, 0.24, 0.35, 0.12, yaw, torsoPitch, torsoCol, torsoCol, torsoCol)
+	// 2. Torso (0.5m wide x 0.75m tall x 0.25m deep; rotates with body yaw & sneak pitch)
+	c.render3DBox(pos.X, pos.Y+1.125+yOffset, pos.Z, 0.25, 0.375, 0.125, yaw, torsoPitch, torsoCol, torsoCol, torsoCol)
 
-	// Compute shoulder offsets relative to body yaw
+	// Compute shoulder offsets relative to body yaw (0.375m center-to-arm)
 	radY := yaw * math.Pi / 180.0
 	cosY, sinY := math.Cos(radY), math.Sin(radY)
-	armOffX := 0.35 * cosY
-	armOffZ := -0.35 * sinY
+	armOffX := 0.375 * cosY
+	armOffZ := -0.375 * sinY
 
-	// 3. Left Arm (swings opposite)
-	c.render3DBox(pos.X-armOffX, pos.Y+0.88+yOffset, pos.Z-armOffZ, 0.11, 0.35, 0.12, yaw, walkSwing, torsoCol, headSkin, torsoCol)
+	// 3. Left Arm (0.25x0.75x0.25m; swings opposite)
+	c.render3DBox(pos.X-armOffX, pos.Y+1.125+yOffset, pos.Z-armOffZ, 0.125, 0.375, 0.125, yaw, walkSwing, torsoCol, headSkin, torsoCol)
 
-	// 4. Right Arm (swings with walk cycle + chopping attack arc)
-	c.render3DBox(pos.X+armOffX, pos.Y+0.88+yOffset, pos.Z+armOffZ, 0.11, 0.35, 0.12, yaw, -walkSwing+armSwing, torsoCol, headSkin, torsoCol)
+	// 4. Right Arm (0.25x0.75x0.25m; swings with walk cycle + chopping attack arc)
+	c.render3DBox(pos.X+armOffX, pos.Y+1.125+yOffset, pos.Z+armOffZ, 0.125, 0.375, 0.125, yaw, -walkSwing+armSwing, torsoCol, headSkin, torsoCol)
 
-	// Hip offsets relative to body yaw
-	legOffX := 0.12 * cosY
-	legOffZ := -0.12 * sinY
+	// Hip offsets relative to body yaw (0.125m center-to-leg)
+	legOffX := 0.125 * cosY
+	legOffZ := -0.125 * sinY
 
-	// 5. Left Leg (swings forward/backward)
-	c.render3DBox(pos.X-legOffX, pos.Y+0.36, pos.Z-legOffZ, 0.11, 0.35, 0.12, yaw, -walkSwing, pantsCol, shoesCol, pantsCol)
+	// 5. Left Leg (0.25x0.75x0.25m; swings forward/backward)
+	c.render3DBox(pos.X-legOffX, pos.Y+0.375, pos.Z-legOffZ, 0.125, 0.375, 0.125, yaw, -walkSwing, pantsCol, shoesCol, pantsCol)
 
-	// 6. Right Leg (swings opposite)
-	c.render3DBox(pos.X+legOffX, pos.Y+0.36, pos.Z+legOffZ, 0.11, 0.35, 0.12, yaw, walkSwing, pantsCol, shoesCol, pantsCol)
+	// 6. Right Leg (0.25x0.75x0.25m; swings opposite)
+	c.render3DBox(pos.X+legOffX, pos.Y+0.375, pos.Z+legOffZ, 0.125, 0.375, 0.125, yaw, walkSwing, pantsCol, shoesCol, pantsCol)
 
 	// 7. Render Held Item/Block in Steve's right hand in 3D
 	sel := c.player.Inventory.GetSelectedItem()
 	if !sel.IsEmpty() {
 		rightArmPitch := (-walkSwing + armSwing) * math.Pi / 180.0
-		handForward := math.Sin(rightArmPitch) * 0.35
-		handDown := math.Cos(rightArmPitch) * 0.35
+		handForward := math.Sin(rightArmPitch) * 0.375
+		handDown := math.Cos(rightArmPitch) * 0.375
 
 		hx := pos.X + armOffX + math.Sin(radY)*handForward
-		hy := pos.Y + 0.88 + yOffset - handDown
+		hy := pos.Y + 1.125 + yOffset - handDown
 		hz := pos.Z + armOffZ + math.Cos(radY)*handForward
 
 		if inventory.IsPlaceableBlock(sel.ItemID) {
@@ -3562,9 +3641,9 @@ func (c *Client) drawHeldItem() {
 	}
 
 	// 5. Authentic 3D Isometric Textured Voxel Block (Held in palm)
-	cx := hx - 20
-	cy := hy - 15
-	blockScale := 4 // 4px per texel gives authentic ~56x56px isometric block
+	cx := hx + 10
+	cy := hy - 5
+	blockScale := 2 // 2px per texel gives authentic ~64px isometric block
 
 	// Top Face (Diamond quad, Face 2, 1.0 full light)
 	for ty := 0; ty < 16; ty++ {
@@ -3573,7 +3652,7 @@ func (c *Client) drawHeldItem() {
 			v := float32(ty) / 16.0
 			col := render.SampleBlockColor(selected.ItemID, 2, u, v, 1.0)
 			sx := cx + (tx-ty)*blockScale
-			sy := cy - 24 + (tx+ty)*blockScale/2
+			sy := cy - 12 + (tx+ty)*blockScale/2
 			c.framebuf.DrawRect(sx, sy, blockScale, (blockScale+1)/2, col)
 		}
 	}
@@ -3597,15 +3676,15 @@ func (c *Client) drawHeldItem() {
 			v := float32(ty) / 16.0
 			col := render.SampleBlockColor(selected.ItemID, 0, u, v, 0.60)
 			sx := cx + tx*blockScale
-			sy := cy + 24 - (tx-ty*2)*blockScale/2
+			sy := cy + 16 - (tx-ty*2)*blockScale/2
 			c.framebuf.DrawRect(sx, sy, blockScale, blockScale, col)
 		}
 	}
 
 	// Steve's hand supporting and grasping the bottom of the block
-	c.framebuf.DrawRect(cx+8, cy+46, 42, 26, skinTone)
-	c.framebuf.DrawRect(cx+20, cy+68, 48, 8, cuffTone)
-	c.framebuf.DrawRect(cx+24, cy+76, 60, 85, sleeveTone)
+	c.framebuf.DrawRect(cx-8, cy+20, 32, 20, skinTone)
+	c.framebuf.DrawRect(cx+4, cy+36, 36, 6, cuffTone)
+	c.framebuf.DrawRect(cx+8, cy+42, 44, 60, sleeveTone)
 }
 
 func main() {
@@ -3709,6 +3788,10 @@ func runGraphicalWindow(c *Client, w, h int) {
 			if vkCode == 0x1B { // Esc: return to world select
 				c.screenState = ScreenWorldSelect
 			}
+			return
+		}
+
+		if c.player != nil && c.player.Health <= 0 {
 			return
 		}
 
@@ -3969,6 +4052,24 @@ func runGraphicalWindow(c *Client, w, h int) {
 			return
 		}
 
+		if c.player != nil && c.player.Health <= 0 {
+			if btn == 1 {
+				r := c.respawnBtnRect
+				if mx >= r[0] && mx <= r[0]+r[2] && my >= r[1] && my <= r[1]+r[3] {
+					c.RespawnLocalPlayer()
+					wnd.SetMouseCaptured(true)
+					return
+				}
+				d := c.deathTitleBtnRect
+				if mx >= d[0] && mx <= d[0]+d[2] && my >= d[1] && my <= d[1]+d[3] {
+					c.SaveAndQuitToTitle()
+					wnd.SetMouseCaptured(false)
+					return
+				}
+			}
+			return
+		}
+
 		if c.showPauseMenu {
 			if btn == 1 {
 				b := c.backBtnRect
@@ -4029,42 +4130,50 @@ func runGraphicalWindow(c *Client, w, h int) {
 					return
 				}
 				if hit.Type == render.SlotCraftGrid {
-					handleSlotLeftClick(&c.cursorItem, &c.craftGrid[hit.Index])
-					c.updateCraftResult()
+					if hit.Index >= 0 && hit.Index < len(c.craftGrid) {
+						handleSlotLeftClick(&c.cursorItem, &c.craftGrid[hit.Index])
+						c.updateCraftResult()
+					}
 					return
 				}
 				if hit.Type == render.SlotInventory {
-					if wnd.IsKeyDown(0x10) { // Shift-click quick transfer
-						if hit.Index < 9 { // Hotbar -> Main
-							for s := 9; s < 36; s++ {
-								if c.player.Inventory.Slots[s].IsEmpty() {
-									c.player.Inventory.Slots[s] = c.player.Inventory.Slots[hit.Index]
-									c.player.Inventory.Slots[hit.Index] = inventory.ItemStack{}
-									break
+					if hit.Index >= 0 && hit.Index < len(c.player.Inventory.Slots) {
+						if wnd.IsKeyDown(0x10) { // Shift-click quick transfer
+							if hit.Index < 9 { // Hotbar -> Main
+								for s := 9; s < 36 && s < len(c.player.Inventory.Slots); s++ {
+									if c.player.Inventory.Slots[s].IsEmpty() {
+										c.player.Inventory.Slots[s] = c.player.Inventory.Slots[hit.Index]
+										c.player.Inventory.Slots[hit.Index] = inventory.ItemStack{}
+										break
+									}
+								}
+							} else { // Main -> Hotbar
+								for s := 0; s < 9 && s < len(c.player.Inventory.Slots); s++ {
+									if c.player.Inventory.Slots[s].IsEmpty() {
+										c.player.Inventory.Slots[s] = c.player.Inventory.Slots[hit.Index]
+										c.player.Inventory.Slots[hit.Index] = inventory.ItemStack{}
+										break
+									}
 								}
 							}
-						} else { // Main -> Hotbar
-							for s := 0; s < 9; s++ {
-								if c.player.Inventory.Slots[s].IsEmpty() {
-									c.player.Inventory.Slots[s] = c.player.Inventory.Slots[hit.Index]
-									c.player.Inventory.Slots[hit.Index] = inventory.ItemStack{}
-									break
-								}
-							}
+						} else {
+							handleSlotLeftClick(&c.cursorItem, &c.player.Inventory.Slots[hit.Index])
 						}
-					} else {
-						handleSlotLeftClick(&c.cursorItem, &c.player.Inventory.Slots[hit.Index])
 					}
 					return
 				}
 			} else if btn == 2 { // Right click
 				if hit.Type == render.SlotCraftGrid {
-					handleSlotRightClick(&c.cursorItem, &c.craftGrid[hit.Index])
-					c.updateCraftResult()
+					if hit.Index >= 0 && hit.Index < len(c.craftGrid) {
+						handleSlotRightClick(&c.cursorItem, &c.craftGrid[hit.Index])
+						c.updateCraftResult()
+					}
 					return
 				}
 				if hit.Type == render.SlotInventory {
-					handleSlotRightClick(&c.cursorItem, &c.player.Inventory.Slots[hit.Index])
+					if hit.Index >= 0 && hit.Index < len(c.player.Inventory.Slots) {
+						handleSlotRightClick(&c.cursorItem, &c.player.Inventory.Slots[hit.Index])
+					}
 					return
 				}
 			}
@@ -4099,7 +4208,9 @@ func runGraphicalWindow(c *Client, w, h int) {
 					return
 				}
 				if hit.Type == render.SlotInventory {
-					handleSlotLeftClick(&c.cursorItem, &c.player.Inventory.Slots[hit.Index])
+					if hit.Index >= 0 && hit.Index < len(c.player.Inventory.Slots) {
+						handleSlotLeftClick(&c.cursorItem, &c.player.Inventory.Slots[hit.Index])
+					}
 					return
 				}
 			} else if btn == 2 { // Right click
@@ -4112,7 +4223,9 @@ func runGraphicalWindow(c *Client, w, h int) {
 					return
 				}
 				if hit.Type == render.SlotInventory {
-					handleSlotRightClick(&c.cursorItem, &c.player.Inventory.Slots[hit.Index])
+					if hit.Index >= 0 && hit.Index < len(c.player.Inventory.Slots) {
+						handleSlotRightClick(&c.cursorItem, &c.player.Inventory.Slots[hit.Index])
+					}
 					return
 				}
 			}
@@ -4163,9 +4276,33 @@ func runGraphicalWindow(c *Client, w, h int) {
 	lastTime := time.Now()
 
 	for wnd.PollEvents() {
-		// Detect window resize (Fullscreen toggle or maximize) and resize framebuffer & camera
-		if wnd.Width > 0 && wnd.Height > 0 && (wnd.Width != c.framebuf.Width || wnd.Height != c.framebuf.Height) {
-			c.framebuf = render.NewFramebuffer(wnd.Width, wnd.Height)
+		// Detect window resize (Fullscreen toggle or maximize) and clamp internal software rasterizer resolution
+		// Internal CPU rasterizer target is optimized to max 960x540 (or 800x600 for 4:3), preserving exact window aspect ratio.
+		// Windows GDI's StretchDIBits hardware-upscales seamlessly to full 1080p/2K/4K display with zero CPU overhead.
+		if wnd.Width > 0 && wnd.Height > 0 {
+			targetW := wnd.Width
+			targetH := wnd.Height
+			const maxRenderW = 960
+			const maxRenderH = 540
+			if targetW > maxRenderW || targetH > maxRenderH {
+				aspect := float64(targetW) / float64(targetH)
+				if aspect >= float64(maxRenderW)/float64(maxRenderH) {
+					targetW = maxRenderW
+					targetH = int(float64(maxRenderW) / aspect)
+				} else {
+					targetH = maxRenderH
+					targetW = int(float64(maxRenderH) * aspect)
+				}
+			}
+			if targetW < 400 {
+				targetW = 400
+			}
+			if targetH < 300 {
+				targetH = 300
+			}
+			if targetW != c.framebuf.Width || targetH != c.framebuf.Height {
+				c.framebuf = render.NewFramebuffer(targetW, targetH)
+			}
 		}
 
 		now := time.Now()
@@ -4206,6 +4343,15 @@ func runGraphicalWindow(c *Client, w, h int) {
 			time.Sleep(16 * time.Millisecond)
 			mx, my := wnd.GetCursorClientPos(c.framebuf.Width, c.framebuf.Height)
 			c.nwCreateBtn, c.nwCancelBtn, c.nwModeBtn, c.nwNameBox, c.nwSeedBox = c.framebuf.DrawNewWorldScreen(c.newWorldName, c.newWorldMode, c.newWorldSeedText, c.newWorldActiveBox, mx, my)
+			wnd.Present(c.framebuf)
+			continue
+		}
+
+		// If Player is Dead, release mouse capture, show Death Screen, and halt world controls
+		if c.player != nil && c.player.Health <= 0 {
+			wnd.SetMouseCaptured(false)
+			time.Sleep(16 * time.Millisecond)
+			c.RenderFrame()
 			wnd.Present(c.framebuf)
 			continue
 		}

@@ -69,6 +69,67 @@ const (
 	ItemFlintAndSteel int32 = 259
 	ItemGoldNugget    int32 = 371
 	ItemNetherQuartz  int32 = 406
+
+	// Gold Tools
+	ItemGoldenSword   int32 = 283
+	ItemGoldenShovel  int32 = 284
+	ItemGoldenPickaxe int32 = 285
+	ItemGoldenAxe     int32 = 286
+	ItemGoldenHoe     int32 = 294
+
+	// Hoes
+	ItemWoodenHoe  int32 = 290
+	ItemStoneHoe   int32 = 291
+	ItemIronHoe    int32 = 292
+	ItemDiamondHoe int32 = 293
+
+	// Armor
+	ItemLeatherHelmet     int32 = 298
+	ItemLeatherChestplate int32 = 299
+	ItemLeatherLeggings   int32 = 300
+	ItemLeatherBoots      int32 = 301
+
+	ItemIronHelmet     int32 = 306
+	ItemIronChestplate int32 = 307
+	ItemIronLeggings   int32 = 308
+	ItemIronBoots      int32 = 309
+
+	ItemDiamondHelmet     int32 = 310
+	ItemDiamondChestplate int32 = 311
+	ItemDiamondLeggings   int32 = 312
+	ItemDiamondBoots      int32 = 313
+
+	ItemGoldenHelmet     int32 = 314
+	ItemGoldenChestplate int32 = 315
+	ItemGoldenLeggings   int32 = 316
+	ItemGoldenBoots      int32 = 317
+
+	// Utility, materials, and blocks
+	ItemBucket        int32 = 325
+	ItemWaterBucket   int32 = 326
+	ItemLavaBucket    int32 = 327
+	ItemWheat         int32 = 296
+	ItemWheatSeeds    int32 = 295
+	ItemFeather       int32 = 288
+	ItemFlint         int32 = 318
+	ItemRawChicken    int32 = 365
+	ItemCookedChicken int32 = 366
+	ItemRawMutton     int32 = 423
+	ItemCookedMutton  int32 = 424
+	ItemGoldenApple   int32 = 322
+	ItemShears        int32 = 359
+	ItemOakDoor       int32 = 324
+	ItemIronDoor      int32 = 330
+	ItemOakSlab       int32 = 126
+	ItemStoneSlab     int32 = 44
+	ItemLadder        int32 = 65
+	ItemSnowball      int32 = 332
+	ItemBrick         int32 = 336
+	ItemClayBall      int32 = 337
+	ItemBook          int32 = 340
+	ItemSugarCane     int32 = 83
+	ItemPumpkin       int32 = 86
+	ItemMelon         int32 = 103
 )
 
 // IsPlaceableBlock reports whether an item ID corresponds to a placeable voxel block.
@@ -76,8 +137,8 @@ func IsPlaceableBlock(itemID int32) bool {
 	switch itemID {
 	case ItemStone, ItemGrass, ItemDirt, ItemCobblestone, ItemOakPlanks,
 		7, 8, 9, 10, 11, 12, 13, 14, 15, 16, ItemOakLog, 18, 19, 20, 21, 22, 23,
-		31, 32, 33, 37, 38, 45, 48, 49, ItemTorch, 52, 54, 56, ItemCraftingTable, ItemFurnace,
-		73, 74, 81, 87, 88, 89, 90, 111, 119, 120, 121, 122, 150, 153, 154:
+		31, 32, 33, 37, 38, 44, 45, 48, 49, ItemTorch, 52, 54, 56, ItemCraftingTable, ItemFurnace,
+		65, 73, 74, 81, 83, 86, 87, 88, 89, 90, 103, 111, 119, 120, 121, 122, 126, 150, 153, 154, 324, 330:
 		return true
 	default:
 		return false
@@ -87,7 +148,7 @@ func IsPlaceableBlock(itemID int32) bool {
 // IsReplaceableBlock reports whether a block can be replaced by placing another block into its space.
 func IsReplaceableBlock(blockID int32) bool {
 	switch blockID {
-	case 0, 8, 9, 10, 11, 31, 32, 33, 37, 38, 50, 111:
+	case 0, 8, 9, 10, 11, 31, 32, 33, 37, 38, 50, 83, 111:
 		return true
 	default:
 		return false
@@ -109,6 +170,12 @@ var FoodRegistry = map[int32]FoodProperties{
 	ItemRawBeef:        {HungerRestored: 3, Saturation: 1.8},
 	ItemSteak:          {HungerRestored: 8, Saturation: 12.8},
 	ItemRottenFlesh:    {HungerRestored: 4, Saturation: 0.8},
+	ItemRawChicken:     {HungerRestored: 2, Saturation: 1.2},
+	ItemCookedChicken:  {HungerRestored: 6, Saturation: 7.2},
+	ItemRawMutton:      {HungerRestored: 2, Saturation: 1.2},
+	ItemCookedMutton:   {HungerRestored: 6, Saturation: 9.6},
+	ItemGoldenApple:    {HungerRestored: 4, Saturation: 9.6},
+	ItemMelon:          {HungerRestored: 2, Saturation: 1.2},
 }
 
 // IsFood checks if given item ID is edible.
