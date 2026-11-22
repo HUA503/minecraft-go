@@ -93,3 +93,48 @@ func TestGUIHitTestingAndDrawing(t *testing.T) {
 		t.Fatalf("new world screen elements invalid")
 	}
 }
+
+func TestVisualScreenRenders(t *testing.T) {
+	fb := NewFramebuffer(400, 300)
+	worlds := []WorldInfo{
+		{DirName: "BENCHMARK_WORLD", LevelName: "BENCHMARK", GameMode: 0, LastTime: time.Now()},
+	}
+	fb.DrawWorldSelectScreen(worlds, 0, 200, 280)
+
+	// Verify framebuffer is not blank
+	nonZero := 0
+	for _, c := range fb.Color {
+		if c != 0 {
+			nonZero++
+		}
+	}
+	if nonZero < 1000 {
+		t.Fatalf("framebuffer has too few rendered pixels: %d", nonZero)
+	}
+
+	// 2. Render Title Screen
+	fbTitle := NewFramebuffer(400, 300)
+	fbTitle.DrawTitleScreen(200, 160)
+	nonZeroTitle := 0
+	for _, c := range fbTitle.Color {
+		if c != 0 {
+			nonZeroTitle++
+		}
+	}
+	if nonZeroTitle < 1000 {
+		t.Fatalf("title screen framebuffer has too few rendered pixels: %d", nonZeroTitle)
+	}
+
+	// 3. Render New World Screen
+	fbNew := NewFramebuffer(400, 300)
+	fbNew.DrawNewWorldScreen("新世界", 0, "", 0, 200, 200)
+	nonZeroNew := 0
+	for _, c := range fbNew.Color {
+		if c != 0 {
+			nonZeroNew++
+		}
+	}
+	if nonZeroNew < 1000 {
+		t.Fatalf("new world screen framebuffer has too few rendered pixels: %d", nonZeroNew)
+	}
+}

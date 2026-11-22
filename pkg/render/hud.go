@@ -667,14 +667,14 @@ var font5x7 = map[rune][7]uint8{
 	'?': {0b01110, 0b10001, 0b00010, 0b00100, 0b00100, 0b00000, 0b00100},
 }
 
-// DrawChar5x7 renders a single 5x7 character scaled with optional drop shadow, or 11x11 CJK glyph.
+// DrawChar5x7 renders a single 5x7 character scaled with optional drop shadow, or 12x12 CJK glyph.
 func (fb *Framebuffer) DrawChar5x7(x, y int, ch rune, col uint32, scale int) int {
 	if ch > 0x7F {
 		glyph := GetCJKGlyph(ch)
-		for row := 0; row < 11; row++ {
+		for row := 0; row < 12; row++ {
 			bits := glyph[row]
-			for cIdx := 0; cIdx < 11; cIdx++ {
-				if (bits & (1 << (10 - cIdx))) != 0 {
+			for cIdx := 0; cIdx < 12; cIdx++ {
+				if (bits & (1 << (11 - cIdx))) != 0 {
 					py := y + (row-2)*scale
 					if scale == 1 {
 						px := x + cIdx
