@@ -443,7 +443,7 @@ func (c *Client) StartSingleplayerWorld(worldDirName string, isNew bool, newSeed
 	c.meshMu.Unlock()
 
 	for i := 0; i < 25; i++ {
-		c.EnsureChunksAroundPlayer(c.player.Position.X, c.player.Position.Z, 1)
+		c.EnsureChunksAroundPlayer(c.player.Position.X, c.player.Position.Z, 3)
 	}
 
 	c.engine.StartTickLoop()
@@ -604,7 +604,7 @@ func (c *Client) SwitchDimension(dim gen.Dimension) {
 	c.camera.Z = newPos.Z
 
 	for i := 0; i < 25; i++ {
-		c.EnsureChunksAroundPlayer(newPos.X, newPos.Z, 1)
+		c.EnsureChunksAroundPlayer(newPos.X, newPos.Z, 3)
 	}
 }
 
@@ -747,9 +747,9 @@ func (c *Client) InvalidateBlockMesh(pos world.BlockPos) {
 	} else if remX == 15 {
 		delete(c.meshCache, [3]int32{secX + 1, secY, secZ})
 	}
-	if remY == 0 && secY > 0 {
+	if remY == 0 && secY > -4 {
 		delete(c.meshCache, [3]int32{secX, secY - 1, secZ})
-	} else if remY == 15 && secY < 7 {
+	} else if remY == 15 && secY < 15 {
 		delete(c.meshCache, [3]int32{secX, secY + 1, secZ})
 	}
 	if remZ == 0 {
@@ -804,7 +804,7 @@ func (c *Client) RebuildMeshes() {
 		c.meshMu.Unlock()
 
 		c.lastChunkX = -999
-		c.EnsureChunksAroundPlayer(c.player.Position.X, c.player.Position.Z, 2)
+		c.EnsureChunksAroundPlayer(c.player.Position.X, c.player.Position.Z, 3)
 	}
 }
 
@@ -1014,7 +1014,7 @@ func (c *Client) PhysicsStep(fwdInput, strafeInput float64, jumpRequested bool, 
 		c.camera.X = c.player.Position.X
 		c.camera.Y = c.player.Position.Y + 1.62
 		c.camera.Z = c.player.Position.Z
-		c.EnsureChunksAroundPlayer(c.player.Position.X, c.player.Position.Z, 2)
+		c.EnsureChunksAroundPlayer(c.player.Position.X, c.player.Position.Z, 3)
 		return
 	}
 
@@ -1272,7 +1272,7 @@ func (c *Client) PhysicsStep(fwdInput, strafeInput float64, jumpRequested bool, 
 	}
 
 	// Stream chunks as player moves
-	c.EnsureChunksAroundPlayer(resolvedPos.X, resolvedPos.Z, 2)
+	c.EnsureChunksAroundPlayer(resolvedPos.X, resolvedPos.Z, 3)
 
 	// Send authoritative position update to multiplayer server
 	if c.conn != nil && c.player != nil {
@@ -1668,7 +1668,7 @@ func (c *Client) ExecuteCommand(input string) {
 			c.camera.X = x
 			c.camera.Y = y + 1.62
 			c.camera.Z = z
-			c.EnsureChunksAroundPlayer(x, z, 2)
+			c.EnsureChunksAroundPlayer(x, z, 3)
 			c.AddChatMessage(fmt.Sprintf("[Teleport] Teleported %s to (%.1f, %.1f, %.1f)", c.username, x, y, z))
 		}
 
@@ -2405,33 +2405,33 @@ func (c *Client) drawMob(m *sim.MobEntity) {
 		}
 
 	case sim.MobPig:
-		frontX := 0.42 * sinY
-		frontZ := 0.42 * cosY
+		bodyUV := makeBoxFaceUVs(64, 64, [4]float32{36, 16, 46, 32}, [4]float32{54, 16, 64, 32}, [4]float32{36, 8, 46, 16}, [4]float32{46, 8, 56, 16}, [4]float32{28, 16, 36, 32}, [4]float32{46, 16, 54, 32})
+		fbPigBody := [6]uint32{0xFFF0A0A0, 0xFFF0A0A0, 0xFFF0A0A0, 0xFFF0A0A0, 0xFFF0A0A0, 0xFFF0A0A0}
+		c.renderTextured3DBox(pos.X, pos.Y+0.625, pos.Z, 0.3125, 0.25, 0.50, yaw, 0, mobTex, bodyUV, fbPigBody, tint)
+
+		frontX := 0.60 * sinY
+		frontZ := 0.60 * cosY
 		headUV := makeBoxFaceUVs(64, 64, [4]float32{8, 0, 16, 8}, [4]float32{16, 0, 24, 8}, [4]float32{24, 8, 32, 16}, [4]float32{8, 8, 16, 16}, [4]float32{0, 8, 8, 16}, [4]float32{16, 8, 24, 16})
 		fbPigHead := [6]uint32{0xFFF0A0A0, 0xFFF0A0A0, 0xFFF0A0A0, 0xFFF0A0A0, 0xFFF0A0A0, 0xFFF0A0A0}
-		c.renderTextured3DBox(pos.X+frontX, pos.Y+0.65, pos.Z+frontZ, 0.20, 0.20, 0.20, yaw, pitch, mobTex, headUV, fbPigHead, tint)
+		c.renderTextured3DBox(pos.X+frontX, pos.Y+0.625, pos.Z+frontZ, 0.25, 0.25, 0.25, yaw, pitch, mobTex, headUV, fbPigHead, tint)
 
-		snoutX := 0.58 * sinY
-		snoutZ := 0.58 * cosY
-		snoutUV := makeBoxFaceUVs(64, 64, [4]float32{17, 16, 21, 17}, [4]float32{21, 16, 25, 17}, [4]float32{17, 17, 21, 20}, [4]float32{17, 17, 21, 20}, [4]float32{16, 17, 17, 20}, [4]float32{21, 17, 22, 20})
+		snoutX := 0.86 * sinY
+		snoutZ := 0.86 * cosY
+		snoutUV := makeBoxFaceUVs(64, 64, [4]float32{17, 16, 21, 17}, [4]float32{21, 16, 25, 17}, [4]float32{22, 17, 26, 20}, [4]float32{17, 17, 21, 20}, [4]float32{16, 17, 17, 20}, [4]float32{21, 17, 22, 20})
 		fbSnout := [6]uint32{0xFFD06868, 0xFFE88A8A, 0xFFE88A8A, 0xFFD06868, 0xFFE88A8A, 0xFFE88A8A}
-		c.renderTextured3DBox(pos.X+snoutX, pos.Y+0.60, pos.Z+snoutZ, 0.10, 0.08, 0.06, yaw, pitch, mobTex, snoutUV, fbSnout, tint)
+		c.renderTextured3DBox(pos.X+snoutX, pos.Y+0.54, pos.Z+snoutZ, 0.125, 0.09375, 0.03125, yaw, pitch, mobTex, snoutUV, fbSnout, tint)
 
-		bodyUV := makeBoxFaceUVs(64, 64, [4]float32{36, 16, 46, 32}, [4]float32{54, 16, 64, 32}, [4]float32{46, 8, 56, 16}, [4]float32{36, 8, 46, 16}, [4]float32{28, 16, 36, 32}, [4]float32{46, 16, 54, 32})
-		fbPigBody := [6]uint32{0xFFF0A0A0, 0xFFF0A0A0, 0xFFF0A0A0, 0xFFF0A0A0, 0xFFF0A0A0, 0xFFF0A0A0}
-		c.renderTextured3DBox(pos.X, pos.Y+0.55, pos.Z, 0.26, 0.22, 0.38, yaw, 0, mobTex, bodyUV, fbPigBody, tint)
-
-		tailX := 0.40 * sinY
-		tailZ := 0.40 * cosY
-		c.render3DBox(pos.X-tailX, pos.Y+0.62, pos.Z-tailZ, 0.04, 0.06, 0.04, yaw, 30.0, 0xFFE88A8A, 0xFFE88A8A, 0xFFE88A8A)
+		tailX := 0.50 * sinY
+		tailZ := 0.50 * cosY
+		c.render3DBox(pos.X-tailX, pos.Y+0.68, pos.Z-tailZ, 0.04, 0.06, 0.04, yaw, 30.0, 0xFFE88A8A, 0xFFE88A8A, 0xFFE88A8A)
 
 		legs := [][2]float64{
-			{-0.15, 0.22},
-			{0.15, 0.22},
-			{-0.15, -0.22},
-			{0.15, -0.22},
+			{-0.18, 0.30},
+			{0.18, 0.30},
+			{-0.18, -0.30},
+			{0.18, -0.30},
 		}
-		legUV := makeUniformFaceUV(64, 64, 0, 16, 4, 22)
+		legUV := makeBoxFaceUVs(64, 64, [4]float32{4, 16, 8, 20}, [4]float32{8, 16, 12, 20}, [4]float32{12, 20, 16, 26}, [4]float32{4, 20, 8, 26}, [4]float32{0, 20, 4, 26}, [4]float32{8, 20, 12, 26})
 		fbPigLeg := [6]uint32{0xFFE08E8E, 0xFFE08E8E, 0xFFE08E8E, 0xFFE08E8E, 0xFFE08E8E, 0xFFE08E8E}
 		for i, f := range legs {
 			lx := f[0]*cosY + f[1]*sinY
@@ -2440,40 +2440,40 @@ func (c *Client) drawMob(m *sim.MobEntity) {
 			if i == 1 || i == 2 {
 				legPitch = -walkSwing
 			}
-			c.renderTextured3DBox(pos.X+lx, pos.Y+0.20, pos.Z+lz, 0.08, 0.20, 0.08, yaw, legPitch, mobTex, legUV, fbPigLeg, tint)
+			c.renderTextured3DBox(pos.X+lx, pos.Y+0.1875, pos.Z+lz, 0.125, 0.1875, 0.125, yaw, legPitch, mobTex, legUV, fbPigLeg, tint)
 		}
 
 	case sim.MobCow:
-		bodyUV := makeBoxFaceUVs(64, 64, [4]float32{36, 16, 46, 32}, [4]float32{54, 16, 64, 32}, [4]float32{46, 8, 56, 16}, [4]float32{36, 8, 46, 16}, [4]float32{28, 16, 36, 32}, [4]float32{46, 16, 54, 32})
-		fbCowBody := [6]uint32{0xFFE5E5E5, 0xFF5A4432, 0xFF5A4432, 0xFF5A4432, 0xFF5A4432, 0xFF5A4432}
-		c.renderTextured3DBox(pos.X, pos.Y+0.75, pos.Z, 0.30, 0.28, 0.45, yaw, 0, mobTex, bodyUV, fbCowBody, tint)
+		bodyUV := makeBoxFaceUVs(64, 64, [4]float32{28, 14, 40, 32}, [4]float32{50, 14, 62, 32}, [4]float32{28, 4, 40, 14}, [4]float32{40, 4, 52, 14}, [4]float32{18, 14, 28, 32}, [4]float32{40, 14, 50, 32})
+		fbCowBody := [6]uint32{0xFF5A4432, 0xFFE5E5E5, 0xFF5A4432, 0xFF5A4432, 0xFF5A4432, 0xFF5A4432}
+		c.renderTextured3DBox(pos.X, pos.Y+1.0625, pos.Z, 0.375, 0.3125, 0.5625, yaw, 0, mobTex, bodyUV, fbCowBody, tint)
 
-		udderZ := -0.20 * cosY
-		udderX := 0.20 * sinY
-		c.render3DBox(pos.X-udderX, pos.Y+0.52, pos.Z-udderZ, 0.12, 0.08, 0.12, yaw, 0, 0xFFECA0A0, 0xFFECA0A0, 0xFFECA0A0)
+		udderZ := -0.28 * cosY
+		udderX := 0.28 * sinY
+		c.render3DBox(pos.X-udderX, pos.Y+0.78, pos.Z-udderZ, 0.12, 0.08, 0.12, yaw, 0, 0xFFECA0A0, 0xFFECA0A0, 0xFFECA0A0)
 
-		frontX := 0.50 * sinY
-		frontZ := 0.50 * cosY
-		headUV := makeBoxFaceUVs(64, 64, [4]float32{8, 0, 16, 8}, [4]float32{16, 0, 24, 8}, [4]float32{24, 8, 32, 16}, [4]float32{8, 8, 16, 16}, [4]float32{0, 8, 8, 16}, [4]float32{16, 8, 24, 16})
+		frontX := 0.74 * sinY
+		frontZ := 0.74 * cosY
+		headUV := makeBoxFaceUVs(64, 64, [4]float32{6, 0, 14, 6}, [4]float32{14, 0, 22, 6}, [4]float32{20, 6, 28, 14}, [4]float32{6, 6, 14, 14}, [4]float32{0, 6, 6, 14}, [4]float32{14, 6, 20, 14})
 		fbCowHead := [6]uint32{0xFF5A4432, 0xFF5A4432, 0xFF5A4432, 0xFF5A4432, 0xFF5A4432, 0xFF5A4432}
-		c.renderTextured3DBox(pos.X+frontX, pos.Y+0.90, pos.Z+frontZ, 0.22, 0.22, 0.22, yaw, pitch, mobTex, headUV, fbCowHead, tint)
+		c.renderTextured3DBox(pos.X+frontX, pos.Y+1.18, pos.Z+frontZ, 0.25, 0.25, 0.1875, yaw, pitch, mobTex, headUV, fbCowHead, tint)
 
-		muzzleX := 0.65 * sinY
-		muzzleZ := 0.65 * cosY
+		muzzleX := 0.98 * sinY
+		muzzleZ := 0.98 * cosY
 		muzzleUV := makeBoxFaceUVs(64, 64, [4]float32{1, 0, 5, 2}, [4]float32{5, 0, 9, 2}, [4]float32{1, 2, 5, 5}, [4]float32{1, 2, 5, 5}, [4]float32{0, 2, 1, 5}, [4]float32{5, 2, 6, 5})
 		fbMuzzle := [6]uint32{0xFF7D7D7D, 0xFF7D7D7D, 0xFF7D7D7D, 0xFF7D7D7D, 0xFF7D7D7D, 0xFF7D7D7D}
-		c.renderTextured3DBox(pos.X+muzzleX, pos.Y+0.82, pos.Z+muzzleZ, 0.14, 0.10, 0.08, yaw, pitch, mobTex, muzzleUV, fbMuzzle, tint)
+		c.renderTextured3DBox(pos.X+muzzleX, pos.Y+1.05, pos.Z+muzzleZ, 0.16, 0.10, 0.06, yaw, pitch, mobTex, muzzleUV, fbMuzzle, tint)
 
-		c.render3DBox(pos.X+frontX-0.18*cosY, pos.Y+1.08, pos.Z+frontZ+0.18*sinY, 0.04, 0.08, 0.04, yaw, 0, 0xFFCCCCCC, 0xFFCCCCCC, 0xFFCCCCCC)
-		c.render3DBox(pos.X+frontX+0.18*cosY, pos.Y+1.08, pos.Z+frontZ-0.18*sinY, 0.04, 0.08, 0.04, yaw, 0, 0xFFCCCCCC, 0xFFCCCCCC, 0xFFCCCCCC)
+		c.render3DBox(pos.X+frontX-0.22*cosY, pos.Y+1.43, pos.Z+frontZ+0.22*sinY, 0.03, 0.08, 0.03, yaw, 0, 0xFFCCCCCC, 0xFFCCCCCC, 0xFFCCCCCC)
+		c.render3DBox(pos.X+frontX+0.22*cosY, pos.Y+1.43, pos.Z+frontZ-0.22*sinY, 0.03, 0.08, 0.03, yaw, 0, 0xFFCCCCCC, 0xFFCCCCCC, 0xFFCCCCCC)
 
 		legs := [][2]float64{
-			{-0.18, 0.28},
-			{0.18, 0.28},
-			{-0.18, -0.28},
-			{0.18, -0.28},
+			{-0.24, 0.34},
+			{0.24, 0.34},
+			{-0.24, -0.36},
+			{0.24, -0.36},
 		}
-		legUV := makeUniformFaceUV(64, 64, 0, 20, 4, 32)
+		legUV := makeBoxFaceUVs(64, 64, [4]float32{4, 16, 8, 20}, [4]float32{8, 16, 12, 20}, [4]float32{12, 20, 16, 32}, [4]float32{4, 20, 8, 32}, [4]float32{0, 20, 4, 32}, [4]float32{8, 20, 12, 32})
 		fbCowLeg := [6]uint32{0xFF423225, 0xFF221810, 0xFF423225, 0xFF423225, 0xFF423225, 0xFF423225}
 		for i, f := range legs {
 			lx := f[0]*cosY + f[1]*sinY
@@ -2482,26 +2482,26 @@ func (c *Client) drawMob(m *sim.MobEntity) {
 			if i == 1 || i == 2 {
 				legPitch = -walkSwing
 			}
-			c.renderTextured3DBox(pos.X+lx, pos.Y+0.28, pos.Z+lz, 0.09, 0.28, 0.09, yaw, legPitch, mobTex, legUV, fbCowLeg, tint)
+			c.renderTextured3DBox(pos.X+lx, pos.Y+0.375, pos.Z+lz, 0.125, 0.375, 0.125, yaw, legPitch, mobTex, legUV, fbCowLeg, tint)
 		}
 
 	case sim.MobSheep:
 		woolUV := makeBoxFaceUVs(64, 32, [4]float32{28, 16, 40, 28}, [4]float32{40, 16, 52, 28}, [4]float32{40, 28, 52, 32}, [4]float32{28, 28, 40, 32}, [4]float32{22, 28, 28, 32}, [4]float32{52, 28, 58, 32})
 		fbSheepBody := [6]uint32{0xFFEFEFEF, 0xFFD6D6D6, 0xFFEFEFEF, 0xFFEFEFEF, 0xFFEFEFEF, 0xFFEFEFEF}
-		c.renderTextured3DBox(pos.X, pos.Y+0.72, pos.Z, 0.34, 0.30, 0.46, yaw, 0, mobTex, woolUV, fbSheepBody, tint)
+		c.renderTextured3DBox(pos.X, pos.Y+0.65, pos.Z, 0.30, 0.26, 0.42, yaw, 0, mobTex, woolUV, fbSheepBody, tint)
 
-		frontX := 0.48 * sinY
-		frontZ := 0.48 * cosY
+		frontX := 0.58 * sinY
+		frontZ := 0.58 * cosY
 		headUV := makeBoxFaceUVs(64, 32, [4]float32{6, 0, 12, 6}, [4]float32{12, 0, 18, 6}, [4]float32{18, 6, 24, 12}, [4]float32{6, 6, 12, 12}, [4]float32{0, 6, 6, 12}, [4]float32{12, 6, 18, 12})
 		fbSheepHead := [6]uint32{0xFFD8C0A8, 0xFFD8C0A8, 0xFFD8C0A8, 0xFFD8C0A8, 0xFFD8C0A8, 0xFFD8C0A8}
-		c.renderTextured3DBox(pos.X+frontX, pos.Y+0.85, pos.Z+frontZ, 0.18, 0.18, 0.20, yaw, pitch, mobTex, headUV, fbSheepHead, tint)
-		c.render3DBox(pos.X+frontX, pos.Y+0.98, pos.Z+frontZ, 0.19, 0.08, 0.18, yaw, pitch, 0xFFEFEFEF, 0xFFEFEFEF, 0xFFEFEFEF)
+		c.renderTextured3DBox(pos.X+frontX, pos.Y+0.90, pos.Z+frontZ, 0.16, 0.16, 0.16, yaw, pitch, mobTex, headUV, fbSheepHead, tint)
+		c.render3DBox(pos.X+frontX, pos.Y+1.02, pos.Z+frontZ, 0.17, 0.06, 0.15, yaw, pitch, 0xFFEFEFEF, 0xFFEFEFEF, 0xFFEFEFEF)
 
 		legs := [][2]float64{
-			{-0.16, 0.24},
-			{0.16, 0.24},
-			{-0.16, -0.24},
-			{0.16, -0.24},
+			{-0.15, 0.24},
+			{0.15, 0.24},
+			{-0.15, -0.24},
+			{0.15, -0.24},
 		}
 		legUV := makeUniformFaceUV(64, 32, 0, 16, 4, 26)
 		fbSheepLeg := [6]uint32{0xFFBBA088, 0xFF4A3828, 0xFFBBA088, 0xFFBBA088, 0xFFBBA088, 0xFFBBA088}
@@ -2512,13 +2512,13 @@ func (c *Client) drawMob(m *sim.MobEntity) {
 			if i == 1 || i == 2 {
 				legPitch = -walkSwing
 			}
-			c.renderTextured3DBox(pos.X+lx, pos.Y+0.24, pos.Z+lz, 0.07, 0.24, 0.07, yaw, legPitch, mobTex, legUV, fbSheepLeg, tint)
+			c.renderTextured3DBox(pos.X+lx, pos.Y+0.20, pos.Z+lz, 0.07, 0.20, 0.07, yaw, legPitch, mobTex, legUV, fbSheepLeg, tint)
 		}
 
 	case sim.MobChicken:
 		bodyUV := makeBoxFaceUVs(64, 32, [4]float32{16, 9, 22, 17}, [4]float32{22, 9, 28, 17}, [4]float32{22, 17, 28, 22}, [4]float32{16, 17, 22, 22}, [4]float32{10, 17, 16, 22}, [4]float32{28, 17, 34, 22})
 		fbChickenBody := [6]uint32{0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF}
-		c.renderTextured3DBox(pos.X, pos.Y+0.32, pos.Z, 0.18, 0.16, 0.22, yaw, 0, mobTex, bodyUV, fbChickenBody, tint)
+		c.renderTextured3DBox(pos.X, pos.Y+0.28, pos.Z, 0.14, 0.12, 0.18, yaw, 0, mobTex, bodyUV, fbChickenBody, tint)
 
 		wingFlap := 0.0
 		if walkSwing != 0 || m.Velocity.Y != 0 {
@@ -2526,30 +2526,30 @@ func (c *Client) drawMob(m *sim.MobEntity) {
 		}
 		wingUV := makeUniformFaceUV(64, 32, 24, 13, 26, 17)
 		fbWing := [6]uint32{0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF}
-		c.renderTextured3DBox(pos.X-0.20*cosY, pos.Y+0.35, pos.Z+0.20*sinY, 0.03, 0.12, 0.18, yaw, wingFlap, mobTex, wingUV, fbWing, tint)
-		c.renderTextured3DBox(pos.X+0.20*cosY, pos.Y+0.35, pos.Z-0.20*sinY, 0.03, 0.12, 0.18, yaw, -wingFlap, mobTex, wingUV, fbWing, tint)
+		c.renderTextured3DBox(pos.X-0.16*cosY, pos.Y+0.30, pos.Z+0.16*sinY, 0.03, 0.10, 0.14, yaw, wingFlap, mobTex, wingUV, fbWing, tint)
+		c.renderTextured3DBox(pos.X+0.16*cosY, pos.Y+0.30, pos.Z-0.16*sinY, 0.03, 0.10, 0.14, yaw, -wingFlap, mobTex, wingUV, fbWing, tint)
 
-		frontX := 0.22 * sinY
-		frontZ := 0.22 * cosY
+		frontX := 0.18 * sinY
+		frontZ := 0.18 * cosY
 		headUV := makeBoxFaceUVs(64, 32, [4]float32{3, 0, 6, 3}, [4]float32{6, 0, 9, 3}, [4]float32{9, 3, 12, 9}, [4]float32{3, 3, 6, 9}, [4]float32{0, 3, 3, 9}, [4]float32{6, 3, 9, 9})
 		fbChickenHead := [6]uint32{0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF}
-		c.renderTextured3DBox(pos.X+frontX, pos.Y+0.52, pos.Z+frontZ, 0.10, 0.18, 0.12, yaw, pitch, mobTex, headUV, fbChickenHead, tint)
+		c.renderTextured3DBox(pos.X+frontX, pos.Y+0.44, pos.Z+frontZ, 0.08, 0.14, 0.08, yaw, pitch, mobTex, headUV, fbChickenHead, tint)
 
-		c.render3DBox(pos.X+frontX, pos.Y+0.64, pos.Z+frontZ, 0.04, 0.06, 0.08, yaw, pitch, 0xFFFF2020, 0xFFFF2020, 0xFFFF2020)
+		c.render3DBox(pos.X+frontX, pos.Y+0.56, pos.Z+frontZ, 0.03, 0.05, 0.06, yaw, pitch, 0xFFFF2020, 0xFFFF2020, 0xFFFF2020)
 
-		beakX := 0.32 * sinY
-		beakZ := 0.32 * cosY
+		beakX := 0.26 * sinY
+		beakZ := 0.26 * cosY
 		beakUV := makeBoxFaceUVs(64, 32, [4]float32{15, 0, 19, 2}, [4]float32{19, 0, 23, 2}, [4]float32{15, 2, 19, 4}, [4]float32{15, 2, 19, 4}, [4]float32{14, 2, 15, 4}, [4]float32{19, 2, 20, 4})
 		fbBeak := [6]uint32{0xFFFFB010, 0xFFFFB010, 0xFFFFB010, 0xFFFFB010, 0xFFFFB010, 0xFFFFB010}
-		c.renderTextured3DBox(pos.X+beakX, pos.Y+0.50, pos.Z+beakZ, 0.06, 0.04, 0.06, yaw, pitch, mobTex, beakUV, fbBeak, tint)
-		c.render3DBox(pos.X+beakX, pos.Y+0.44, pos.Z+beakZ, 0.04, 0.04, 0.04, yaw, pitch, 0xFFFF2020, 0xFFFF2020, 0xFFFF2020)
+		c.renderTextured3DBox(pos.X+beakX, pos.Y+0.44, pos.Z+beakZ, 0.06, 0.04, 0.04, yaw, pitch, mobTex, beakUV, fbBeak, tint)
+		c.render3DBox(pos.X+beakX, pos.Y+0.38, pos.Z+beakZ, 0.03, 0.04, 0.03, yaw, pitch, 0xFFFF2020, 0xFFFF2020, 0xFFFF2020)
 
-		legOffX := 0.07 * cosY
-		legOffZ := -0.07 * sinY
+		legOffX := 0.06 * cosY
+		legOffZ := -0.06 * sinY
 		legUV := makeUniformFaceUV(64, 32, 26, 0, 28, 4)
 		fbLeg := [6]uint32{0xFFFFB010, 0xFFFFB010, 0xFFFFB010, 0xFFFFB010, 0xFFFFB010, 0xFFFFB010}
-		c.renderTextured3DBox(pos.X-legOffX, pos.Y+0.12, pos.Z-legOffZ, 0.03, 0.14, 0.04, yaw, -walkSwing*1.4, mobTex, legUV, fbLeg, tint)
-		c.renderTextured3DBox(pos.X+legOffX, pos.Y+0.12, pos.Z+legOffZ, 0.03, 0.14, 0.04, yaw, walkSwing*1.4, mobTex, legUV, fbLeg, tint)
+		c.renderTextured3DBox(pos.X-legOffX, pos.Y+0.08, pos.Z-legOffZ, 0.02, 0.08, 0.03, yaw, -walkSwing*1.4, mobTex, legUV, fbLeg, tint)
+		c.renderTextured3DBox(pos.X+legOffX, pos.Y+0.08, pos.Z+legOffZ, 0.02, 0.08, 0.03, yaw, walkSwing*1.4, mobTex, legUV, fbLeg, tint)
 
 	case sim.MobEnderman:
 		headUV := makeBoxFaceUVs(64, 32, [4]float32{8, 0, 16, 8}, [4]float32{16, 0, 24, 8}, [4]float32{24, 8, 32, 16}, [4]float32{8, 8, 16, 16}, [4]float32{0, 8, 8, 16}, [4]float32{16, 8, 24, 16})
@@ -3439,27 +3439,27 @@ func (c *Client) drawHeldItem() {
 
 	if selected.IsEmpty() {
 		// Steve's authentic first-person player arm / fist (prominent 3D angled limb)
-		c.framebuf.DrawRect(hx+20, hy+40, 95, 140, sleeveTone)
-		c.framebuf.DrawRect(hx+15, hy+32, 102, 10, cuffTone)
+		c.framebuf.DrawRect(hx+20, hy+40, 75, 120, sleeveTone)
+		c.framebuf.DrawRect(hx+15, hy+32, 80, 8, cuffTone)
 		// Forearm & wrist
-		c.framebuf.DrawRect(hx+25, hy-8, 80, 42, skinTone)
-		c.framebuf.DrawRect(hx+20, hy-28, 85, 26, skinShade)
+		c.framebuf.DrawRect(hx+22, hy-4, 65, 36, skinTone)
+		c.framebuf.DrawRect(hx+18, hy-20, 70, 20, skinShade)
 		// Knuckles & thumb details
-		c.framebuf.DrawRect(hx+18, hy-26, 26, 20, skinTone)
-		c.framebuf.DrawRect(hx+42, hy-32, 18, 12, skinTone)
-		c.framebuf.DrawRect(hx+62, hy-32, 18, 12, skinTone)
+		c.framebuf.DrawRect(hx+16, hy-20, 22, 16, skinTone)
+		c.framebuf.DrawRect(hx+36, hy-26, 15, 10, skinTone)
+		c.framebuf.DrawRect(hx+54, hy-26, 15, 10, skinTone)
 		return
 	}
 
 	// 1. Food Eating Hand & Jitter
 	if inventory.IsFood(selected.ItemID) {
-		fx := hx - 30
-		fy := hy - 35
+		fx := hx + 5
+		fy := hy - 15
 		if c.isEating {
-			fy -= 24 + int(math.Sin(c.eatTimer*40.0)*6.0)
-			fx -= 16 + int(math.Cos(c.eatTimer*40.0)*4.0)
+			fy -= 18 + int(math.Sin(c.eatTimer*40.0)*5.0)
+			fx -= 12 + int(math.Cos(c.eatTimer*40.0)*3.0)
 		}
-		foodScale := 8
+		foodScale := 5
 		sprite := render.GetItemSprite16x16(selected.ItemID)
 		for y := 0; y < 16; y++ {
 			for x := 0; x < 16; x++ {
@@ -3474,17 +3474,17 @@ func (c *Client) drawHeldItem() {
 			}
 		}
 		// Steve's grasping hand holding bottom of food item
-		c.framebuf.DrawRect(fx+25, fy+90, 56, 36, skinTone)
-		c.framebuf.DrawRect(fx+38, fy+122, 70, 10, cuffTone)
-		c.framebuf.DrawRect(fx+42, fy+132, 85, 110, sleeveTone)
+		c.framebuf.DrawRect(fx+16, fy+56, 36, 24, skinTone)
+		c.framebuf.DrawRect(fx+24, fy+76, 44, 8, cuffTone)
+		c.framebuf.DrawRect(fx+28, fy+84, 54, 75, sleeveTone)
 		return
 	}
 
 	// 2. Torch (ID 50)
 	if selected.ItemID == 50 {
-		tx := hx - 10
-		ty := hy - 65
-		torchScale := 8
+		tx := hx + 15
+		ty := hy - 35
+		torchScale := 5
 		sprite := render.GetItemSprite16x16(selected.ItemID)
 		for y := 0; y < 16; y++ {
 			for x := 0; x < 16; x++ {
@@ -3499,9 +3499,9 @@ func (c *Client) drawHeldItem() {
 			}
 		}
 		// Hand grasping lower post
-		c.framebuf.DrawRect(tx+32, ty+80, 48, 36, skinTone)
-		c.framebuf.DrawRect(tx+45, ty+112, 65, 10, cuffTone)
-		c.framebuf.DrawRect(tx+48, ty+122, 80, 110, sleeveTone)
+		c.framebuf.DrawRect(tx+20, ty+52, 32, 24, skinTone)
+		c.framebuf.DrawRect(tx+28, ty+72, 42, 8, cuffTone)
+		c.framebuf.DrawRect(tx+30, ty+80, 52, 75, sleeveTone)
 		return
 	}
 
@@ -3510,9 +3510,9 @@ func (c *Client) drawHeldItem() {
 	if isTool {
 		_ = props
 		sprite := render.GetItemSprite16x16(selected.ItemID)
-		toolScale := 9 // 9px per texel gives ~144x144px heroic sized weapon
-		toolX := hx - 65
-		toolY := hy - 80
+		toolScale := 5 // 5px per texel gives authentic ~80x80px weapon
+		toolX := hx - 10
+		toolY := hy - 35
 		for y := 0; y < 16; y++ {
 			for x := 0; x < 16; x++ {
 				col := sprite[y][x]
@@ -3528,20 +3528,20 @@ func (c *Client) drawHeldItem() {
 		// Steve's fist and forearm grasping the lower handle
 		handBaseX := toolX + 2*toolScale
 		handBaseY := toolY + 10*toolScale
-		c.framebuf.DrawRect(handBaseX-10, handBaseY-8, 52, 44, skinTone)
-		c.framebuf.DrawRect(handBaseX-6, handBaseY-16, 26, 14, skinShade)
-		c.framebuf.DrawRect(handBaseX+18, handBaseY-12, 18, 12, skinTone)
-		c.framebuf.DrawRect(handBaseX+15, handBaseY+30, 75, 48, skinTone)
-		c.framebuf.DrawRect(handBaseX+35, handBaseY+68, 70, 10, cuffTone)
-		c.framebuf.DrawRect(handBaseX+40, handBaseY+78, 85, 120, sleeveTone)
+		c.framebuf.DrawRect(handBaseX-6, handBaseY-4, 32, 28, skinTone)
+		c.framebuf.DrawRect(handBaseX-4, handBaseY-10, 16, 10, skinShade)
+		c.framebuf.DrawRect(handBaseX+12, handBaseY-8, 12, 8, skinTone)
+		c.framebuf.DrawRect(handBaseX+10, handBaseY+20, 48, 32, skinTone)
+		c.framebuf.DrawRect(handBaseX+22, handBaseY+46, 46, 8, cuffTone)
+		c.framebuf.DrawRect(handBaseX+26, handBaseY+54, 56, 80, sleeveTone)
 		return
 	}
 
 	// 4. Non-block item materials (Diamond, Ingot, Coal, Redstone, Stick, Bone, etc.)
 	if !inventory.IsPlaceableBlock(selected.ItemID) {
-		ix := hx - 30
-		iy := hy - 50
-		itemScale := 8
+		ix := hx + 5
+		iy := hy - 25
+		itemScale := 5
 		sprite := render.GetItemSprite16x16(selected.ItemID)
 		for y := 0; y < 16; y++ {
 			for x := 0; x < 16; x++ {
@@ -3555,16 +3555,16 @@ func (c *Client) drawHeldItem() {
 				c.framebuf.DrawRect(sx, sy, itemScale, itemScale, col)
 			}
 		}
-		c.framebuf.DrawRect(ix+26, iy+85, 52, 36, skinTone)
-		c.framebuf.DrawRect(ix+40, iy+118, 68, 10, cuffTone)
-		c.framebuf.DrawRect(ix+44, iy+128, 82, 110, sleeveTone)
+		c.framebuf.DrawRect(ix+16, iy+54, 34, 24, skinTone)
+		c.framebuf.DrawRect(ix+24, iy+74, 44, 8, cuffTone)
+		c.framebuf.DrawRect(ix+28, iy+82, 54, 75, sleeveTone)
 		return
 	}
 
 	// 5. Authentic 3D Isometric Textured Voxel Block (Held in palm)
-	cx := hx - 55
-	cy := hy - 40
-	blockScale := 5 // 5px per texel gives ~80x80px isometric block
+	cx := hx - 20
+	cy := hy - 15
+	blockScale := 4 // 4px per texel gives authentic ~56x56px isometric block
 
 	// Top Face (Diamond quad, Face 2, 1.0 full light)
 	for ty := 0; ty < 16; ty++ {
@@ -3573,7 +3573,7 @@ func (c *Client) drawHeldItem() {
 			v := float32(ty) / 16.0
 			col := render.SampleBlockColor(selected.ItemID, 2, u, v, 1.0)
 			sx := cx + (tx-ty)*blockScale
-			sy := cy - 35 + (tx+ty)*blockScale/2
+			sy := cy - 24 + (tx+ty)*blockScale/2
 			c.framebuf.DrawRect(sx, sy, blockScale, (blockScale+1)/2, col)
 		}
 	}
@@ -3597,15 +3597,15 @@ func (c *Client) drawHeldItem() {
 			v := float32(ty) / 16.0
 			col := render.SampleBlockColor(selected.ItemID, 0, u, v, 0.60)
 			sx := cx + tx*blockScale
-			sy := cy + 32 - (tx-ty*2)*blockScale/2
+			sy := cy + 24 - (tx-ty*2)*blockScale/2
 			c.framebuf.DrawRect(sx, sy, blockScale, blockScale, col)
 		}
 	}
 
 	// Steve's hand supporting and grasping the bottom of the block
-	c.framebuf.DrawRect(cx+10, cy+65, 58, 36, skinTone)
-	c.framebuf.DrawRect(cx+28, cy+95, 68, 10, cuffTone)
-	c.framebuf.DrawRect(cx+32, cy+105, 80, 110, sleeveTone)
+	c.framebuf.DrawRect(cx+8, cy+46, 42, 26, skinTone)
+	c.framebuf.DrawRect(cx+20, cy+68, 48, 8, cuffTone)
+	c.framebuf.DrawRect(cx+24, cy+76, 60, 85, sleeveTone)
 }
 
 func main() {

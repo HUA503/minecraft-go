@@ -48,7 +48,16 @@ var (
 	procSetWindowLongW                = user32.NewProc("SetWindowLongW")
 	procSetWindowPos                  = user32.NewProc("SetWindowPos")
 	procGetSystemMetrics              = user32.NewProc("GetSystemMetrics")
+	procMonitorFromWindow             = user32.NewProc("MonitorFromWindow")
+	procGetMonitorInfoW               = user32.NewProc("GetMonitorInfoW")
 )
+
+type MONITORINFO struct {
+	CbSize    uint32
+	RcMonitor RECT
+	RcWork    RECT
+	DwFlags   uint32
+}
 
 const (
 	WS_OVERLAPPEDWINDOW = 0x00CF0000
@@ -232,11 +241,12 @@ func wndProc(hwnd, msg, wparam, lparam uintptr) uintptr {
 		return 0
 	case WM_KEYDOWN:
 		vk := int(wparam)
+		isRepeat := (lparam & (1 << 30)) != 0
 		if vk >= 0 && vk < 256 && globalWnd != nil {
 			globalWnd.mu.Lock()
 			globalWnd.KeyDown[vk] = true
 			globalWnd.mu.Unlock()
-			if globalWnd.OnKeyClick != nil {
+			if globalWnd.OnKeyClick != nil && !isRepeat {
 				globalWnd.OnKeyClick(vk)
 			}
 		}
@@ -511,25 +521,40 @@ func (w *Window) ToggleFullscreen() {
 		style, _, _ := procGetWindowLongW.Call(w.Hwnd, uintptr(GWL_STYLE))
 		w.savedStyle = uint32(style)
 
-		// 2. Query primary screen dimensions
-		sw, _, _ := procGetSystemMetrics.Call(uintptr(SM_CXSCREEN))
-		sh, _, _ := procGetSystemMetrics.Call(uintptr(SM_CYSCREEN))
+		// 2. Query monitor dimensions of active window
+		hMon, _, _ := procMonitorFromWindow.Call(w.Hwnd, 2) // MONITOR_DEFAULTTONEAREST = 2
+		var mi MONITORINFO
+		mi.CbSize = uint32(unsafe.Sizeof(mi))
+		procGetMonitorInfoW.Call(hMon, uintptr(unsafe.Pointer(&mi)))
+
+		monX := int(mi.RcMonitor.Left)
+		monY := int(mi.RcMonitor.Top)
+		monW := int(mi.RcMonitor.Right - mi.RcMonitor.Left)
+		monH := int(mi.RcMonitor.Bottom - mi.RcMonitor.Top)
+		if monW <= 0 || monH <= 0 {
+			sw, _, _ := procGetSystemMetrics.Call(uintptr(SM_CXSCREEN))
+			sh, _, _ := procGetSystemMetrics.Call(uintptr(SM_CYSCREEN))
+			monX = 0
+			monY = 0
+			monW = int(sw)
+			monH = int(sh)
+		}
 
 		// 3. Switch window style to borderless popup
 		newStyle := (w.savedStyle &^ WS_OVERLAPPEDWINDOW) | WS_POPUP | WS_VISIBLE
 		procSetWindowLongW.Call(w.Hwnd, uintptr(GWL_STYLE), uintptr(newStyle))
 
-		// 4. Position window to cover entire desktop
+		// 4. Position window to cover entire active monitor
 		procSetWindowPos.Call(
 			w.Hwnd,
 			uintptr(HWND_TOP),
-			0, 0, sw, sh,
+			uintptr(monX), uintptr(monY), uintptr(monW), uintptr(monH),
 			uintptr(SWP_FRAMECHANGED|SWP_SHOWWINDOW),
 		)
 
 		w.IsFullscreen = true
-		w.Width = int(sw)
-		w.Height = int(sh)
+		w.Width = monW
+		w.Height = monH
 	} else {
 		// 1. Restore standard window style
 		procSetWindowLongW.Call(w.Hwnd, uintptr(GWL_STYLE), uintptr(w.savedStyle))

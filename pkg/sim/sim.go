@@ -31,6 +31,7 @@ type PlayerEntity struct {
 	ExpProgress  float32 // Progress to next level: 0.0 to 1.0
 	ExpTotal     int     // Total experience points collected in current level
 	FallDistance float32
+	HurtTimer    int     // Damage immunity cooldown (10 ticks / 0.5s in Minecraft Java Edition)
 	IsAlive      bool
 	ClientDriven bool
 	GameMode     int // 0: Survival, 1: Creative, 2: Adventure, 3: Spectator
@@ -134,6 +135,7 @@ type Engine struct {
 	Events           chan WorldEvent
 	stopChan         chan struct{}
 	Storage          *world.SaveManager
+	DimensionStorage [3]*world.SaveManager
 	Furnaces         map[world.BlockPos]*inventory.FurnaceBlockEntity
 	IsPaused         bool
 	Difficulty       int // 0: Peaceful, 1: Easy, 2: Normal, 3: Hard
@@ -277,6 +279,38 @@ func (e *Engine) AttackMobInFront(origin, look Vec3, reach float64, damage float
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
+	// 1. If in The End (dimension 2), prioritize End Crystals and Ender Dragon
+	if e.CurrentDimension == 2 {
+		for _, crystal := range e.EndCrystals {
+			if !crystal.IsAlive {
+				continue
+			}
+			toCrystal := crystal.Position.Sub(origin)
+			dist := toCrystal.Length()
+			if dist <= reach+1.5 {
+				dir := toCrystal.Normalize()
+				dot := dir.X*look.X + dir.Y*look.Y + dir.Z*look.Z
+				if dot > 0.70 {
+					e.attackEndCrystalLocked(crystal.ID)
+					return crystal.ID, true, true
+				}
+			}
+		}
+
+		if e.EnderDragon != nil && e.EnderDragon.IsAlive && !e.EnderDragon.IsDying {
+			toDragon := e.EnderDragon.Position.Sub(origin)
+			dist := toDragon.Length()
+			if dist <= reach+6.0 {
+				dir := toDragon.Normalize()
+				dot := dir.X*look.X + dir.Y*look.Y + dir.Z*look.Z
+				if dot > 0.55 {
+					killed := e.damageEnderDragonLocked(damage)
+					return -999, killed, true
+				}
+			}
+		}
+	}
+
 	var closestMob *MobEntity
 	closestDist := reach
 
@@ -341,23 +375,40 @@ func (e *Engine) SetStorage(s *world.SaveManager) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.Storage = s
+	e.DimensionStorage[0] = s
+	if s != nil {
+		e.DimensionStorage[1] = s.GetDimensionStorage(1)
+		e.DimensionStorage[2] = s.GetDimensionStorage(2)
+	} else {
+		e.DimensionStorage[1] = nil
+		e.DimensionStorage[2] = nil
+	}
 }
 
-// SaveAll flushes all dirty loaded chunks to storage.
+// SaveAll flushes all dirty loaded chunks across all dimensions to storage.
 func (e *Engine) SaveAll() error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	if e.Storage == nil {
-		return nil
-	}
-	for _, chunk := range e.World {
-		if chunk != nil && chunk.IsDirty {
-			if err := e.Storage.SaveChunk(chunk); err != nil {
-				return err
+
+	e.DimensionWorlds[e.CurrentDimension] = e.World
+
+	var firstErr error
+	for dim, w := range e.DimensionWorlds {
+		storage := e.DimensionStorage[dim]
+		if storage == nil && dim == 0 {
+			storage = e.Storage
+		}
+		if storage != nil {
+			for _, chunk := range w {
+				if chunk != nil && chunk.IsDirty {
+					if err := storage.SaveChunk(chunk); err != nil && firstErr == nil {
+						firstErr = err
+					}
+				}
 			}
 		}
 	}
-	return nil
+	return firstErr
 }
 
 func (e *Engine) LoadChunk(cp world.ChunkPos, c *world.Chunk) {
@@ -701,7 +752,20 @@ func (e *Engine) DamagePlayer(id int32, amount float32, reason string) {
 		return
 	}
 
+	// Creative mode (GameMode == 1) is immune to all damage except void and command
+	if p.GameMode == 1 && reason != "void" && reason != "command" {
+		e.mu.Unlock()
+		return
+	}
+
+	// Damage immunity cooldown (10 ticks / 0.5s in Minecraft Java Edition)
+	if p.HurtTimer > 0 && reason != "void" && reason != "command" && reason != "fatal" {
+		e.mu.Unlock()
+		return
+	}
+
 	p.Health -= amount
+	p.HurtTimer = 10
 	if p.Health <= 0 {
 		p.Health = 0
 		p.IsAlive = false
@@ -841,11 +905,9 @@ func (e *Engine) MovePlayerRelative(id int32, delta Vec3, yaw, pitch float32) (V
 			p.Velocity.Y = 0
 			if p.GameMode != 1 && p.FallDistance > 3.0 {
 				fallDmg := p.FallDistance - 3.0
-				p.Health -= fallDmg
-				if p.Health <= 0 {
-					p.Health = 0
-					p.IsAlive = false
-				}
+				e.mu.Unlock()
+				e.DamagePlayer(id, fallDmg, "fall")
+				e.mu.Lock()
 			}
 			p.FallDistance = 0
 		} else if hitCeiling && p.Velocity.Y > 0 {
@@ -1010,6 +1072,10 @@ func (e *Engine) Tick() {
 		}
 
 		// In Creative mode (GameMode == 1), health, hunger, saturation remain pristine
+		if p.HurtTimer > 0 {
+			p.HurtTimer--
+		}
+
 		if p.GameMode == 1 {
 			p.Health = 20.0
 			p.Hunger = 20
@@ -1417,6 +1483,7 @@ func (e *Engine) SwitchDimension(dim int) {
 		e.DimensionWorlds[dim] = make(map[world.ChunkPos]*world.Chunk)
 	}
 	e.World = e.DimensionWorlds[dim]
+	e.Storage = e.DimensionStorage[dim]
 
 	// If entering The End for the first time, spawn Ender Dragon and End Crystals
 	if dim == 2 && e.EnderDragon == nil {
@@ -1476,11 +1543,7 @@ func (e *Engine) SpawnEndBoss() {
 	e.spawnEndBossLocked()
 }
 
-// AttackEndCrystal detonates an active End Crystal when attacked.
-func (e *Engine) AttackEndCrystal(crystalID int32) bool {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-
+func (e *Engine) attackEndCrystalLocked(crystalID int32) bool {
 	c, ok := e.EndCrystals[crystalID]
 	if !ok || !c.IsAlive {
 		return false
@@ -1510,6 +1573,13 @@ func (e *Engine) AttackEndCrystal(crystalID int32) bool {
 	return true
 }
 
+// AttackEndCrystal detonates an active End Crystal when attacked.
+func (e *Engine) AttackEndCrystal(crystalID int32) bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.attackEndCrystalLocked(crystalID)
+}
+
 // SetDragonHealingCrystal sets the active healing tether crystal ID.
 func (e *Engine) SetDragonHealingCrystal(crystalID int32) {
 	e.mu.Lock()
@@ -1519,11 +1589,7 @@ func (e *Engine) SetDragonHealingCrystal(crystalID int32) {
 	}
 }
 
-// DamageEnderDragon inflicts direct damage on the boss.
-func (e *Engine) DamageEnderDragon(damage float32) (killed bool) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-
+func (e *Engine) damageEnderDragonLocked(damage float32) bool {
 	if e.EnderDragon == nil || !e.EnderDragon.IsAlive || e.EnderDragon.IsDying {
 		return false
 	}
@@ -1534,6 +1600,13 @@ func (e *Engine) DamageEnderDragon(damage float32) (killed bool) {
 		return true
 	}
 	return false
+}
+
+// DamageEnderDragon inflicts direct damage on the boss.
+func (e *Engine) DamageEnderDragon(damage float32) (killed bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.damageEnderDragonLocked(damage)
 }
 
 // GetEnderDragon returns snapshot of current Ender Dragon state.

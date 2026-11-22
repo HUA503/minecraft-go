@@ -187,7 +187,10 @@ func (m *MobEntity) TickMob(engine *Engine) {
 	closestDistSq := 16.0 * 16.0
 
 	for _, p := range engine.Players {
-		if !p.IsAlive {
+		if !p.IsAlive || p.GameMode == 1 || p.GameMode == 3 {
+			continue
+		}
+		if engine.Difficulty == 0 && (m.Type == MobZombie || m.Type == MobSkeleton || m.Type == MobCreeper || m.Type == MobEnderman || m.Type == MobSpider) {
 			continue
 		}
 		dx := p.Position.X - m.Position.X

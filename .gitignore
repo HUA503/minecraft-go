@@ -15,7 +15,9 @@
 /run/
 /logs/
 /crash-reports/
+/saves/
 *.log
+verify_*.png
 
 # Vanilla server jars and runtime caches
 server.jar

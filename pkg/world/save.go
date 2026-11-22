@@ -50,7 +50,23 @@ type SaveManager struct {
 }
 
 func NewSaveManager(worldDir string) (*SaveManager, error) {
-	regionDir := filepath.Join(worldDir, "region")
+	return NewDimensionSaveManager(worldDir, 0)
+}
+
+// NewDimensionSaveManager creates a SaveManager rooted in the canonical Minecraft dimension subfolder:
+// dim 0: <worldDir>/region
+// dim 1: <worldDir>/DIM-1/region (Nether)
+// dim 2: <worldDir>/DIM1/region  (The End)
+func NewDimensionSaveManager(worldDir string, dim int) (*SaveManager, error) {
+	var regionDir string
+	switch dim {
+	case 1:
+		regionDir = filepath.Join(worldDir, "DIM-1", "region")
+	case 2:
+		regionDir = filepath.Join(worldDir, "DIM1", "region")
+	default:
+		regionDir = filepath.Join(worldDir, "region")
+	}
 	if err := os.MkdirAll(regionDir, 0755); err != nil {
 		return nil, err
 	}
@@ -59,6 +75,18 @@ func NewSaveManager(worldDir string) (*SaveManager, error) {
 		regionDir: regionDir,
 		regions:   make(map[string]*Region),
 	}, nil
+}
+
+// GetDimensionStorage returns a SaveManager targeting the specified dimension.
+func (sm *SaveManager) GetDimensionStorage(dim int) *SaveManager {
+	if dim == 0 && sm.regionDir == filepath.Join(sm.worldDir, "region") {
+		return sm
+	}
+	dsm, err := NewDimensionSaveManager(sm.worldDir, dim)
+	if err != nil {
+		return sm
+	}
+	return dsm
 }
 
 // getRegion returns or opens the Region file for the given chunk coordinates.
