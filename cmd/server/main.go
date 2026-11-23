@@ -408,7 +408,7 @@ func (sess *ClientSession) handlePacket(raw *protocol.RawPacket) error {
 			if err := bu.Decode(raw.Reader()); err != nil {
 				return err
 			}
-			if bu.Y >= world.MinWorldY && bu.Y <= world.MaxWorldY {
+			if world.ValidBlockCoordinates(bu.X, bu.Y, bu.Z) && bu.BlockID >= 0 {
 				sess.server.simEngine.SetBlock(bu.X, bu.Y, bu.Z, bu.BlockID)
 				sess.server.mu.Lock()
 				sess.server.modifiedBlocks[world.BlockPos{X: bu.X, Y: bu.Y, Z: bu.Z}] = bu.BlockID

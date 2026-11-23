@@ -1219,7 +1219,7 @@ func (c *Client) networkReceiveLoop() {
 		switch raw.ID {
 		case 0x09: // BlockUpdatePacket
 			var bu protocol.BlockUpdatePacket
-			if err := bu.Decode(raw.Reader()); err == nil {
+			if err := bu.Decode(raw.Reader()); err == nil && world.ValidBlockCoordinates(bu.X, bu.Y, bu.Z) && bu.BlockID >= 0 {
 				if c.engine != nil {
 					c.engine.SetBlock(bu.X, bu.Y, bu.Z, bu.BlockID)
 					c.RebuildAffectedMeshes(world.BlockPos{X: bu.X, Y: bu.Y, Z: bu.Z})

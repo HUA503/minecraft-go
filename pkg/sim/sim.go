@@ -591,6 +591,9 @@ func (e *Engine) GetBlock(x, y, z int32) int32 {
 }
 
 func (e *Engine) setBlockLocked(x, y, z int32, state int32) {
+	if !world.ValidBlockCoordinates(x, y, z) || state < 0 {
+		return
+	}
 	cp := world.BlockPos{X: x, Y: y, Z: z}.ToChunkPos()
 	chunk, ok := e.World[cp]
 	if (!ok || chunk == nil) && e.Storage != nil {

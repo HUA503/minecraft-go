@@ -16,7 +16,18 @@ const (
 	ChunkHeight = 384
 	MinWorldY   = -64
 	MaxWorldY   = 319
+	// WorldBorderLimit is the vanilla horizontal world border in block coordinates.
+	WorldBorderLimit = 29_999_984
 )
+
+// ValidBlockCoordinates reports whether a block position is inside the supported
+// world height and horizontal world border. Keep this check at mutation and
+// network boundaries so malformed coordinates cannot allocate distant chunks.
+func ValidBlockCoordinates(x, y, z int32) bool {
+	return y >= MinWorldY && y <= MaxWorldY &&
+		x >= -WorldBorderLimit && x <= WorldBorderLimit &&
+		z >= -WorldBorderLimit && z <= WorldBorderLimit
+}
 
 // ChunkPos represents the (X, Z) coordinates of a chunk in chunk space.
 type ChunkPos struct {
@@ -122,7 +133,7 @@ func (c *Chunk) GetBlock(x, y, z int32) int32 {
 
 // SetBlock sets the block state ID at absolute world coordinates.
 func (c *Chunk) SetBlock(x, y, z int32, state int32) {
-	if y < MinWorldY || y > MaxWorldY {
+	if !ValidBlockCoordinates(x, y, z) {
 		return
 	}
 	secIdx := int(math.Floor(float64(y)/16.0)) - MinSectionY
