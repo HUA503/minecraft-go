@@ -169,6 +169,7 @@ type Window struct {
 	OnMouseClick  func(btn int)
 	OnMouseWheel  func(delta int)
 	OnCharInput   func(ch rune)
+	OnPanic       func(message string, recovered any, stack []byte)
 	MouseCaptured bool
 	centerScreenX int32
 	centerScreenY int32
@@ -184,7 +185,19 @@ var globalWnd *Window
 func wndProc(hwnd, msg, wparam, lparam uintptr) (result uintptr) {
 	defer func() {
 		if r := recover(); r != nil {
-			log.Printf("[Window] Recovered from panic in wndProc: %v\n%s", r, debug.Stack())
+			stack := debug.Stack()
+			if globalWnd != nil && globalWnd.OnPanic != nil {
+				func() {
+					defer func() {
+						if callbackPanic := recover(); callbackPanic != nil {
+							log.Printf("[Window] Panic handler failed: %v", callbackPanic)
+						}
+					}()
+					globalWnd.OnPanic(fmt.Sprintf("window message 0x%X", msg), r, stack)
+				}()
+			} else {
+				log.Printf("[Window] Recovered from panic in wndProc: %v\n%s", r, stack)
+			}
 			result = 0
 		}
 	}()
@@ -373,6 +386,10 @@ func (w *Window) SetMouseCaptured(capture bool) {
 	} else {
 		procShowCursor.Call(1) // Show cursor
 	}
+}
+
+func (w *Window) SetPanicHandler(handler func(message string, recovered any, stack []byte)) {
+	w.OnPanic = handler
 }
 
 func (w *Window) recenterMouse() {

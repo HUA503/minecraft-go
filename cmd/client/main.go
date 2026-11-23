@@ -4823,6 +4823,11 @@ func runGraphicalWindow(c *Client, w, h int) {
 		return
 	}
 	c.wndRef = wnd
+	wnd.SetPanicHandler(func(message string, recovered any, stack []byte) {
+		msg := fmt.Sprintf("CLIENT WINDOW CALLBACK PANIC (%s): %v\n\nStack:\n%s", message, recovered, stack)
+		log.Print(msg)
+		writeCrashLog(msg)
+	})
 	watchdogDone := make(chan struct{})
 	defer close(watchdogDone)
 	defer func() {
