@@ -5488,7 +5488,7 @@ func runGraphicalWindow(c *Client, w, h int) {
 		}
 		lastTime = now
 		c.AdvanceSimulation(dt)
-		if c.isLocal && c.screenState == ScreenPlaying && c.engine != nil && c.saveMgr != nil &&
+		if !c.quitSaving.Load() && !c.worldStarting.Load() && c.isLocal && c.screenState == ScreenPlaying && c.engine != nil && c.saveMgr != nil &&
 			c.player != nil && c.player.Health > 0 && now.Sub(lastAutosave) >= time.Minute &&
 			c.autosaveRunning.CompareAndSwap(false, true) {
 			lastAutosave = now
