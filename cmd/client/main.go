@@ -1662,6 +1662,7 @@ func (c *Client) advancementLines() []string {
 		{"minecraft:story/mine_wood", "获取木头"},
 		{"minecraft:story/mine_stone", "石器时代"},
 		{"minecraft:story/upgrade_tools", "装配升级"},
+		{"minecraft:story/mine_diamond", "钻石！"},
 		{"minecraft-go:story/place_crafting_table", "搭建工作台"},
 		{"minecraft:nether/root", "进入下界"},
 		{"minecraft:story/enter_the_end", "进入末地"},
@@ -2077,6 +2078,7 @@ func (c *Client) UpdateRightClick(isRightDown bool, dt float64) {
 
 // RenderFrame renders Minecraft sky, perspective-correct textured voxels, block outline, animated hand, and HUD.
 func (c *Client) RenderFrame() {
+	c.processLocalWorldEvents()
 	c.UpdateRaycastTarget()
 
 	// Hotbar equip animation trigger on slot change
@@ -2477,6 +2479,22 @@ func (c *Client) RenderFrame() {
 
 	// 8. Draw in-game chat log & command input bar
 	c.framebuf.DrawChatOverlay(c.chatMessages, c.isChatOpen, c.chatInput)
+}
+
+func (c *Client) processLocalWorldEvents() {
+	if !c.isLocal || c.engine == nil || c.player == nil {
+		return
+	}
+	for {
+		select {
+		case event := <-c.engine.Events:
+			if event.Type == "item_pickup" && event.PlayerID == c.player.ID && event.BlockID == inventory.ItemDiamond {
+				c.UnlockAdvancement("minecraft:story/mine_diamond", "钻石！")
+			}
+		default:
+			return
+		}
+	}
 }
 
 func (c *Client) drawMob(m *sim.MobEntity) {
