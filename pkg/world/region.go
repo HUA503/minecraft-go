@@ -48,7 +48,7 @@ func OpenRegion(path string) (*Region, error) {
 	// Initialize empty headers if new file; report error if corrupted/truncated
 	if info.Size() == 0 {
 		emptyHeader := make([]byte, 8192)
-		if _, err := file.WriteAt(emptyHeader, 0); err != nil {
+		if err := writeAtFull(file, emptyHeader, 0); err != nil {
 			file.Close()
 			return nil, err
 		}
@@ -367,3 +367,4 @@ func (r *Region) WriteChunkData(chunkX, chunkZ int32, chunkNBT *nbt.CompoundTag)
 	}
 	return r.file.Sync()
 }
+
