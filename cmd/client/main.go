@@ -77,6 +77,7 @@ type Client struct {
 	username            string
 	uuid                [16]byte
 	conn                net.Conn
+	networkDone         chan struct{}
 	state               protocol.ConnectionState
 	framebuf            *render.Framebuffer
 	camera              *render.Camera
@@ -509,6 +510,12 @@ func (c *Client) RespawnLocalPlayer() {
 }
 
 func (c *Client) SaveAndQuitToTitle() {
+	if c.conn != nil {
+		_ = c.conn.Close()
+		if c.networkDone != nil {
+			<-c.networkDone
+		}
+	}
 	if c.engine != nil {
 		c.engine.Stop()
 		if err := c.engine.SaveAll(); err != nil {
@@ -982,12 +989,17 @@ func (c *Client) Connect() error {
 	c.player.Inventory.SelectedHotbar = 1
 
 	// Launch background network receive loop
+	c.networkDone = make(chan struct{})
 	go c.networkReceiveLoop()
 
 	return nil
 }
 
 func (c *Client) networkReceiveLoop() {
+	done := c.networkDone
+	if done != nil {
+		defer close(done)
+	}
 	defer func() {
 		if r := recover(); r != nil {
 			stack := debug.Stack()
