@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"math"
-	mrand "math/rand"
 	"runtime/debug"
 	"sync"
 	"time"
@@ -1517,90 +1516,6 @@ func (e *Engine) Tick() {
 		}
 	}
 
-	// Dynamic Natural Ecosystem Spawning & Despawning (Runs every 100 ticks = 5 seconds)
-	if e.TickCount%100 == 0 && len(e.Players) > 0 {
-		animalCount := 0
-		hostileCount := 0
-		for _, m := range e.Mobs {
-			if m.IsAlive {
-				if m.Type == MobCow || m.Type == MobPig || m.Type == MobSheep || m.Type == MobChicken {
-					animalCount++
-				} else {
-					hostileCount++
-				}
-			}
-		}
-
-		// Despawn distant mobs (> 72m from all players)
-		for mID, m := range e.Mobs {
-			if !m.IsAlive {
-				continue
-			}
-			nearest := 999999.0
-			for _, p := range e.Players {
-				if p.IsAlive {
-					d := p.Position.DistanceTo(m.Position)
-					if d < nearest {
-						nearest = d
-					}
-				}
-			}
-			if nearest > 72.0 {
-				delete(e.Mobs, mID)
-			}
-		}
-
-		// Spawning candidates around each player
-		rng := mrand.New(mrand.NewSource(time.Now().UnixNano() + e.TickCount))
-		isDay := (e.WorldTime >= 450 && e.WorldTime <= 12500)
-
-		for _, p := range e.Players {
-			if !p.IsAlive {
-				continue
-			}
-			// Attempt natural spawn
-			angle := rng.Float64() * 2 * math.Pi
-			dist := 24.0 + rng.Float64()*30.0 // 24m to 54m canonical spawning ring
-			sx := p.Position.X + math.Cos(angle)*dist
-			sz := p.Position.Z + math.Sin(angle)*dist
-			wx := int32(math.Floor(sx))
-			wz := int32(math.Floor(sz))
-
-			// Scan downward for ground
-			var groundY int32 = -999
-			for y := int32(95); y >= 50; y-- {
-				b := e.getBlockLocked(wx, y, wz)
-				if IsSolidBlock(b) {
-					above1 := e.getBlockLocked(wx, y+1, wz)
-					above2 := e.getBlockLocked(wx, y+2, wz)
-					if !IsSolidBlock(above1) && !IsSolidBlock(above2) &&
-						above1 != 8 && above1 != 9 && above1 != 10 && above1 != 11 {
-						groundY = y
-						break
-					}
-				}
-			}
-
-			if groundY > 0 {
-				surfY := float64(groundY + 1)
-				spawnPos := Vec3{X: float64(wx) + 0.5, Y: surfY, Z: float64(wz) + 0.5}
-				groundBlock := e.getBlockLocked(wx, groundY, wz)
-
-				if isDay && groundBlock == 2 && animalCount < 16 { // Daytime grass surface: peaceful animals
-					animalTypes := []MobType{MobCow, MobPig, MobSheep, MobChicken}
-					chosen := animalTypes[rng.Intn(len(animalTypes))]
-					e.SpawnMob(chosen, spawnPos)
-					animalCount++
-				} else if (!isDay || groundY < 55) && e.Difficulty > 0 && hostileCount < 20 { // Night or caves: hostiles
-					hostileTypes := []MobType{MobZombie, MobSkeleton, MobCreeper, MobSpider}
-					chosen := hostileTypes[rng.Intn(len(hostileTypes))]
-					e.SpawnMob(chosen, spawnPos)
-					hostileCount++
-				}
-			}
-		}
-	}
-
 	// Tick active Furnaces
 	for pos, f := range e.Furnaces {
 		if f != nil {
@@ -2098,3 +2013,4 @@ func (e *Engine) tickEnderDragon() {
 		dragon.Pitch = float32(-math.Asin(dir.Y) * 180.0 / math.Pi)
 	}
 }
+
