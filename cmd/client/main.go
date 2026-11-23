@@ -1663,6 +1663,9 @@ func (c *Client) advancementLines() []string {
 		{"minecraft:story/mine_stone", "石器时代"},
 		{"minecraft:story/upgrade_tools", "装配升级"},
 		{"minecraft:story/mine_diamond", "钻石！"},
+		{"minecraft:story/smelt_iron", "来硬的"},
+		{"minecraft:story/iron_tools", "不再是木镐"},
+		{"minecraft:story/obtain_armor", "穿上盔甲"},
 		{"minecraft-go:story/place_crafting_table", "搭建工作台"},
 		{"minecraft:nether/root", "进入下界"},
 		{"minecraft:story/enter_the_end", "进入末地"},
@@ -2490,8 +2493,15 @@ func (c *Client) processLocalWorldEvents() {
 	for {
 		select {
 		case event := <-c.engine.Events:
-			if event.Type == "item_pickup" && event.PlayerID == c.player.ID && event.BlockID == inventory.ItemDiamond {
-				c.UnlockAdvancement("minecraft:story/mine_diamond", "钻石！")
+			if event.Type == "item_pickup" && event.PlayerID == c.player.ID {
+				switch {
+				case event.BlockID == inventory.ItemDiamond:
+					c.UnlockAdvancement("minecraft:story/mine_diamond", "钻石！")
+				case event.BlockID == inventory.ItemIronIngot:
+					c.UnlockAdvancement("minecraft:story/smelt_iron", "来硬的")
+				case event.BlockID >= inventory.ItemLeatherHelmet && event.BlockID <= inventory.ItemGoldenBoots:
+					c.UnlockAdvancement("minecraft:story/obtain_armor", "穿上盔甲")
+				}
 			}
 		default:
 			return
@@ -4303,6 +4313,9 @@ func runGraphicalWindow(c *Client, w, h int) {
 							if craftedItemID == inventory.ItemStonePickaxe || craftedItemID == inventory.ItemStoneAxe || craftedItemID == inventory.ItemStoneShovel || craftedItemID == inventory.ItemStoneSword {
 								c.UnlockAdvancement("minecraft:story/upgrade_tools", "装配升级")
 							}
+			if craftedItemID == inventory.ItemIronPickaxe {
+				c.UnlockAdvancement("minecraft:story/iron_tools", "不再是木镐")
+			}
 							sound.PlayHardwareFeedback("minecraft:item.craft")
 							gridSize := 4
 							if c.isCraftingTableOpen {
