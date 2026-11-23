@@ -2,7 +2,6 @@ package world
 
 import (
 	"bytes"
-	"compress/gzip"
 	"compress/zlib"
 	"encoding/binary"
 	"errors"
@@ -156,23 +155,17 @@ func (r *Region) ReadChunkData(chunkX, chunkZ int32) (*nbt.CompoundTag, error) {
 
 	switch compType {
 	case CompressionGzip:
-		gr, err := gzip.NewReader(bytes.NewReader(compressedData))
-		if err != nil {
-			return nil, err
-		}
-		defer gr.Close()
-		_, tag, err := nbt.NewDecoder(gr).DecodeNamed()
+		_, tag, err := nbt.ReadGzipped(bytes.NewReader(compressedData))
 		return tag, err
 	case CompressionZlib:
-		zr, err := zlib.NewReader(bytes.NewReader(compressedData))
-		if err != nil {
-			return nil, err
-		}
-		defer zr.Close()
-		_, tag, err := nbt.NewDecoder(zr).DecodeNamed()
+		_, tag, err := nbt.ReadZlib(bytes.NewReader(compressedData))
 		return tag, err
 	case CompressionNone:
-		_, tag, err := nbt.NewDecoder(bytes.NewReader(compressedData)).DecodeNamed()
+		payload := bytes.NewReader(compressedData)
+		_, tag, err := nbt.NewDecoder(payload).DecodeNamed()
+		if err == nil && payload.Len() != 0 {
+			return nil, fmt.Errorf("uncompressed chunk has %d trailing bytes", payload.Len())
+		}
 		return tag, err
 	default:
 		return nil, fmt.Errorf("unsupported compression type: %d", compType)

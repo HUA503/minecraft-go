@@ -463,7 +463,18 @@ func ReadGzipped(r io.Reader) (string, *CompoundTag, error) {
 		return "", nil, err
 	}
 	defer gr.Close()
-	return NewDecoder(gr).DecodeNamed()
+	limited := &io.LimitedReader{R: gr, N: maxNBTBytes + 1}
+	name, root, err := NewDecoder(limited).DecodeNamed()
+	if err != nil {
+		return "", nil, err
+	}
+	if _, err := io.Copy(io.Discard, limited); err != nil {
+		return "", nil, err
+	}
+	if limited.N == 0 {
+		return "", nil, fmt.Errorf("NBT payload exceeds maximum %d bytes", maxNBTBytes)
+	}
+	return name, root, nil
 }
 
 // WriteZlib encodes an NBT compound compressed with zlib (as in MCA chunks).
@@ -480,7 +491,18 @@ func ReadZlib(r io.Reader) (string, *CompoundTag, error) {
 		return "", nil, err
 	}
 	defer zr.Close()
-	return NewDecoder(zr).DecodeNamed()
+	limited := &io.LimitedReader{R: zr, N: maxNBTBytes + 1}
+	name, root, err := NewDecoder(limited).DecodeNamed()
+	if err != nil {
+		return "", nil, err
+	}
+	if _, err := io.Copy(io.Discard, limited); err != nil {
+		return "", nil, err
+	}
+	if limited.N == 0 {
+		return "", nil, fmt.Errorf("NBT payload exceeds maximum %d bytes", maxNBTBytes)
+	}
+	return name, root, nil
 }
 
 // Marshal returns uncompressed binary NBT bytes.
