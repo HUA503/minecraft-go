@@ -4,11 +4,13 @@ package world
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 )
 
-func syncDirectoryTree(path string) error {
+func syncDirectoryTree(path, stopAt string) error {
+	stopAt = filepath.Clean(stopAt)
 	for current := filepath.Clean(path); ; current = filepath.Dir(current) {
 		dir, err := os.Open(current)
 		if err != nil {
@@ -19,9 +21,12 @@ func syncDirectoryTree(path string) error {
 		if err := errors.Join(syncErr, closeErr); err != nil {
 			return err
 		}
+		if current == stopAt {
+			return nil
+		}
 		parent := filepath.Dir(current)
 		if parent == current {
-			return nil
+			return fmt.Errorf("directory sync stop path %q is not an ancestor of %q", stopAt, path)
 		}
 	}
 }
@@ -30,10 +35,10 @@ func replaceFile(src, dst string) error {
 	if err := os.Rename(src, dst); err != nil {
 		return err
 	}
-	return syncDirectoryTree(filepath.Dir(dst))
+	return syncDirectoryTree(filepath.Dir(dst), filepath.Dir(dst))
 }
 
 func syncDirectory(path string) error {
-	return syncDirectoryTree(path)
+	return syncDirectoryTree(path, path)
 }
 
