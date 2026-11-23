@@ -2217,8 +2217,8 @@ func (c *Client) RenderFrame() {
 	// 3.7 Render 3D living mobs (Zombies, Creepers, Cows, Pigs, Skeletons, Endermen, Spiders)
 	if c.engine != nil {
 		mobs := c.engine.GetMobs()
-		for _, m := range mobs {
-			c.drawMob(m)
+		for i := range mobs {
+			c.drawMob(&mobs[i])
 		}
 		if c.currentDim == gen.DimensionEnd {
 			c.drawEndEntities()

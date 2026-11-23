@@ -120,6 +120,7 @@ type WorldEvent struct {
 // Engine manages the authoritative 20 TPS game simulation.
 type Engine struct {
 	mu               sync.RWMutex
+	mobMu            sync.Mutex
 	World            map[world.ChunkPos]*world.Chunk
 	DimensionWorlds  map[int]map[world.ChunkPos]*world.Chunk
 	CurrentDimension int // 0: Overworld, 1: Nether, 2: End
@@ -249,6 +250,8 @@ func (e *Engine) SpawnMob(mobType MobType, pos Vec3) *MobEntity {
 }
 
 func (e *Engine) DamageMob(mobID int32, damage float32) (drops []inventory.ItemStack, killed bool) {
+	e.mobMu.Lock()
+	defer e.mobMu.Unlock()
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	mob, ok := e.Mobs[mobID]
@@ -282,19 +285,23 @@ func (e *Engine) DamageMob(mobID int32, damage float32) (drops []inventory.ItemS
 	return nil, false
 }
 
-func (e *Engine) GetMobs() []*MobEntity {
+func (e *Engine) GetMobs() []MobEntity {
+	e.mobMu.Lock()
+	defer e.mobMu.Unlock()
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	res := make([]*MobEntity, 0, len(e.Mobs))
+	res := make([]MobEntity, 0, len(e.Mobs))
 	for _, m := range e.Mobs {
 		if m.IsAlive {
-			res = append(res, m)
+			res = append(res, *m)
 		}
 	}
 	return res
 }
 
 func (e *Engine) AttackMobInFront(origin, look Vec3, reach float64, damage float32) (int32, bool, bool) {
+	e.mobMu.Lock()
+	defer e.mobMu.Unlock()
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
@@ -980,6 +987,8 @@ func (e *Engine) SetPaused(paused bool) {
 
 // Tick executes a single 50ms simulation step.
 func (e *Engine) Tick() {
+	e.mobMu.Lock()
+	defer e.mobMu.Unlock()
 	e.mu.Lock()
 	if e.IsPaused {
 		e.mu.Unlock()
