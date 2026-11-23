@@ -579,6 +579,10 @@ func (e *Engine) LoadChunkInDimension(dim int, cp world.ChunkPos, c *world.Chunk
 	if c == nil {
 		return
 	}
+	if c.Pos != cp {
+		log.Printf("[World] Refusing to install chunk %v at mismatched position %v", c.Pos, cp)
+		return
+	}
 	loaded, err := e.GetChunkInDimensionWithError(dim, cp)
 	if err != nil {
 		log.Printf("[World] Refusing to replace unreadable chunk %v in dimension %d: %v", cp, dim, err)
@@ -611,6 +615,10 @@ func (e *Engine) LoadGeneratedChunk(cp world.ChunkPos, c *world.Chunk) {
 
 func (e *Engine) LoadGeneratedChunkInDimension(dim int, cp world.ChunkPos, c *world.Chunk) {
 	if c == nil {
+		return
+	}
+	if c.Pos != cp {
+		log.Printf("[World] Refusing to install generated chunk %v at mismatched position %v", c.Pos, cp)
 		return
 	}
 	e.mu.Lock()
@@ -675,6 +683,9 @@ func (e *Engine) GetChunkInDimensionWithError(dim int, cp world.ChunkPos) (*worl
 	}
 	if loaded == nil {
 		return nil, nil
+	}
+	if loaded.Pos != cp {
+		return nil, fmt.Errorf("storage returned chunk %v for requested position %v", loaded.Pos, cp)
 	}
 	e.mu.Lock()
 	if dim >= 0 && dim < len(e.DimensionWorlds) {

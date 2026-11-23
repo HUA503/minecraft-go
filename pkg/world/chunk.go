@@ -73,7 +73,7 @@ func NewSection(yIndex int) *Section {
 }
 
 func (s *Section) GetBlock(localX, localY, localZ int) int32 {
-	if s == nil || s.BlockStates == nil {
+	if s == nil || s.BlockStates == nil || localX < 0 || localX >= ChunkWidth || localY < 0 || localY >= ChunkWidth || localZ < 0 || localZ >= ChunkWidth {
 		return 0
 	}
 	idx := (localY << 8) | (localZ << 4) | localX
@@ -81,7 +81,7 @@ func (s *Section) GetBlock(localX, localY, localZ int) int32 {
 }
 
 func (s *Section) SetBlock(localX, localY, localZ int, state int32) {
-	if s == nil {
+	if s == nil || localX < 0 || localX >= ChunkWidth || localY < 0 || localY >= ChunkWidth || localZ < 0 || localZ >= ChunkWidth || state < 0 {
 		return
 	}
 	if s.BlockStates == nil {
@@ -92,15 +92,22 @@ func (s *Section) SetBlock(localX, localY, localZ int, state int32) {
 }
 
 func (s *Section) SetBiome(bx, by, bz int, biomeID int32) {
-	idx := (by << 4) | (bz << 2) | bx
-	if idx >= 0 && idx < 64 {
-		s.Biomes.Set(idx, biomeID)
+	if s == nil || bx < 0 || bx >= 4 || by < 0 || by >= 4 || bz < 0 || bz >= 4 || biomeID < 0 {
+		return
 	}
+	idx := (by << 4) | (bz << 2) | bx
+	if s.Biomes == nil {
+		s.Biomes = NewPalettedContainer(64, 1)
+	}
+	s.Biomes.Set(idx, biomeID)
 }
 
 func (s *Section) GetBiome(bx, by, bz int) int32 {
+	if s == nil || bx < 0 || bx >= 4 || by < 0 || by >= 4 || bz < 0 || bz >= 4 {
+		return 1
+	}
 	idx := (by << 4) | (bz << 2) | bx
-	if idx >= 0 && idx < 64 {
+	if s.Biomes != nil {
 		return s.Biomes.Get(idx)
 	}
 	return 1
@@ -168,7 +175,7 @@ func (c *Chunk) Clone() *Chunk {
 
 // GetBlock returns the block state ID at absolute world coordinates.
 func (c *Chunk) GetBlock(x, y, z int32) int32 {
-	if c == nil || !ValidBlockCoordinates(x, y, z) {
+	if c == nil || !ValidBlockCoordinates(x, y, z) || (BlockPos{X: x, Y: y, Z: z}).ToChunkPos() != c.Pos {
 		return 0 // Air
 	}
 	secIdx := int(math.Floor(float64(y)/16.0)) - MinSectionY
@@ -183,7 +190,7 @@ func (c *Chunk) GetBlock(x, y, z int32) int32 {
 
 // SetBlock sets the block state ID at absolute world coordinates.
 func (c *Chunk) SetBlock(x, y, z int32, state int32) {
-	if c == nil || !ValidBlockCoordinates(x, y, z) || state < 0 {
+	if c == nil || !ValidBlockCoordinates(x, y, z) || (BlockPos{X: x, Y: y, Z: z}).ToChunkPos() != c.Pos || state < 0 {
 		return
 	}
 	secIdx := int(math.Floor(float64(y)/16.0)) - MinSectionY
@@ -207,7 +214,7 @@ func (c *Chunk) SetBlock(x, y, z int32, state int32) {
 
 // SetBiome sets the biome ID for the 4x4 vertical column containing (x, z) at section y.
 func (c *Chunk) SetBiome(x, y, z int32, biomeID int32) {
-	if y < MinWorldY || y > MaxWorldY {
+	if c == nil || !ValidBlockCoordinates(x, y, z) || (BlockPos{X: x, Y: y, Z: z}).ToChunkPos() != c.Pos || biomeID < 0 {
 		return
 	}
 	secIdx := int(math.Floor(float64(y)/16.0)) - MinSectionY
@@ -230,7 +237,7 @@ func (c *Chunk) SetBiome(x, y, z int32, biomeID int32) {
 
 // GetBiome returns the biome ID for the 4x4x4 block volume containing (x, y, z).
 func (c *Chunk) GetBiome(x, y, z int32) int32 {
-	if y < MinWorldY || y > MaxWorldY {
+	if c == nil || !ValidBlockCoordinates(x, y, z) || (BlockPos{X: x, Y: y, Z: z}).ToChunkPos() != c.Pos {
 		return 1 // Plains
 	}
 	secIdx := int(math.Floor(float64(y)/16.0)) - MinSectionY
