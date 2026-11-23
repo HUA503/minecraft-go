@@ -5534,11 +5534,7 @@ func runGraphicalWindow(c *Client, w, h int) {
 					items := inventory.SearchCreativeCatalog(c.creativeTab, c.creativeSearch)
 					if hit.Index >= 0 && hit.Index < len(items) {
 						item := items[hit.Index]
-						count := inventory.GetMaxStackSize(item.ID)
-						if btn == 2 {
-							count = 1
-						}
-						c.cursorItem = inventory.ItemStack{ItemID: item.ID, Count: count}
+						c.cursorItem = inventory.CreativeItemStack(item.ID, btn)
 					}
 				case render.SlotInventory:
 					if hit.Index >= 0 && hit.Index < len(c.player.Inventory.Slots) {
@@ -5547,7 +5543,13 @@ func runGraphicalWindow(c *Client, w, h int) {
 							handleSlotLeftClick(&c.cursorItem, slot)
 						} else if btn == 2 {
 							handleSlotRightClick(&c.cursorItem, slot)
+						} else if btn == 3 && !slot.IsEmpty() {
+							c.cursorItem = inventory.CreativeItemStack(slot.ItemID, 3)
 						}
+					}
+				case render.SlotNone:
+					if btn == 1 || btn == 2 {
+						c.cursorItem = inventory.ItemStack{}
 					}
 				}
 				return

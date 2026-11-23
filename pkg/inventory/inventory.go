@@ -249,6 +249,19 @@ func GetMaxStackSize(itemID int32) int {
 	}
 }
 
+// CreativeItemStack returns the stack created by a click on a creative catalog
+// entry: left and middle click give a full stack, while right click gives one.
+func CreativeItemStack(itemID int32, button int) ItemStack {
+	if itemID <= 0 || button < 1 || button > 3 {
+		return ItemStack{}
+	}
+	count := GetMaxStackSize(itemID)
+	if button == 2 {
+		count = 1
+	}
+	return ItemStack{ItemID: itemID, Count: count}
+}
+
 // AddItem tries to stack or insert items into first available slot.
 func (inv *PlayerInventory) AddItem(itemID int32, count int) int {
 	if inv == nil || itemID == ItemAir || count <= 0 {

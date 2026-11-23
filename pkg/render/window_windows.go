@@ -88,6 +88,7 @@ const (
 	WM_CHAR             = 0x0102
 	WM_LBUTTONDOWN      = 0x0201
 	WM_RBUTTONDOWN      = 0x0204
+	WM_MBUTTONDOWN      = 0x0207
 	WM_ACTIVATE         = 0x0006
 	WM_MOUSEWHEEL       = 0x020A
 	DIB_RGB_COLORS      = 0
@@ -297,6 +298,11 @@ func wndProc(hwnd, msg, wparam, lparam uintptr) (result uintptr) {
 	case WM_RBUTTONDOWN:
 		if globalWnd != nil && globalWnd.OnMouseClick != nil {
 			globalWnd.OnMouseClick(2)
+		}
+		return 0
+	case WM_MBUTTONDOWN:
+		if globalWnd != nil && globalWnd.OnMouseClick != nil {
+			globalWnd.OnMouseClick(3)
 		}
 		return 0
 	case WM_ERASEBKGND:
@@ -685,4 +691,3 @@ func (w *Window) Close() {
 		}
 	})
 }
-

@@ -65,6 +65,24 @@ func TestCreativeCatalogSearch(t *testing.T) {
 	}
 }
 
+func TestCreativeCatalogClickStackSizes(t *testing.T) {
+	if got := CreativeItemStack(ItemStone, 1); got.ItemID != ItemStone || got.Count != 64 {
+		t.Fatalf("left click stack = %+v, want 64 stone", got)
+	}
+	if got := CreativeItemStack(ItemStone, 2); got.ItemID != ItemStone || got.Count != 1 {
+		t.Fatalf("right click stack = %+v, want 1 stone", got)
+	}
+	if got := CreativeItemStack(ItemStone, 3); got.ItemID != ItemStone || got.Count != 64 {
+		t.Fatalf("middle click stack = %+v, want 64 stone", got)
+	}
+	if got := CreativeItemStack(267, 1); got.ItemID != 267 || got.Count != 1 {
+		t.Fatalf("left click non-stackable = %+v, want 1 iron sword", got)
+	}
+	if got := CreativeItemStack(ItemStone, 0); !got.IsEmpty() {
+		t.Fatalf("invalid button stack = %+v, want empty", got)
+	}
+}
+
 func TestInventoryStackingAndRemoval(t *testing.T) {
 	inv := NewPlayerInventory()
 
