@@ -108,6 +108,7 @@ type Client struct {
 	networkDone         chan struct{}
 	state               protocol.ConnectionState
 	framebuf            *render.Framebuffer
+	renderPanicCount    int
 	camera              *render.Camera
 	engine              *sim.Engine
 	tickAccumulator     float64
@@ -2776,6 +2777,30 @@ func (c *Client) UpdateRightClick(isRightDown bool, dt float64) {
 	}
 }
 
+// renderFrameSafely keeps a transient renderer panic from immediately terminating the native client.
+func (c *Client) renderFrameSafely() bool {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			c.renderPanicCount++
+			msg := fmt.Sprintf("CLIENT RENDER PANIC (%d consecutive frame failures): %v\n\nStack:\n%s", c.renderPanicCount, recovered, debug.Stack())
+			log.Print(msg)
+			if c.renderPanicCount == 1 || c.renderPanicCount == 3 {
+				writeCrashLog(msg)
+			}
+			if c.renderPanicCount == 3 && c.wndRef != nil {
+				log.Printf("[Client] Closing the window after repeated render failures; save shutdown will run.")
+				func() {
+					defer func() { _ = recover() }()
+					c.wndRef.Close()
+				}()
+			}
+		}
+	}()
+	c.RenderFrame()
+	c.renderPanicCount = 0
+	return true
+}
+
 // RenderFrame renders Minecraft sky, perspective-correct textured voxels, block outline, animated hand, and HUD.
 func (c *Client) RenderFrame() {
 	c.processLocalWorldEvents()
@@ -5332,7 +5357,12 @@ func runGraphicalWindow(c *Client, w, h int) {
 		if c.player != nil && c.player.Health <= 0 {
 			wnd.SetMouseCaptured(false)
 			time.Sleep(16 * time.Millisecond)
-			c.RenderFrame()
+			if !c.renderFrameSafely() {
+				if c.renderPanicCount >= 3 {
+					break
+				}
+				continue
+			}
 			wnd.Present(c.framebuf)
 			continue
 		}
@@ -5340,7 +5370,12 @@ func runGraphicalWindow(c *Client, w, h int) {
 		// If Pause Menu is open, freeze world controls and display interactive Pause Menu
 		if c.showPauseMenu {
 			time.Sleep(16 * time.Millisecond)
-			c.RenderFrame()
+			if !c.renderFrameSafely() {
+				if c.renderPanicCount >= 3 {
+					break
+				}
+				continue
+			}
 			mx, my := wnd.GetCursorClientPos(c.framebuf.Width, c.framebuf.Height)
 			c.backBtnRect, c.quitBtnRect = c.framebuf.DrawPauseMenu(mx, my)
 			wnd.Present(c.framebuf)
@@ -5349,7 +5384,12 @@ func runGraphicalWindow(c *Client, w, h int) {
 
 		if c.showAdvancementsGUI {
 			time.Sleep(16 * time.Millisecond)
-			c.RenderFrame()
+			if !c.renderFrameSafely() {
+				if c.renderPanicCount >= 3 {
+					break
+				}
+				continue
+			}
 			c.framebuf.DrawAdvancementScreen(c.advancementLines())
 			wnd.Present(c.framebuf)
 			continue
@@ -5358,7 +5398,12 @@ func runGraphicalWindow(c *Client, w, h int) {
 		// If Inventory / Crafting Table / Furnace GUI is open
 		if c.showInventoryGUI || c.isFurnaceOpen {
 			time.Sleep(16 * time.Millisecond)
-			c.RenderFrame()
+			if !c.renderFrameSafely() {
+				if c.renderPanicCount >= 3 {
+					break
+				}
+				continue
+			}
 			wnd.Present(c.framebuf)
 			continue
 		}
@@ -5366,7 +5411,12 @@ func runGraphicalWindow(c *Client, w, h int) {
 		// If Chat / Command input is open, freeze world controls and display chat overlay
 		if c.isChatOpen {
 			time.Sleep(16 * time.Millisecond)
-			c.RenderFrame()
+			if !c.renderFrameSafely() {
+				if c.renderPanicCount >= 3 {
+					break
+				}
+				continue
+			}
 			wnd.Present(c.framebuf)
 			continue
 		}
@@ -5433,7 +5483,12 @@ func runGraphicalWindow(c *Client, w, h int) {
 		}
 
 		// 3. Render frame and present directly to native window
-		c.RenderFrame()
+		if !c.renderFrameSafely() {
+			if c.renderPanicCount >= 3 {
+				break
+			}
+			continue
+		}
 		wnd.Present(c.framebuf)
 
 		// Brief yield to avoid pegging 100% CPU while delivering maximum smoothness
