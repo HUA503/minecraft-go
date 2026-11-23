@@ -35,6 +35,12 @@ type RemotePlayer struct {
 	Pitch float32
 }
 
+type sectionMeshJob struct {
+	key        [3]int32
+	generation uint64
+	revision   uint64
+}
+
 type ClientScreenState int
 
 const (
@@ -88,6 +94,8 @@ type Client struct {
 	craftingMgr         *inventory.CraftingManager
 	isLocal             bool
 	meshCache           map[[3]int32]*render.Mesh
+	meshGeneration      uint64
+	meshRevisions       map[[3]int32]uint64
 	meshMu              sync.RWMutex
 	remoteMu            sync.RWMutex
 	remotePlayers       map[string]*RemotePlayer
@@ -572,10 +580,7 @@ func (c *Client) StartSingleplayerWorld(worldDirName string, isNew bool, newSeed
 	c.camera.Y = c.player.Position.Y + 1.62
 	c.camera.Z = c.player.Position.Z
 
-	c.meshMu.Lock()
-	c.meshCache = make(map[[3]int32]*render.Mesh)
-	c.loadedChunks = make(map[world.ChunkPos]bool)
-	c.meshMu.Unlock()
+	c.resetMeshCache(true)
 
 	// Prime only the nearby chunks here; the normal simulation loop streams the
 	// remaining chunks progressively so world creation does not block the window callback.
@@ -609,9 +614,7 @@ func (c *Client) RespawnLocalPlayer() {
 	c.camera.Z = spawnPos.Z
 	c.hurtFlashTimer = 0
 
-	c.meshMu.Lock()
-	c.meshCache = make(map[[3]int32]*render.Mesh)
-	c.meshMu.Unlock()
+	c.resetMeshCache(false)
 
 	c.EnsureChunksAroundPlayer(spawnPos.X, spawnPos.Z, 3)
 }
@@ -692,10 +695,7 @@ func (c *Client) SaveAndQuitToTitle() {
 		c.player = nil
 	}
 
-	c.meshMu.Lock()
-	c.meshCache = make(map[[3]int32]*render.Mesh)
-	c.loadedChunks = make(map[world.ChunkPos]bool)
-	c.meshMu.Unlock()
+	c.resetMeshCache(true)
 
 	c.showPauseMenu = false
 	c.showInventoryGUI = false
@@ -721,6 +721,7 @@ func NewClient(serverAddr, username string, isSingleplayer bool, width, height i
 		craftingMgr:      inventory.NewCraftingManager(),
 		isLocal:          isSingleplayer,
 		meshCache:        make(map[[3]int32]*render.Mesh),
+		meshRevisions:    make(map[[3]int32]uint64),
 		loadedChunks:     make(map[world.ChunkPos]bool),
 		remotePlayers:    make(map[string]*RemotePlayer),
 		lastChunkX:       -999,
@@ -769,10 +770,7 @@ func (c *Client) SwitchDimension(dim gen.Dimension) {
 	c.currentDim = dim
 	c.engine.SwitchDimension(int(dim))
 
-	c.meshMu.Lock()
-	c.meshCache = make(map[[3]int32]*render.Mesh)
-	c.loadedChunks = make(map[world.ChunkPos]bool)
-	c.meshMu.Unlock()
+	c.resetMeshCache(true)
 
 	var newPos sim.Vec3
 	switch dim {
@@ -892,7 +890,7 @@ func (c *Client) EnsureChunksAroundPlayer(playerX, playerZ float64, radius int32
 	// Prioritize sections closest to player camera (covering Y=-64 up to Y=256)
 	camSY := int32(math.Floor(c.camera.Y / 16.0))
 	c.meshMu.RLock()
-	var unmeshed [][3]int32
+	var unmeshed []sectionMeshJob
 	orderedSY := sectionBuildOrder(camSY)
 
 	for dx := -radius; dx <= radius; dx++ {
@@ -901,7 +899,11 @@ func (c *Client) EnsureChunksAroundPlayer(playerX, playerZ float64, radius int32
 			for _, sy := range orderedSY {
 				key := [3]int32{cp.X, sy, cp.Z}
 				if c.meshCache[key] == nil {
-					unmeshed = append(unmeshed, key)
+					unmeshed = append(unmeshed, sectionMeshJob{
+						key:        key,
+						generation: c.meshGeneration,
+						revision:   c.meshRevisions[key],
+					})
 				}
 			}
 		}
@@ -918,10 +920,13 @@ func (c *Client) EnsureChunksAroundPlayer(playerX, playerZ float64, radius int32
 	}
 
 	for i := 0; i < maxBuild; i++ {
-		key := unmeshed[i]
+		job := unmeshed[i]
+		key := job.key
 		mesh := render.BuildSectionMesh(getBlock, key[0]*16, key[1]*16, key[2]*16)
 		c.meshMu.Lock()
-		c.meshCache[key] = mesh
+		if c.meshGeneration == job.generation && c.meshRevisions[key] == job.revision && c.meshCache[key] == nil {
+			c.meshCache[key] = mesh
+		}
 		c.meshMu.Unlock()
 	}
 }
@@ -956,31 +961,12 @@ func sectionBuildOrder(cameraSectionY int32) []int32 {
 func (c *Client) InvalidateBlockMesh(pos world.BlockPos) {
 	c.meshMu.Lock()
 	defer c.meshMu.Unlock()
-
-	secX := int32(math.Floor(float64(pos.X) / 16.0))
-	secY := int32(math.Floor(float64(pos.Y) / 16.0))
-	secZ := int32(math.Floor(float64(pos.Z) / 16.0))
-
-	delete(c.meshCache, [3]int32{secX, secY, secZ})
-
-	remX := ((pos.X % 16) + 16) % 16
-	remY := ((pos.Y % 16) + 16) % 16
-	remZ := ((pos.Z % 16) + 16) % 16
-
-	if remX == 0 {
-		delete(c.meshCache, [3]int32{secX - 1, secY, secZ})
-	} else if remX == 15 {
-		delete(c.meshCache, [3]int32{secX + 1, secY, secZ})
+	if c.meshRevisions == nil {
+		c.meshRevisions = make(map[[3]int32]uint64)
 	}
-	if remY == 0 && secY > -4 {
-		delete(c.meshCache, [3]int32{secX, secY - 1, secZ})
-	} else if remY == 15 && secY < 15 {
-		delete(c.meshCache, [3]int32{secX, secY + 1, secZ})
-	}
-	if remZ == 0 {
-		delete(c.meshCache, [3]int32{secX, secY, secZ - 1})
-	} else if remZ == 15 {
-		delete(c.meshCache, [3]int32{secX, secY, secZ + 1})
+	for _, key := range affectedMeshSections(pos) {
+		c.meshRevisions[key]++
+		delete(c.meshCache, key)
 	}
 }
 
@@ -990,50 +976,76 @@ func (c *Client) RebuildAffectedMeshes(pos world.BlockPos) {
 	if c.engine == nil {
 		return
 	}
+	engine := c.engine
+	getBlock := func(x, y, z int32) int32 {
+		return engine.GetBlock(x, y, z)
+	}
+	keys := affectedMeshSections(pos)
+	jobs := make([]sectionMeshJob, len(keys))
+	c.meshMu.Lock()
+	if c.meshRevisions == nil {
+		c.meshRevisions = make(map[[3]int32]uint64)
+	}
+	for i, key := range keys {
+		c.meshRevisions[key]++
+		jobs[i] = sectionMeshJob{key: key, generation: c.meshGeneration, revision: c.meshRevisions[key]}
+	}
+	c.meshMu.Unlock()
+
+	updates := make([]*render.Mesh, len(jobs))
+	for i, job := range jobs {
+		key := job.key
+		updates[i] = render.BuildSectionMesh(getBlock, key[0]*16, key[1]*16, key[2]*16)
+	}
+	c.meshMu.Lock()
+	for i, job := range jobs {
+		if c.meshGeneration == job.generation && c.meshRevisions[job.key] == job.revision {
+			c.meshCache[job.key] = updates[i]
+		}
+	}
+	c.meshMu.Unlock()
+}
+
+func affectedMeshSections(pos world.BlockPos) [][3]int32 {
 	secX := int32(math.Floor(float64(pos.X) / 16.0))
 	secY := int32(math.Floor(float64(pos.Y) / 16.0))
 	secZ := int32(math.Floor(float64(pos.Z) / 16.0))
-
-	getBlock := func(x, y, z int32) int32 {
-		return c.engine.GetBlock(x, y, z)
-	}
-
-	updates := map[[3]int32]*render.Mesh{
-		{secX, secY, secZ}: render.BuildSectionMesh(getBlock, secX*16, secY*16, secZ*16),
-	}
-
+	keys := [][3]int32{{secX, secY, secZ}}
 	remX := ((pos.X % 16) + 16) % 16
 	remY := ((pos.Y % 16) + 16) % 16
 	remZ := ((pos.Z % 16) + 16) % 16
-
 	if remX == 0 {
-		updates[[3]int32{secX - 1, secY, secZ}] = render.BuildSectionMesh(getBlock, (secX-1)*16, secY*16, secZ*16)
+		keys = append(keys, [3]int32{secX - 1, secY, secZ})
 	} else if remX == 15 {
-		updates[[3]int32{secX + 1, secY, secZ}] = render.BuildSectionMesh(getBlock, (secX+1)*16, secY*16, secZ*16)
+		keys = append(keys, [3]int32{secX + 1, secY, secZ})
 	}
 	if remY == 0 {
-		updates[[3]int32{secX, secY - 1, secZ}] = render.BuildSectionMesh(getBlock, secX*16, (secY-1)*16, secZ*16)
+		keys = append(keys, [3]int32{secX, secY - 1, secZ})
 	} else if remY == 15 {
-		updates[[3]int32{secX, secY + 1, secZ}] = render.BuildSectionMesh(getBlock, secX*16, (secY+1)*16, secZ*16)
+		keys = append(keys, [3]int32{secX, secY + 1, secZ})
 	}
 	if remZ == 0 {
-		updates[[3]int32{secX, secY, secZ - 1}] = render.BuildSectionMesh(getBlock, secX*16, secY*16, (secZ-1)*16)
+		keys = append(keys, [3]int32{secX, secY, secZ - 1})
 	} else if remZ == 15 {
-		updates[[3]int32{secX, secY, secZ + 1}] = render.BuildSectionMesh(getBlock, secX*16, secY*16, (secZ+1)*16)
+		keys = append(keys, [3]int32{secX, secY, secZ + 1})
 	}
+	return keys
+}
 
+func (c *Client) resetMeshCache(resetLoadedChunks bool) {
 	c.meshMu.Lock()
-	for key, mesh := range updates {
-		c.meshCache[key] = mesh
+	c.meshGeneration++
+	c.meshCache = make(map[[3]int32]*render.Mesh)
+	c.meshRevisions = make(map[[3]int32]uint64)
+	if resetLoadedChunks {
+		c.loadedChunks = make(map[world.ChunkPos]bool)
 	}
 	c.meshMu.Unlock()
 }
 
 func (c *Client) RebuildMeshes() {
 	if c.player != nil {
-		c.meshMu.Lock()
-		c.meshCache = make(map[[3]int32]*render.Mesh)
-		c.meshMu.Unlock()
+		c.resetMeshCache(false)
 
 		c.lastChunkX = -999
 		c.EnsureChunksAroundPlayer(c.player.Position.X, c.player.Position.Z, 3)
