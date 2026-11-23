@@ -5213,6 +5213,13 @@ func runGraphicalWindow(c *Client, w, h int) {
 				go func() {
 					defer c.autosaveWG.Done()
 					defer c.autosaveRunning.Store(false)
+					defer func() {
+						if recovered := recover(); recovered != nil {
+							msg := fmt.Sprintf("PERIODIC AUTOSAVE PANIC: %v\n\nStack:\n%s", recovered, debug.Stack())
+							log.Print(msg)
+							writeCrashLog(msg)
+						}
+					}()
 					if err := engine.SaveAll(); err != nil {
 						log.Printf("[Client] Periodic chunk autosave failed: %v", err)
 					}
