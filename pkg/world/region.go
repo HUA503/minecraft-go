@@ -32,8 +32,11 @@ var ErrChunkNotFound = errors.New("chunk not generated in region")
 
 // Region represents an Anvil MCA region file reader and writer.
 type Region struct {
-	file regionFile
-	mu   sync.Mutex
+	file                        regionFile
+	path                        string
+	journalPresent              bool
+	journalDirectorySyncPending bool
+	mu                          sync.Mutex
 }
 
 type regionFile interface {
@@ -73,14 +76,28 @@ func OpenRegion(path string) (*Region, error) {
 		file.Close()
 		return nil, fmt.Errorf("corrupt region file: size %d is less than 8192 header bytes", info.Size())
 	}
-	return &Region{file: file}, nil
+	region := &Region{file: file, path: path}
+	if _, err := os.Stat(path + ".txn"); err == nil {
+		region.journalPresent = true
+	} else if !os.IsNotExist(err) {
+		_ = file.Close()
+		return nil, fmt.Errorf("inspect region transaction journal: %w", err)
+	}
+	if err := region.recoverPendingJournal(); err != nil {
+		_ = file.Close()
+		return nil, fmt.Errorf("recover region transaction: %w", err)
+	}
+	return region, nil
 }
 
 func (r *Region) Close() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.file != nil {
-		return r.file.Close()
+		recoverErr := r.recoverPendingJournal()
+		closeErr := r.file.Close()
+		r.file = nil
+		return errors.Join(recoverErr, closeErr)
 	}
 	return nil
 }
@@ -185,6 +202,12 @@ func (r *Region) findFreeSectors(sectorsNeeded int, fileSize int64) (int, error)
 func (r *Region) ReadChunkData(chunkX, chunkZ int32) (*nbt.CompoundTag, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.file == nil {
+		return nil, os.ErrClosed
+	}
+	if err := r.recoverPendingJournal(); err != nil {
+		return nil, fmt.Errorf("recover pending region transaction before read: %w", err)
+	}
 	return r.readChunkDataLocked(chunkX, chunkZ)
 }
 
@@ -266,6 +289,12 @@ func (r *Region) readChunkDataLocked(chunkX, chunkZ int32) (*nbt.CompoundTag, er
 func (r *Region) WriteChunkData(chunkX, chunkZ int32, chunkNBT *nbt.CompoundTag) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.file == nil {
+		return os.ErrClosed
+	}
+	if err := r.recoverPendingJournal(); err != nil {
+		return fmt.Errorf("recover prior region transaction: %w", err)
+	}
 
 	var zlibBuf bytes.Buffer
 	zw := zlib.NewWriter(&zlibBuf)
@@ -287,6 +316,10 @@ func (r *Region) WriteChunkData(chunkX, chunkZ int32, chunkNBT *nbt.CompoundTag)
 	idx := chunkIndex(chunkX, chunkZ)
 	oldLocation := make([]byte, 4)
 	if _, err := r.file.ReadAt(oldLocation, int64(idx*4)); err != nil {
+		return err
+	}
+	oldTimestamp := make([]byte, 4)
+	if _, err := r.file.ReadAt(oldTimestamp, int64(4096+idx*4)); err != nil {
 		return err
 	}
 	oldOffset := (int(oldLocation[0]) << 16) | (int(oldLocation[1]) << 8) | int(oldLocation[2])
@@ -340,44 +373,57 @@ func (r *Region) WriteChunkData(chunkX, chunkZ int32, chunkNBT *nbt.CompoundTag)
 		return err
 	}
 
-	// Update Location Header
+	// Record the old and new headers before touching the MCA index. If the
+	// process or machine stops during either 4-byte header write, startup can
+	// deterministically roll back or complete the transaction.
 	locHeader := []byte{
 		byte(sectorOffset >> 16),
 		byte(sectorOffset >> 8),
 		byte(sectorOffset),
 		byte(allocSectors),
 	}
-	if err := writeAtFull(r.file, locHeader, int64(idx*4)); err != nil {
-		rollbackErr := writeAtFull(r.file, oldLocation, int64(idx*4))
-		if rollbackErr == nil {
-			rollbackErr = r.file.Sync()
-		}
-		if rollbackErr != nil {
-			return fmt.Errorf("write chunk location header: %w (restore previous location header: %v)", err, rollbackErr)
-		}
-		return fmt.Errorf("write chunk location header: %w; previous location header restored", err)
-	}
-	// The new payload was synced before this pointer update. Sync the pointer
-	// before writing the timestamp so the previous allocation stays recoverable
-	// if committing the new location fails.
-	if err := r.file.Sync(); err != nil {
-		rollbackErr := writeAtFull(r.file, oldLocation, int64(idx*4))
-		if rollbackErr == nil {
-			rollbackErr = r.file.Sync()
-		}
-		if rollbackErr != nil {
-			return fmt.Errorf("sync chunk location header: %w (restore previous location header: %v)", err, rollbackErr)
-		}
-		return fmt.Errorf("sync chunk location header: %w; previous location header restored", err)
-	}
-
-	// Update Timestamp Header
 	now := uint32(time.Now().Unix())
 	tsHeader := make([]byte, 4)
 	binary.BigEndian.PutUint32(tsHeader, now)
-	if err := writeAtFull(r.file, tsHeader, int64(4096+idx*4)); err != nil {
-		return err
+	transaction := regionTransaction{index: idx}
+	copy(transaction.oldLocation[:], oldLocation)
+	copy(transaction.newLocation[:], locHeader)
+	copy(transaction.oldTimestamp[:], oldTimestamp)
+	copy(transaction.newTimestamp[:], tsHeader)
+	journalPath := r.path + ".txn"
+	if err := writeRegionJournal(journalPath, regionJournalPrepared, transaction); err != nil {
+		if _, statErr := os.Stat(journalPath); statErr == nil {
+			r.journalPresent = true
+		}
+		return fmt.Errorf("write prepared region transaction: %w", err)
 	}
-	return r.file.Sync()
+	r.journalPresent = true
+	if err := syncDirectory(filepath.Dir(r.path)); err != nil {
+		return fmt.Errorf("sync prepared region transaction: %w", err)
+	}
+	if err := applyRegionTransaction(r.file, transaction, true); err != nil {
+		recoveryErr := r.recoverPendingJournal()
+		if recoveryErr != nil {
+			return fmt.Errorf("commit chunk header: %w (transaction recovery: %v)", err, recoveryErr)
+		}
+		return fmt.Errorf("commit chunk header: %w; previous chunk restored", err)
+	}
+	if err := writeRegionJournal(journalPath, regionJournalCommitted, transaction); err != nil {
+		recoveryErr := r.recoverPendingJournal()
+		if recoveryErr != nil {
+			return fmt.Errorf("commit region transaction record: %w (transaction recovery: %v)", err, recoveryErr)
+		}
+		return fmt.Errorf("commit region transaction record: %w; transaction recovered", err)
+	}
+	if err := removeRegionJournal(journalPath); err != nil {
+		if _, statErr := os.Stat(journalPath); os.IsNotExist(statErr) {
+			r.journalDirectorySyncPending = true
+			r.journalPresent = false
+		} else {
+			r.journalPresent = true
+		}
+		return fmt.Errorf("finish region transaction: %w", err)
+	}
+	r.journalPresent = false
+	return nil
 }
-

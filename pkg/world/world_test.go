@@ -251,6 +251,118 @@ func TestRegionRollbackPreservesChunkAfterLocationSyncFailure(t *testing.T) {
 	}
 }
 
+func TestRegionRecoveryRollsBackPreparedHeaderAfterCrash(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "r.0.0.mca")
+	region, err := OpenRegion(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := region.WriteChunkData(1, 1, testChunkTag("old")); err != nil {
+		t.Fatal(err)
+	}
+	index := chunkIndex(1, 1)
+	txn := regionTransaction{index: index}
+	if _, err := region.file.ReadAt(txn.oldLocation[:], int64(index*4)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := region.file.ReadAt(txn.oldTimestamp[:], int64(4096+index*4)); err != nil {
+		t.Fatal(err)
+	}
+	txn.newLocation = [4]byte{0, 0, 50, 1}
+	txn.newTimestamp = [4]byte{1, 2, 3, 4}
+	if err := writeRegionJournal(path+".txn", regionJournalPrepared, txn); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeAtFull(region.file, txn.newLocation[:], int64(index*4)); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeAtFull(region.file, txn.newTimestamp[:], int64(4096+index*4)); err != nil {
+		t.Fatal(err)
+	}
+	if err := region.file.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	if err := region.file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	region.file = nil
+
+	recovered, err := OpenRegion(path)
+	if err != nil {
+		t.Fatalf("reopen and recover prepared transaction: %v", err)
+	}
+	defer recovered.Close()
+	got, err := recovered.ReadChunkData(1, 1)
+	if err != nil {
+		t.Fatalf("read chunk after rollback recovery: %v", err)
+	}
+	if status := got.GetString("Status"); status != "old" {
+		t.Fatalf("recovered chunk status = %q, want old", status)
+	}
+	location := make([]byte, 4)
+	if _, err := recovered.file.ReadAt(location, int64(index*4)); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(location, txn.oldLocation[:]) {
+		t.Fatalf("recovered location = %v, want old header %v", location, txn.oldLocation)
+	}
+}
+
+func TestRegionRecoveryReplaysCommittedHeaderAfterCrash(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "r.0.0.mca")
+	region, err := OpenRegion(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := region.WriteChunkData(1, 1, testChunkTag("old")); err != nil {
+		t.Fatal(err)
+	}
+	if err := region.WriteChunkData(2, 2, testChunkTag("new")); err != nil {
+		t.Fatal(err)
+	}
+	targetIndex, sourceIndex := chunkIndex(1, 1), chunkIndex(2, 2)
+	txn := regionTransaction{index: targetIndex}
+	if _, err := region.file.ReadAt(txn.oldLocation[:], int64(targetIndex*4)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := region.file.ReadAt(txn.oldTimestamp[:], int64(4096+targetIndex*4)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := region.file.ReadAt(txn.newLocation[:], int64(sourceIndex*4)); err != nil {
+		t.Fatal(err)
+	}
+	txn.newTimestamp = [4]byte{5, 6, 7, 8}
+	if err := writeRegionJournal(path+".txn", regionJournalPrepared, txn); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeRegionJournal(path+".txn", regionJournalCommitted, txn); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeAtFull(region.file, make([]byte, 4), int64(sourceIndex*4)); err != nil {
+		t.Fatal(err)
+	}
+	if err := region.file.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	if err := region.file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	region.file = nil
+
+	recovered, err := OpenRegion(path)
+	if err != nil {
+		t.Fatalf("reopen and replay committed transaction: %v", err)
+	}
+	defer recovered.Close()
+	got, err := recovered.ReadChunkData(1, 1)
+	if err != nil {
+		t.Fatalf("read chunk after commit recovery: %v", err)
+	}
+	if status := got.GetString("Status"); status != "new" {
+		t.Fatalf("recovered chunk status = %q, want new", status)
+	}
+}
+
 func TestSaveChunkKeepsDirtyFlagWhenRegionCommitFails(t *testing.T) {
 	sm, err := NewSaveManager(t.TempDir())
 	if err != nil {
@@ -410,4 +522,3 @@ func TestSaveAndLoadLevelWithPlayer(t *testing.T) {
 		t.Errorf("Player inventory item mismatch: %+v", loaded.Player.Inventory[2])
 	}
 }
-
