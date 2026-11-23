@@ -39,6 +39,7 @@ type sectionMeshJob struct {
 	key        [3]int32
 	generation uint64
 	revision   uint64
+	engine     *sim.Engine
 }
 
 type ClientScreenState int
@@ -97,6 +98,10 @@ type Client struct {
 	meshGeneration      uint64
 	meshRevisions       map[[3]int32]uint64
 	meshMu              sync.RWMutex
+	meshJobsMu          sync.Mutex
+	meshJobsPending     map[[3]int32]sectionMeshJob
+	meshJobsWake        chan struct{}
+	meshWorkerOnce      sync.Once
 	remoteMu            sync.RWMutex
 	remotePlayers       map[string]*RemotePlayer
 	lastRemotePos       sim.Vec3
@@ -722,6 +727,8 @@ func NewClient(serverAddr, username string, isSingleplayer bool, width, height i
 		isLocal:          isSingleplayer,
 		meshCache:        make(map[[3]int32]*render.Mesh),
 		meshRevisions:    make(map[[3]int32]uint64),
+		meshJobsPending:  make(map[[3]int32]sectionMeshJob),
+		meshJobsWake:     make(chan struct{}, 1),
 		loadedChunks:     make(map[world.ChunkPos]bool),
 		remotePlayers:    make(map[string]*RemotePlayer),
 		lastChunkX:       -999,
@@ -903,6 +910,7 @@ func (c *Client) EnsureChunksAroundPlayer(playerX, playerZ float64, radius int32
 						key:        key,
 						generation: c.meshGeneration,
 						revision:   c.meshRevisions[key],
+						engine:     engine,
 					})
 				}
 			}
@@ -970,16 +978,12 @@ func (c *Client) InvalidateBlockMesh(pos world.BlockPos) {
 	}
 }
 
-// RebuildAffectedMeshes remeshes the section containing pos and boundary neighbors,
-// then publishes the completed set in one short cache-lock section.
+// RebuildAffectedMeshes queues the affected sections for background rebuild.
 func (c *Client) RebuildAffectedMeshes(pos world.BlockPos) {
 	if c.engine == nil {
 		return
 	}
 	engine := c.engine
-	getBlock := func(x, y, z int32) int32 {
-		return engine.GetBlock(x, y, z)
-	}
 	keys := affectedMeshSections(pos)
 	jobs := make([]sectionMeshJob, len(keys))
 	c.meshMu.Lock()
@@ -988,22 +992,77 @@ func (c *Client) RebuildAffectedMeshes(pos world.BlockPos) {
 	}
 	for i, key := range keys {
 		c.meshRevisions[key]++
-		jobs[i] = sectionMeshJob{key: key, generation: c.meshGeneration, revision: c.meshRevisions[key]}
+		jobs[i] = sectionMeshJob{key: key, generation: c.meshGeneration, revision: c.meshRevisions[key], engine: engine}
 	}
 	c.meshMu.Unlock()
+	c.enqueueMeshJobs(jobs)
+}
 
-	updates := make([]*render.Mesh, len(jobs))
-	for i, job := range jobs {
-		key := job.key
-		updates[i] = render.BuildSectionMesh(getBlock, key[0]*16, key[1]*16, key[2]*16)
+func (c *Client) enqueueMeshJobs(jobs []sectionMeshJob) {
+	if len(jobs) == 0 {
+		return
 	}
-	c.meshMu.Lock()
-	for i, job := range jobs {
-		if c.meshGeneration == job.generation && c.meshRevisions[job.key] == job.revision {
-			c.meshCache[job.key] = updates[i]
+	c.meshWorkerOnce.Do(func() {
+		if c.meshJobsPending == nil {
+			c.meshJobsPending = make(map[[3]int32]sectionMeshJob)
+		}
+		if c.meshJobsWake == nil {
+			c.meshJobsWake = make(chan struct{}, 1)
+		}
+		go c.meshUpdateLoop()
+	})
+	c.meshJobsMu.Lock()
+	for _, job := range jobs {
+		c.meshJobsPending[job.key] = job
+	}
+	c.meshJobsMu.Unlock()
+	select {
+	case c.meshJobsWake <- struct{}{}:
+	default:
+	}
+}
+
+func (c *Client) meshUpdateLoop() {
+	for range c.meshJobsWake {
+		for {
+			c.meshJobsMu.Lock()
+			batch := make([]sectionMeshJob, 0, len(c.meshJobsPending))
+			for key, job := range c.meshJobsPending {
+				batch = append(batch, job)
+				delete(c.meshJobsPending, key)
+			}
+			c.meshJobsMu.Unlock()
+			if len(batch) == 0 {
+				break
+			}
+			sort.Slice(batch, func(i, j int) bool {
+				if batch[i].key[1] != batch[j].key[1] {
+					return batch[i].key[1] < batch[j].key[1]
+				}
+				if batch[i].key[2] != batch[j].key[2] {
+					return batch[i].key[2] < batch[j].key[2]
+				}
+				return batch[i].key[0] < batch[j].key[0]
+			})
+			for _, job := range batch {
+				c.meshMu.RLock()
+				current := c.meshGeneration == job.generation && c.meshRevisions[job.key] == job.revision
+				c.meshMu.RUnlock()
+				if !current || job.engine == nil {
+					continue
+				}
+				key := job.key
+				mesh := render.BuildSectionMesh(func(x, y, z int32) int32 {
+					return job.engine.GetBlock(x, y, z)
+				}, key[0]*16, key[1]*16, key[2]*16)
+				c.meshMu.Lock()
+				if c.meshGeneration == job.generation && c.meshRevisions[key] == job.revision {
+					c.meshCache[key] = mesh
+				}
+				c.meshMu.Unlock()
+			}
 		}
 	}
-	c.meshMu.Unlock()
 }
 
 func affectedMeshSections(pos world.BlockPos) [][3]int32 {
