@@ -129,6 +129,7 @@ type Client struct {
 	streamJobsPending   map[chunkStreamKey]chunkStreamJob
 	streamJobsRunning   map[chunkStreamKey]chunkStreamJob
 	streamJobsFailed    map[chunkStreamKey]chunkStreamFailure
+	streamJobsPrunedAt  time.Time
 	streamJobsWake      chan struct{}
 	streamJobsIdle      chan struct{}
 	streamJobsActive    int
@@ -963,9 +964,18 @@ func (c *Client) switchDimensionAndTakeChunks(engine *sim.Engine, dimension int)
 func (c *Client) chunkStreamPending(pos world.ChunkPos, dimension int, generation uint64) bool {
 	c.streamJobsMu.Lock()
 	defer c.streamJobsMu.Unlock()
+	now := time.Now()
+	if c.streamJobsPrunedAt.IsZero() || now.Sub(c.streamJobsPrunedAt) >= 10*time.Second {
+		for key, failure := range c.streamJobsFailed {
+			if failure.generation != generation || !now.Before(failure.retryAfter) {
+				delete(c.streamJobsFailed, key)
+			}
+		}
+		c.streamJobsPrunedAt = now
+	}
 	key := chunkStreamKey{dimension: dimension, pos: pos}
 	if failure, exists := c.streamJobsFailed[key]; exists {
-		if failure.generation == generation && time.Now().Before(failure.retryAfter) {
+		if failure.generation == generation && now.Before(failure.retryAfter) {
 			return true
 		}
 		delete(c.streamJobsFailed, key)
@@ -1531,6 +1541,7 @@ func (c *Client) resetMeshCache(resetLoadedChunks bool) {
 	c.meshMu.Unlock()
 	c.streamJobsMu.Lock()
 	clear(c.streamJobsFailed)
+	c.streamJobsPrunedAt = time.Time{}
 	c.streamJobsMu.Unlock()
 }
 
