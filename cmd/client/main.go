@@ -967,6 +967,14 @@ func (c *Client) Connect() error {
 }
 
 func (c *Client) networkReceiveLoop() {
+	defer func() {
+		if r := recover(); r != nil {
+			stack := debug.Stack()
+			msg := fmt.Sprintf("FATAL NETWORK RECEIVE PANIC: %v\n\nStack:\n%s\n", r, string(stack))
+			log.Println(msg)
+			_ = os.WriteFile("crash.log", []byte(msg), 0644)
+		}
+	}()
 	for {
 		if c.conn == nil {
 			return
