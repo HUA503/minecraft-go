@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log"
 	"math"
-	mrand "math/rand"
 	"net"
 	"os"
 	"path/filepath"
@@ -199,43 +198,54 @@ func buildSectionMeshSafely(engine *sim.Engine, key [3]int32) (mesh *render.Mesh
 // is placed firmly on a solid walkable surface (grass, dirt, sand, stone) strictly above sea level (>= 62),
 // completely clear of water or lava hazards, and with unobstructed headroom.
 func findSafeSpawnPoint(generator *gen.Generator, engine *sim.Engine) sim.Vec3 {
-	rng := mrand.New(mrand.NewSource(time.Now().UnixNano()))
-	for attempt := 0; attempt < 100; attempt++ {
-		// Randomize coordinates within [-96, 96]
-		wx := int32(rng.Intn(192) - 96)
-		wz := int32(rng.Intn(192) - 96)
-
-		cp := world.BlockPos{X: wx, Y: 0, Z: wz}.ToChunkPos()
-		chunk := engine.GetChunk(cp)
-		if chunk == nil {
-			chunk = generator.GenerateChunk(cp)
-			engine.LoadChunk(cp, chunk)
-		}
-
-		for y := int32(90); y >= 62; y-- {
-			b := chunk.GetBlock(wx, y, wz)
-			if b == gen.BlockGrass || b == gen.BlockSand || b == gen.BlockDirt || b == gen.BlockStone {
-				above1 := chunk.GetBlock(wx, y+1, wz)
-				above2 := chunk.GetBlock(wx, y+2, wz)
-				// Must not be solid blocks (air or foliage) and never water or lava
-				if !sim.IsSolidBlock(above1) && !sim.IsSolidBlock(above2) &&
-					above1 != 8 && above1 != 9 && above1 != 10 && above1 != 11 &&
-					above2 != 8 && above2 != 9 && above2 != 10 && above2 != 11 {
-					return sim.Vec3{
-						X: float64(wx) + 0.5,
-						Y: float64(y + 1),
-						Z: float64(wz) + 0.5,
+	// Search nearby chunks in expanding rings. This keeps startup work local and
+	// ensures each candidate chunk is generated or loaded at most once.
+	for radius := int32(0); radius <= 3; radius++ {
+		for dx := -radius; dx <= radius; dx++ {
+			for dz := -radius; dz <= radius; dz++ {
+				if radius > 0 && max(absInt32(dx), absInt32(dz)) != radius {
+					continue
+				}
+				cp := world.ChunkPos{X: dx, Z: dz}
+				dimension := int(generator.Dimension)
+				chunk := engine.GetChunkInDimension(dimension, cp)
+				if chunk == nil {
+					chunk = generator.GenerateChunk(cp)
+					engine.LoadGeneratedChunkInDimension(dimension, cp, chunk)
+				}
+				for localX := int32(0); localX < world.ChunkWidth; localX++ {
+					for localZ := int32(0); localZ < world.ChunkWidth; localZ++ {
+						wx := cp.X*world.ChunkWidth + localX
+						wz := cp.Z*world.ChunkWidth + localZ
+						for y := int32(110); y >= 62; y-- {
+							b := chunk.GetBlock(wx, y, wz)
+							if b == gen.BlockGrass || b == gen.BlockSand || b == gen.BlockDirt || b == gen.BlockStone {
+								above1 := chunk.GetBlock(wx, y+1, wz)
+								above2 := chunk.GetBlock(wx, y+2, wz)
+								if !sim.IsSolidBlock(above1) && !sim.IsSolidBlock(above2) &&
+									above1 != 8 && above1 != 9 && above1 != 10 && above1 != 11 &&
+									above2 != 8 && above2 != 9 && above2 != 10 && above2 != 11 {
+									return sim.Vec3{X: float64(wx) + 0.5, Y: float64(y + 1), Z: float64(wz) + 0.5}
+								}
+								break
+							}
+							if b == gen.BlockWater || b == gen.BlockFlowingWater {
+								break
+							}
+						}
 					}
 				}
-				break
-			}
-			if b == gen.BlockWater || b == gen.BlockFlowingWater {
-				// Surface here is water, cannot spawn here
-				break
 			}
 		}
 	}
 	return sim.Vec3{X: 8.5, Y: 66.0, Z: 8.5}
+}
+
+func absInt32(v int32) int32 {
+	if v < 0 {
+		return -v
+	}
+	return v
 }
 
 func handleSlotLeftClick(cursor *inventory.ItemStack, slot *inventory.ItemStack) {
@@ -516,7 +526,7 @@ func (c *Client) StartSingleplayerWorld(worldDirName string, isNew bool, newSeed
 			chk := c.engine.GetChunk(cp)
 			if chk == nil {
 				chk = c.genOverworld.GenerateChunk(cp)
-				c.engine.LoadChunk(cp, chk)
+				c.engine.LoadGeneratedChunkInDimension(int(gen.DimensionOverworld), cp, chk)
 			}
 			surfY := spawnPos.Y
 			for y := int32(110); y >= 55; y-- {
