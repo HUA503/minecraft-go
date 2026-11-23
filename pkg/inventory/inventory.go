@@ -245,7 +245,7 @@ func GetMaxStackSize(itemID int32) int {
 
 // AddItem tries to stack or insert items into first available slot.
 func (inv *PlayerInventory) AddItem(itemID int32, count int) int {
-	if itemID == ItemAir || count <= 0 {
+	if inv == nil || itemID == ItemAir || count <= 0 {
 		return count
 	}
 
@@ -286,6 +286,13 @@ func (inv *PlayerInventory) AddItem(itemID int32, count int) int {
 
 // RemoveItem decrements count from a specific slot.
 func (inv *PlayerInventory) RemoveItem(slotIdx int, count int) error {
+	if inv == nil {
+		return errors.New("inventory is nil")
+	}
+	if count <= 0 {
+		return errors.New("item count must be positive")
+	}
+
 	if slotIdx < 0 || slotIdx >= len(inv.Slots) {
 		return errors.New("slot index out of range")
 	}
