@@ -35,6 +35,7 @@
 ## 验证记录
 
 - 最近代码改动通过 Windows 本机构建、`go vet ./...` 和 Linux/amd64 交叉构建。
+- 本机 CLI 冒烟流程完成：新建临时世界、读取/放置方块、渲染一帧并正常退出；这不替代真实窗口长时间游玩验证。
 - 本机忽略文件 `bin/client.exe`、`bin/server.exe` 已按最新代码重新生成；客户端无窗口 1000 帧基准最近一次为 1577.25 FPS（0.634 ms/frame），之前连续样本为 1597.59、1819.04 FPS。该基准只衡量无窗口渲染路径，不代表完整游玩稳定性或 GPU 性能。
 - Windows 应用日志发现 2026-11-18 一次 `AppHangB1`：`D:\project\feed\minecraft-go\bin\client.exe` 未响应后被关闭；系统报告未包含线程转储，尚不能确认卡死函数。当前代码已加 8 秒主循环停滞 watchdog，卡住时会写入全 goroutine 堆栈。当前版本仍未在完整游玩中复现，也不能宣称闪退/卡死已彻底修复。
 - 当前环境 `CGO_ENABLED=0`，无法运行 Go race detector；线程安全尚未通过 `-race` 验证。
