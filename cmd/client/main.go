@@ -310,6 +310,8 @@ func (c *Client) StartSingleplayerWorld(worldDirName string, isNew bool, newSeed
 	sm, err := world.NewSaveManager(worldPath)
 	if err != nil {
 		log.Printf("[Client] Failed to open save manager: %v\n", err)
+		c.saveMgr = nil
+		return
 	}
 	c.saveMgr = sm
 	c.currentWorldDir = worldPath
@@ -404,8 +406,13 @@ func (c *Client) StartSingleplayerWorld(worldDirName string, isNew bool, newSeed
 			savedPlayer = lvlData.Player
 			spawnPos = sim.Vec3{X: float64(lvlData.SpawnX), Y: float64(lvlData.SpawnY), Z: float64(lvlData.SpawnZ)}
 		} else {
-			seed = time.Now().UnixNano()
-			spawnPos = sim.Vec3{X: 8.0, Y: 66.0, Z: 8.0}
+			log.Printf("[Client] Refusing to load world %q because level.dat could not be read: %v", worldDirName, err)
+			if closeErr := sm.Close(); closeErr != nil {
+				log.Printf("[Client] Failed to close save manager after load failure: %v", closeErr)
+			}
+			c.saveMgr = nil
+			c.engine = nil
+			return
 		}
 
 		c.genOverworld = gen.NewGenerator(seed, gen.DimensionOverworld)
