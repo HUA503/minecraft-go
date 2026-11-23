@@ -355,7 +355,11 @@ func (c *Client) StartSingleplayerWorld(worldDirName string, isNew bool, newSeed
 			LevelName: c.currentWorldName,
 			GameMode:  newGameMode,
 		}
-		_ = sm.SaveLevel(lvlData)
+		if sm != nil {
+			if err := sm.SaveLevel(lvlData); err != nil {
+				log.Printf("[Client] Failed to save initial level data: %v", err)
+			}
+		}
 
 		// Spawn authentic natural herds and flocks around meadow
 		spawnMobOnSurface := func(mobType sim.MobType, ox, oz float64) {
@@ -488,7 +492,9 @@ func (c *Client) RespawnLocalPlayer() {
 
 func (c *Client) SaveAndQuitToTitle() {
 	if c.engine != nil {
-		c.engine.SaveAll()
+		if err := c.engine.SaveAll(); err != nil {
+			log.Printf("[Client] Failed to save one or more chunks while leaving the world: %v", err)
+		}
 
 		if c.saveMgr != nil && c.player != nil {
 			savedInv := make([]world.SavedItemStack, 0, 36)
@@ -536,8 +542,12 @@ func (c *Client) SaveAndQuitToTitle() {
 					Inventory: savedInv,
 				},
 			}
-			_ = c.saveMgr.SaveLevel(lvl)
-			_ = c.saveMgr.Close()
+			if err := c.saveMgr.SaveLevel(lvl); err != nil {
+				log.Printf("[Client] Failed to save level data while leaving the world: %v", err)
+			}
+			if err := c.saveMgr.Close(); err != nil {
+				log.Printf("[Client] Failed to close world save files: %v", err)
+			}
 			c.saveMgr = nil
 		}
 
@@ -682,8 +692,11 @@ func (c *Client) EnsureChunksAroundPlayer(playerX, playerZ float64, radius int32
 			diffZ = -diffZ
 		}
 		if diffX > radius+2 || diffZ > radius+2 {
+			if err := c.engine.UnloadChunk(cp); err != nil {
+				log.Printf("[Client] Failed to save chunk %v while unloading; retaining it in memory: %v", cp, err)
+				continue
+			}
 			delete(c.loadedChunks, cp)
-			c.engine.UnloadChunk(cp)
 		}
 	}
 	c.meshMu.Unlock()

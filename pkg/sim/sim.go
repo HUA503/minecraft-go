@@ -510,17 +510,25 @@ func (e *Engine) SetBlock(x, y, z int32, state int32) {
 }
 
 // UnloadChunk purges a distant chunk from active simulation, saving it to disk if dirty.
-func (e *Engine) UnloadChunk(pos world.ChunkPos) {
+func (e *Engine) UnloadChunk(pos world.ChunkPos) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if chunk, exists := e.World[pos]; exists {
-		if e.Storage != nil && chunk != nil && chunk.IsDirty {
-			_ = e.Storage.SaveChunk(chunk)
+		storage := e.DimensionStorage[e.CurrentDimension]
+		if storage == nil && e.CurrentDimension == 0 {
+			storage = e.Storage
 		}
-		if e.Storage != nil || (chunk != nil && !chunk.IsDirty) {
-			delete(e.World, pos)
+		if chunk != nil && chunk.IsDirty {
+			if storage == nil {
+				return nil
+			}
+			if err := storage.SaveChunk(chunk); err != nil {
+				return err
+			}
 		}
+		delete(e.World, pos)
 	}
+	return nil
 }
 
 // BreakBlockWithTool processes player mining using held tool, enforcing authentic harvest requirements and tool wear.
