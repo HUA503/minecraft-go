@@ -72,6 +72,9 @@ func NewDimensionSaveManager(worldDir string, dim int) (*SaveManager, error) {
 	if err := os.MkdirAll(regionDir, 0755); err != nil {
 		return nil, err
 	}
+	if err := syncDirectoryTree(regionDir); err != nil {
+		return nil, fmt.Errorf("sync dimension region directories: %w", err)
+	}
 	return &SaveManager{
 		worldDir:  worldDir,
 		regionDir: regionDir,
@@ -358,3 +361,4 @@ func (sm *SaveManager) Close() error {
 	sm.regions = make(map[string]*Region)
 	return firstErr
 }
+
