@@ -36,3 +36,8 @@ func replaceFile(src, dst string) error {
 	}
 	return nil
 }
+
+func syncDirectory(string) error { return nil }
+
+func syncDirectoryTree(string) error { return nil }
+
