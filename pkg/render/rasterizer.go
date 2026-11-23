@@ -965,8 +965,65 @@ func (fb *Framebuffer) DrawPlacementGhostOutline(cam *Camera, bx, by, bz int32) 
 }
 
 func (fb *Framebuffer) DrawLine(x0, y0, x1, y1 int, col uint32) {
+	if fb == nil || fb.Width <= 0 || fb.Height <= 0 {
+		return
+	}
+	fx0, fy0 := float64(x0), float64(y0)
+	lineDX, lineDY := float64(x1)-fx0, float64(y1)-fy0
+	t0, t1 := 0.0, 1.0
+	clip := func(p, q float64) bool {
+		if p == 0 {
+			return q >= 0
+		}
+		r := q / p
+		if p < 0 {
+			if r > t1 {
+				return false
+			}
+			if r > t0 {
+				t0 = r
+			}
+		} else {
+			if r < t0 {
+				return false
+			}
+			if r < t1 {
+				t1 = r
+			}
+		}
+		return true
+	}
+	if !clip(-lineDX, fx0) || !clip(lineDX, float64(fb.Width-1)-fx0) ||
+		!clip(-lineDY, fy0) || !clip(lineDY, float64(fb.Height-1)-fy0) || t0 > t1 {
+		return
+	}
+	x0 = int(math.Round(fx0 + t0*lineDX))
+	y0 = int(math.Round(fy0 + t0*lineDY))
+	x1 = int(math.Round(fx0 + t1*lineDX))
+	y1 = int(math.Round(fy0 + t1*lineDY))
+	if x0 < 0 {
+		x0 = 0
+	} else if x0 >= fb.Width {
+		x0 = fb.Width - 1
+	}
+	if x1 < 0 {
+		x1 = 0
+	} else if x1 >= fb.Width {
+		x1 = fb.Width - 1
+	}
+	if y0 < 0 {
+		y0 = 0
+	} else if y0 >= fb.Height {
+		y0 = fb.Height - 1
+	}
+	if y1 < 0 {
+		y1 = 0
+	} else if y1 >= fb.Height {
+		y1 = fb.Height - 1
+	}
+
 	dx := int(math.Abs(float64(x1 - x0)))
-	dy := -int(math.Abs(float64(y1 - y0)))
+	dyInt := -int(math.Abs(float64(y1 - y0)))
 	sx := 1
 	if x0 >= x1 {
 		sx = -1
@@ -975,7 +1032,7 @@ func (fb *Framebuffer) DrawLine(x0, y0, x1, y1 int, col uint32) {
 	if y0 >= y1 {
 		sy = -1
 	}
-	err := dx + dy
+	err := dx + dyInt
 
 	for {
 		if x0 >= 0 && x0 < fb.Width && y0 >= 0 && y0 < fb.Height {
@@ -985,8 +1042,8 @@ func (fb *Framebuffer) DrawLine(x0, y0, x1, y1 int, col uint32) {
 			break
 		}
 		e2 := 2 * err
-		if e2 >= dy {
-			err += dy
+		if e2 >= dyInt {
+			err += dyInt
 			x0 += sx
 		}
 		if e2 <= dx {
