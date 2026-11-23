@@ -5694,3 +5694,446 @@ func runGraphicalWindow(c *Client, w, h int) {
 			if level != nil {
 				c.autosaveWG.Add(1)
 				go func() {
+					defer c.autosaveWG.Done()
+					defer c.autosaveRunning.Store(false)
+					defer func() {
+						if recovered := recover(); recovered != nil {
+							msg := fmt.Sprintf("PERIODIC AUTOSAVE PANIC: %v\n\nStack:\n%s", recovered, debug.Stack())
+							log.Print(msg)
+							writeCrashLog(msg)
+						}
+					}()
+					if err := engine.SaveAll(); err != nil {
+						log.Printf("[Client] Periodic chunk autosave failed: %v", err)
+					}
+					if err := storage.SaveLevel(level); err != nil {
+						log.Printf("[Client] Periodic level autosave failed: %v", err)
+					}
+				}()
+			} else {
+				c.autosaveRunning.Store(false)
+			}
+		}
+
+		// Update item equip animation progress
+		if c.equipProgress < 1.0 {
+			c.equipProgress += dt * 5.0
+			if c.equipProgress > 1.0 {
+				c.equipProgress = 1.0
+			}
+		}
+
+		if c.screenState == ScreenTitle {
+			time.Sleep(16 * time.Millisecond)
+			mx, my := wnd.GetCursorClientPos(c.framebuf.Width, c.framebuf.Height)
+			c.titleSpBtn, c.titleMpBtn, c.titleQuitBtn = c.framebuf.DrawTitleScreen(mx, my)
+			if c.quitSaveFailed.Load() || c.worldStartFailed.Load() || c.networkDisconnected.Load() {
+				msg := "操作失败，请查看 crash.log"
+				if c.networkDisconnected.Load() {
+					msg = "服务器连接已断开"
+				} else if c.quitSaveFailed.Load() {
+					msg = "存档保存失败，详情见 crash.log"
+				}
+				textWidth := render.MeasureText5x7(msg, 1)
+				c.framebuf.DrawText5x7((c.framebuf.Width-textWidth)/2, c.framebuf.Height-60, msg, 0xFFFF7777, 1)
+			}
+			wnd.Present(c.framebuf)
+			continue
+		}
+
+		if c.screenState == ScreenWorldSelect {
+			time.Sleep(16 * time.Millisecond)
+			mx, my := wnd.GetCursorClientPos(c.framebuf.Width, c.framebuf.Height)
+			c.wsPlayBtn, c.wsNewBtn, c.wsBackBtn, c.wsRects = c.framebuf.DrawWorldSelectScreenWithLoading(c.availableWorlds, c.selectedWorldIdx, c.worldScanPending, mx, my)
+			if c.worldStartFailed.Load() {
+				msg := "世界加载失败，请检查日志"
+				textWidth := render.MeasureText5x7(msg, 1)
+				c.framebuf.DrawText5x7((c.framebuf.Width-textWidth)/2, c.framebuf.Height-60, msg, 0xFFFF7777, 1)
+			}
+			wnd.Present(c.framebuf)
+			continue
+		}
+
+		if c.screenState == ScreenNewWorld {
+			time.Sleep(16 * time.Millisecond)
+			mx, my := wnd.GetCursorClientPos(c.framebuf.Width, c.framebuf.Height)
+			c.nwCreateBtn, c.nwCancelBtn, c.nwModeBtn, c.nwNameBox, c.nwSeedBox = c.framebuf.DrawNewWorldScreen(c.newWorldName, c.newWorldMode, c.newWorldSeedText, c.newWorldActiveBox, mx, my)
+			if c.worldStartFailed.Load() {
+				msg := "世界创建失败，请检查日志"
+				textWidth := render.MeasureText5x7(msg, 1)
+				c.framebuf.DrawText5x7((c.framebuf.Width-textWidth)/2, c.framebuf.Height-18, msg, 0xFFFF7777, 1)
+			}
+			wnd.Present(c.framebuf)
+			continue
+		}
+
+		// If Player is Dead, release mouse capture, show Death Screen, and halt world controls
+		if c.player != nil && c.player.Health <= 0 {
+			wnd.SetMouseCaptured(false)
+			time.Sleep(16 * time.Millisecond)
+			if !c.renderFrameSafely() {
+				if c.renderPanicCount >= 3 {
+					break
+				}
+				continue
+			}
+			wnd.Present(c.framebuf)
+			continue
+		}
+
+		// If Pause Menu is open, freeze world controls and display interactive Pause Menu
+		if c.showPauseMenu {
+			time.Sleep(16 * time.Millisecond)
+			if !c.renderFrameSafely() {
+				if c.renderPanicCount >= 3 {
+					break
+				}
+				continue
+			}
+			mx, my := wnd.GetCursorClientPos(c.framebuf.Width, c.framebuf.Height)
+			c.backBtnRect, c.quitBtnRect = c.framebuf.DrawPauseMenu(mx, my)
+			wnd.Present(c.framebuf)
+			continue
+		}
+
+		if c.showAdvancementsGUI {
+			time.Sleep(16 * time.Millisecond)
+			if !c.renderFrameSafely() {
+				if c.renderPanicCount >= 3 {
+					break
+				}
+				continue
+			}
+			c.framebuf.DrawAdvancementScreen(c.advancementLines())
+			wnd.Present(c.framebuf)
+			continue
+		}
+
+		// If Inventory / Crafting Table / Furnace GUI is open
+		if c.showInventoryGUI || c.isFurnaceOpen {
+			time.Sleep(16 * time.Millisecond)
+			if !c.renderFrameSafely() {
+				if c.renderPanicCount >= 3 {
+					break
+				}
+				continue
+			}
+			wnd.Present(c.framebuf)
+			continue
+		}
+
+		// If Chat / Command input is open, freeze world controls and display chat overlay
+		if c.isChatOpen {
+			time.Sleep(16 * time.Millisecond)
+			if !c.renderFrameSafely() {
+				if c.renderPanicCount >= 3 {
+					break
+				}
+				continue
+			}
+			wnd.Present(c.framebuf)
+			continue
+		}
+
+		// 1. Spacebar Jump & Swim input (Authentic Minecraft: continuous hold for water swimming, flight ascent & bunny hop)
+		spaceDown := wnd.IsKeyDown(0x20)
+		c.wasSpaceDown = spaceDown
+
+		// 2. Sprint & Sneak modifiers
+		c.isSneaking = wnd.IsKeyDown(0x10)  // Shift
+		c.isSprinting = wnd.IsKeyDown(0x11) // Ctrl
+		if c.player != nil && c.player.Hunger <= 6 {
+			c.isSprinting = false
+		}
+
+		// 3. Movement input polling
+		var fwdInput, strafeInput float64
+		if wnd.IsKeyDown(0x57) { // W
+			fwdInput += 1.0
+		}
+		if wnd.IsKeyDown(0x53) { // S
+			fwdInput -= 1.0
+		}
+		if wnd.IsKeyDown(0x41) { // A
+			strafeInput -= 1.0
+		}
+		if wnd.IsKeyDown(0x44) { // D
+			strafeInput += 1.0
+		}
+
+		c.PhysicsStep(fwdInput, strafeInput, spaceDown, dt)
+		c.publishPlayerSnapshot()
+
+		// Synchronize crosshair raycast target with current position & orientation
+		c.UpdateRaycastTarget()
+
+		// 4. Authentic Minecraft Mining: Hold Left Mouse to mine with cracking & tool times
+		isLeftDown := wnd.IsMouseDown(1)
+		c.UpdateMining(isLeftDown, dt)
+
+		// 5. Placing Blocks or Consuming Food: Hold Right Mouse Button
+		isRightDown := wnd.IsMouseDown(2)
+		c.UpdateRightClick(isRightDown, dt)
+
+		// Keyboard arrow view look fallback (smooth dt scaled)
+		if wnd.IsKeyDown(0x25) { // Left (turn left)
+			c.RotateView(-120.0*dt, 0)
+		}
+		if wnd.IsKeyDown(0x27) { // Right (turn right)
+			c.RotateView(120.0*dt, 0)
+		}
+		if wnd.IsKeyDown(0x26) { // Up (look up)
+			c.RotateView(0, 120.0*dt)
+		}
+		if wnd.IsKeyDown(0x28) { // Down (look down)
+			c.RotateView(0, -120.0*dt)
+		}
+
+		// 2. Hardware 1:1 Mouse delta polling (Horizon & Minecraft standard centering)
+		// Standard FPS mouse look: +mdx turns yaw right, -mdy pitches camera up
+		mdx, mdy := wnd.PollMouseDelta()
+		if mdx != 0 || mdy != 0 {
+			c.RotateView(mdx*mouseSensitivity, -mdy*mouseSensitivity)
+		}
+
+		// 3. Render frame and present directly to native window
+		if !c.renderFrameSafely() {
+			if c.renderPanicCount >= 3 {
+				break
+			}
+			continue
+		}
+		wnd.Present(c.framebuf)
+
+		// Brief yield to avoid pegging 100% CPU while delivering maximum smoothness
+		time.Sleep(1 * time.Millisecond)
+	}
+
+	log.Println("[Client] Game window closed.")
+}
+
+func runInteractiveLoop(c *Client) {
+	defer c.SaveAndQuitToTitle()
+
+	fmt.Println("\nCommands:")
+	fmt.Println("  w / s / a / d   : Move player")
+	fmt.Println("  goto <x> <y> <z>: Teleport/move to coordinates")
+	fmt.Println("  look <yaw> <pitch> : Rotate camera view")
+	fmt.Println("  mine            : Mine targeted block in crosshair")
+	fmt.Println("  place           : Place active hotbar block")
+	fmt.Println("  block <x> <y> <z> : Query block ID at coordinates")
+	fmt.Println("  place_at <x> <y> <z> <id> : Place specific block ID at coordinates")
+	fmt.Println("  mine_at <x> <y> <z>       : Mine block at coordinates")
+	fmt.Println("  slot <1-9>      : Switch active hotbar slot")
+	fmt.Println("  inv             : View inventory")
+	fmt.Println("  craft <recipe>  : Craft items")
+	fmt.Println("  status          : View health, hunger, XYZ position")
+	fmt.Println("  render          : Render a full 3D frame and HUD")
+	fmt.Println("  quit            : Exit game")
+	fmt.Println()
+
+	scanner := bufio.NewScanner(os.Stdin)
+	for {
+		fmt.Print("minecraft> ")
+		if !scanner.Scan() {
+			break
+		}
+		input := strings.TrimSpace(scanner.Text())
+		if input == "" {
+			continue
+		}
+		c.AdvanceSimulation(0.05)
+
+		parts := strings.Fields(input)
+		cmd := strings.ToLower(parts[0])
+
+		switch cmd {
+		case "w":
+			if c.player != nil {
+				c.MoveRelative(1.0, 0)
+				fmt.Printf("Moved forward. Position: (%.2f, %.2f, %.2f)\n", c.player.Position.X, c.player.Position.Y, c.player.Position.Z)
+			} else {
+				fmt.Println("Player entity not initialized.")
+			}
+		case "s":
+			if c.player != nil {
+				c.MoveRelative(-1.0, 0)
+				fmt.Printf("Moved backward. Position: (%.2f, %.2f, %.2f)\n", c.player.Position.X, c.player.Position.Y, c.player.Position.Z)
+			} else {
+				fmt.Println("Player entity not initialized.")
+			}
+		case "a":
+			if c.player != nil {
+				c.MoveRelative(0, -1.0)
+				fmt.Printf("Strafed left. Position: (%.2f, %.2f, %.2f)\n", c.player.Position.X, c.player.Position.Y, c.player.Position.Z)
+			} else {
+				fmt.Println("Player entity not initialized.")
+			}
+		case "d":
+			if c.player != nil {
+				c.MoveRelative(0, 1.0)
+				fmt.Printf("Strafed right. Position: (%.2f, %.2f, %.2f)\n", c.player.Position.X, c.player.Position.Y, c.player.Position.Z)
+			} else {
+				fmt.Println("Player entity not initialized.")
+			}
+		case "goto":
+			if len(parts) >= 4 {
+				gx, _ := strconv.ParseFloat(parts[1], 64)
+				gy, _ := strconv.ParseFloat(parts[2], 64)
+				gz, _ := strconv.ParseFloat(parts[3], 64)
+				if c.player != nil {
+					c.player.Position = sim.Vec3{X: gx, Y: gy, Z: gz}
+					c.camera.X = gx
+					c.camera.Y = gy + 1.62
+					c.camera.Z = gz
+				}
+				if c.conn != nil {
+					_ = c.sendPacket(&protocol.PlayerPositionPacket{
+						X:        gx,
+						Y:        gy,
+						Z:        gz,
+						Yaw:      float32(c.camera.Yaw),
+						Pitch:    float32(c.camera.Pitch),
+						OnGround: true,
+					})
+				}
+				fmt.Printf("Moved to (%.2f, %.2f, %.2f)\n", gx, gy, gz)
+			}
+		case "look":
+			if len(parts) >= 3 {
+				yaw, _ := strconv.ParseFloat(parts[1], 64)
+				pitch, _ := strconv.ParseFloat(parts[2], 64)
+				c.camera.Yaw = yaw
+				c.camera.Pitch = pitch
+				fmt.Printf("Camera rotated: Yaw=%.1f, Pitch=%.1f\n", yaw, pitch)
+			}
+		case "block":
+			if len(parts) >= 4 {
+				bx, _ := strconv.Atoi(parts[1])
+				by, _ := strconv.Atoi(parts[2])
+				bz, _ := strconv.Atoi(parts[3])
+				bid := int32(0)
+				if c.engine != nil {
+					bid = c.engine.GetBlock(int32(bx), int32(by), int32(bz))
+				}
+				fmt.Printf("Block at (%d, %d, %d): ID=%d\n", bx, by, bz, bid)
+			}
+		case "place_at":
+			if len(parts) >= 5 {
+				bx, _ := strconv.Atoi(parts[1])
+				by, _ := strconv.Atoi(parts[2])
+				bz, _ := strconv.Atoi(parts[3])
+				bid, _ := strconv.Atoi(parts[4])
+				applied := c.engine != nil && c.engine.SetBlockChecked(int32(bx), int32(by), int32(bz), int32(bid))
+				if applied {
+					c.RebuildAffectedMeshes(world.BlockPos{X: int32(bx), Y: int32(by), Z: int32(bz)})
+				}
+				if applied && c.conn != nil {
+					_ = c.sendPacket(&protocol.BlockUpdatePacket{
+						X:       int32(bx),
+						Y:       int32(by),
+						Z:       int32(bz),
+						BlockID: int32(bid),
+					})
+				}
+				if applied {
+					fmt.Printf("Placed block ID %d at (%d, %d, %d)\n", bid, bx, by, bz)
+				} else {
+					fmt.Printf("Could not update block at (%d, %d, %d)\n", bx, by, bz)
+				}
+			}
+		case "mine_at":
+			if len(parts) >= 4 {
+				bx, _ := strconv.Atoi(parts[1])
+				by, _ := strconv.Atoi(parts[2])
+				bz, _ := strconv.Atoi(parts[3])
+				applied := c.engine != nil && c.engine.SetBlockChecked(int32(bx), int32(by), int32(bz), 0)
+				if applied {
+					c.RebuildAffectedMeshes(world.BlockPos{X: int32(bx), Y: int32(by), Z: int32(bz)})
+				}
+				if applied && c.conn != nil {
+					_ = c.sendPacket(&protocol.BlockUpdatePacket{
+						X:       int32(bx),
+						Y:       int32(by),
+						Z:       int32(bz),
+						BlockID: 0,
+					})
+				}
+				if applied {
+					fmt.Printf("Mined block at (%d, %d, %d)\n", bx, by, bz)
+				} else {
+					fmt.Printf("Could not update block at (%d, %d, %d)\n", bx, by, bz)
+				}
+			}
+		case "mine":
+			drop, ok := c.MineTargetedBlock()
+			if ok {
+				fmt.Printf("Mined block! Gained item ID: %d in inventory.\n", drop)
+			}
+		case "place":
+			ok := c.PlaceBlockInFront()
+			if ok {
+				fmt.Println("Placed block successfully!")
+			}
+		case "slot":
+			if len(parts) >= 2 && c.player != nil && c.player.Inventory != nil {
+				s, _ := strconv.Atoi(parts[1])
+				if s >= 1 && s <= 9 {
+					c.player.Inventory.SelectedHotbar = s - 1
+					fmt.Printf("Active hotbar slot switched to: %d (%+v)\n", s, c.player.Inventory.GetSelectedItem())
+				}
+			}
+		case "inv":
+			if c.player != nil && c.player.Inventory != nil {
+				fmt.Println("=== Player Hotbar ===")
+				for i := 0; i < 9; i++ {
+					marker := " "
+					if i == c.player.Inventory.SelectedHotbar {
+						marker = "*"
+					}
+					slot := c.player.Inventory.Slots[i]
+					fmt.Printf("[%sSlot %d] ID: %d, Count: %d\n", marker, i+1, slot.ItemID, slot.Count)
+				}
+			}
+		case "craft":
+			if len(parts) >= 2 && c.player != nil && c.player.Inventory != nil {
+				target := strings.ToLower(parts[1])
+				switch target {
+				case "planks":
+					if err := c.player.Inventory.RemoveItem(0, 1); err == nil {
+						c.player.Inventory.AddItem(inventory.ItemOakPlanks, 4)
+						fmt.Println("Crafted 4 Oak Planks!")
+					}
+				case "table":
+					if err := c.player.Inventory.RemoveItem(0, 4); err == nil {
+						c.player.Inventory.AddItem(inventory.ItemCraftingTable, 1)
+						fmt.Println("Crafted 1 Crafting Table!")
+					}
+				case "pickaxe":
+					c.player.Inventory.AddItem(inventory.ItemWoodenPickaxe, 1)
+					fmt.Println("Crafted 1 Wooden Pickaxe!")
+				}
+			}
+		case "status":
+			if c.player != nil {
+				fmt.Printf("Player: %s | Health: %.1f/20 | Hunger: %d/20 | Pos: (%.2f, %.2f, %.2f)\n",
+					c.player.Username, c.player.Health, c.player.Hunger, c.player.Position.X, c.player.Position.Y, c.player.Position.Z)
+			} else {
+				fmt.Println("Player entity not initialized.")
+			}
+			c.remoteMu.RLock()
+			for name, rp := range c.remotePlayers {
+				fmt.Printf("  Remote Player %s: Pos: (%.2f, %.2f, %.2f)\n", name, rp.Pos.X, rp.Pos.Y, rp.Pos.Z)
+			}
+			c.remoteMu.RUnlock()
+		case "render":
+			if c.player != nil {
+				c.RenderFrame()
+				fmt.Printf("Rendered 640x480 frame with 3D terrain and HUD. Active Slot: %d\n", c.player.Inventory.SelectedHotbar+1)
+			}
+		case "quit", "exit":
+			fmt.Println("Goodbye!")
+			return
+		}
+	}
+}
