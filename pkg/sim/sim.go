@@ -1,8 +1,10 @@
 package sim
 
 import (
+	"log"
 	"math"
 	mrand "math/rand"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -134,6 +136,8 @@ type Engine struct {
 	WorldTime        int64
 	Events           chan WorldEvent
 	stopChan         chan struct{}
+	startLoopOnce    sync.Once
+	stopOnce         sync.Once
 	Storage          *world.SaveManager
 	DimensionStorage [3]*world.SaveManager
 	Furnaces         map[world.BlockPos]*inventory.FurnaceBlockEntity
@@ -1296,22 +1300,29 @@ func (e *Engine) Tick() {
 
 // StartTickLoop runs the 20 TPS loop in a background goroutine.
 func (e *Engine) StartTickLoop() {
-	ticker := time.NewTicker(50 * time.Millisecond)
-	go func() {
-		for {
-			select {
-			case <-ticker.C:
-				e.Tick()
-			case <-e.stopChan:
-				ticker.Stop()
-				return
+	e.startLoopOnce.Do(func() {
+		ticker := time.NewTicker(50 * time.Millisecond)
+		go func() {
+			defer ticker.Stop()
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("[Simulation] Tick loop panicked: %v\n%s", r, debug.Stack())
+				}
+			}()
+			for {
+				select {
+				case <-ticker.C:
+					e.Tick()
+				case <-e.stopChan:
+					return
+				}
 			}
-		}
-	}()
+		}()
+	})
 }
 
 func (e *Engine) Stop() {
-	close(e.stopChan)
+	e.stopOnce.Do(func() { close(e.stopChan) })
 }
 
 // GetOrCreateFurnace retrieves or creates a FurnaceBlockEntity at pos.
