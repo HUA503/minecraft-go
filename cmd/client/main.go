@@ -728,19 +728,7 @@ func (c *Client) EnsureChunksAroundPlayer(playerX, playerZ float64, radius int32
 	camSY := int32(math.Floor(c.camera.Y / 16.0))
 	c.meshMu.RLock()
 	var unmeshed [][3]int32
-	allSY := []int32{
-		camSY, camSY + 1, camSY - 1, camSY + 2, camSY - 2,
-		camSY + 3, camSY - 3, camSY + 4, camSY - 4,
-		4, 3, 5, 2, 6, 1, 7, 0, -1, -2, -3, -4, 8, 9, 10, 11, 12, 13, 14, 15,
-	}
-	seenSY := make(map[int32]bool)
-	var orderedSY []int32
-	for _, sy := range allSY {
-		if sy >= -4 && sy <= 15 && !seenSY[sy] {
-			seenSY[sy] = true
-			orderedSY = append(orderedSY, sy)
-		}
-	}
+	orderedSY := sectionBuildOrder(camSY)
 
 	for dx := -radius; dx <= radius; dx++ {
 		for dz := -radius; dz <= radius; dz++ {
@@ -771,6 +759,32 @@ func (c *Client) EnsureChunksAroundPlayer(playerX, playerZ float64, radius int32
 		c.meshCache[key] = mesh
 		c.meshMu.Unlock()
 	}
+}
+
+func sectionBuildOrder(cameraSectionY int32) []int32 {
+	const priorityRadius = 4
+	ordered := make([]int32, 0, world.NumSections)
+	seen := make(map[int32]struct{}, world.NumSections)
+	appendSection := func(sectionY int32) {
+		if sectionY < world.MinSectionY || sectionY > world.MaxSectionY {
+			return
+		}
+		if _, exists := seen[sectionY]; exists {
+			return
+		}
+		seen[sectionY] = struct{}{}
+		ordered = append(ordered, sectionY)
+	}
+
+	appendSection(cameraSectionY)
+	for distance := int32(1); distance <= priorityRadius; distance++ {
+		appendSection(cameraSectionY + distance)
+		appendSection(cameraSectionY - distance)
+	}
+	for sectionY := int32(world.MinSectionY); sectionY <= world.MaxSectionY; sectionY++ {
+		appendSection(sectionY)
+	}
+	return ordered
 }
 
 // InvalidateBlockMesh purges cached section mesh containing pos and affected neighbor boundary sections.
