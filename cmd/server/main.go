@@ -445,15 +445,12 @@ func (sess *ClientSession) handlePacket(raw *protocol.RawPacket) error {
 			player := sess.server.simEngine.AddPlayer(ls.Username, ls.PlayerUUID, sim.Vec3{X: 8, Y: 65, Z: 8})
 			sess.activatePlayer(player.ID)
 
-			// Send existing modified blocks to the new player
+			// Snapshot shared state while locked, but never hold the global
+			// session lock across socket writes to a newly connected client.
 			sess.server.mu.Lock()
+			modifiedBlocks := make(map[world.BlockPos]int32, len(sess.server.modifiedBlocks))
 			for bpos, bid := range sess.server.modifiedBlocks {
-				_ = sess.Send(&protocol.BlockUpdatePacket{
-					X:       bpos.X,
-					Y:       bpos.Y,
-					Z:       bpos.Z,
-					BlockID: bid,
-				})
+				modifiedBlocks[bpos] = bid
 			}
 
 			others := make([]*ClientSession, 0, len(sess.server.sessions))
@@ -463,6 +460,14 @@ func (sess *ClientSession) handlePacket(raw *protocol.RawPacket) error {
 				}
 			}
 			sess.server.mu.Unlock()
+			for bpos, bid := range modifiedBlocks {
+				_ = sess.Send(&protocol.BlockUpdatePacket{
+					X:       bpos.X,
+					Y:       bpos.Y,
+					Z:       bpos.Z,
+					BlockID: bid,
+				})
+			}
 			playersByID := make(map[int32]sim.PlayerEntity)
 			for _, otherPlayer := range sess.server.simEngine.GetPlayerList() {
 				playersByID[otherPlayer.ID] = otherPlayer
