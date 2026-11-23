@@ -2,6 +2,7 @@ package render
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/HUA503/minecraft-go/pkg/inventory"
@@ -690,18 +691,17 @@ func (fb *Framebuffer) DrawAdvancementScreen(lines []string) {
 	fb.DrawRect(x, y, w, h, 0xFF282828)
 	fb.DrawRect(x+3, y+3, w-6, h-6, 0xFF3C3C3C)
 	fb.DrawText5x7(x+16, y+14, "进度", 0xFFFFFFFF, 2)
-	fb.DrawText5x7(x+16, y+46, "已完成的目标", 0xFFBFBFBF, 1)
+	fb.DrawText5x7(x+16, y+46, "世界目标", 0xFFBFBFBF, 1)
 	rowY := y + 72
 	maxRows := max(0, (h-92)/20)
 	for i := 0; i < len(lines) && i < maxRows; i++ {
 		fb.DrawRect(x+12, rowY-3, w-24, 18, 0xFF303030)
-		fb.DrawText5x7(x+20, rowY, lines[i], 0xFFE8E8E8, 1)
+		textColor := uint32(0xFFAAAAAA)
+		if strings.HasPrefix(lines[i], "✓") {
+			textColor = 0xFFFFFF55
+		}
+		fb.DrawText5x7(x+20, rowY, lines[i], textColor, 1)
 		rowY += 20
-	}
-	if len(lines) == 0 {
-		fb.DrawText5x7(x+20, rowY, "尚未解锁进度", 0xFFAAAAAA, 1)
-	} else if len(lines) > maxRows {
-		fb.DrawText5x7(x+20, y+h-20, fmt.Sprintf("还有 %d 项", len(lines)-maxRows), 0xFFAAAAAA, 1)
 	}
 	fb.DrawText5x7(x+16, y+h-20, "按 L 或 Esc 关闭", 0xFFAAAAAA, 1)
 }

@@ -1672,6 +1672,8 @@ func (c *Client) advancementLines() []string {
 	for _, advancement := range definitions {
 		if c.advancements[advancement.ID] {
 			lines = append(lines, "✓  "+advancement.Title)
+		} else {
+			lines = append(lines, "○  "+advancement.Title)
 		}
 	}
 	return lines
