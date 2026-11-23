@@ -388,10 +388,20 @@ func (w *Window) SetMouseCaptured(capture bool) {
 	}
 	w.MouseCaptured = capture
 	if capture {
-		procShowCursor.Call(0) // Hide cursor
+		for {
+			count, _, _ := procShowCursor.Call(0)
+			if int32(count) < 0 {
+				break
+			}
+		}
 		w.recenterMouse()
 	} else {
-		procShowCursor.Call(1) // Show cursor
+		for {
+			count, _, _ := procShowCursor.Call(1)
+			if int32(count) >= 0 {
+				break
+			}
+		}
 	}
 }
 
