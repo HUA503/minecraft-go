@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
@@ -671,8 +672,6 @@ func (c *Client) EnsureChunksAroundPlayer(playerX, playerZ float64, radius int32
 			delete(c.meshCache, key)
 		}
 	}
-	c.meshMu.Unlock()
-
 	for cp := range c.loadedChunks {
 		diffX := cp.X - pcx
 		if diffX < 0 {
@@ -687,20 +686,28 @@ func (c *Client) EnsureChunksAroundPlayer(playerX, playerZ float64, radius int32
 			c.engine.UnloadChunk(cp)
 		}
 	}
+	c.meshMu.Unlock()
 
 	// Pass 1: Progressively generate missing chunks in radius+1 (up to 2 chunks per frame to eliminate main-thread stutter)
 	generatedCount := 0
 	for dx := -radius - 1; dx <= radius + 1; dx++ {
 		for dz := -radius - 1; dz <= radius + 1; dz++ {
 			cp := world.ChunkPos{X: pcx + dx, Z: pcz + dz}
-			if !c.loadedChunks[cp] {
+			c.meshMu.Lock()
+			alreadyLoaded := c.loadedChunks[cp]
+			c.meshMu.Unlock()
+			if !alreadyLoaded {
 				if existing := c.engine.GetChunk(cp); existing != nil {
+					c.meshMu.Lock()
 					c.loadedChunks[cp] = true
+					c.meshMu.Unlock()
 					continue
 				}
 				chunk := generator.GenerateChunk(cp)
 				c.engine.LoadChunk(cp, chunk)
+				c.meshMu.Lock()
 				c.loadedChunks[cp] = true
+				c.meshMu.Unlock()
 				generatedCount++
 				if generatedCount >= 2 {
 					break
@@ -801,6 +808,9 @@ func (c *Client) InvalidateBlockMesh(pos world.BlockPos) {
 // RebuildAffectedMeshes synchronously remeshes the section containing pos and any boundary neighbor sections.
 // Guarantees zero frame delay, no flickering, and no disappearing void holes when placing or breaking blocks.
 func (c *Client) RebuildAffectedMeshes(pos world.BlockPos) {
+	if c.engine == nil {
+		return
+	}
 	secX := int32(math.Floor(float64(pos.X) / 16.0))
 	secY := int32(math.Floor(float64(pos.Y) / 16.0))
 	secZ := int32(math.Floor(float64(pos.Z) / 16.0))
@@ -1387,7 +1397,8 @@ func (c *Client) RotateView(dYaw, dPitch float64) {
 }
 
 func (c *Client) UpdateRaycastTarget() {
-	if c.player == nil {
+	if c.player == nil || c.engine == nil {
+		c.hasTarget = false
 		return
 	}
 	origin := sim.Vec3{X: c.camera.X, Y: c.camera.Y, Z: c.camera.Z}
@@ -1410,7 +1421,7 @@ func (c *Client) UpdateRaycastTarget() {
 }
 
 func (c *Client) UpdateMining(isLeftMouseDown bool, dt float64) {
-	if c.player == nil || c.engine == nil {
+	if c.player == nil || c.engine == nil || c.player.Inventory == nil {
 		return
 	}
 
@@ -1781,7 +1792,7 @@ func (c *Client) ExecuteCommand(input string) {
 }
 
 func (c *Client) MineTargetedBlock() (int32, bool) {
-	if !c.hasTarget || c.player == nil {
+	if !c.hasTarget || c.player == nil || c.engine == nil || c.player.Inventory == nil {
 		return 0, false
 	}
 	heldToolID := int32(0)
@@ -1806,7 +1817,7 @@ func (c *Client) MineTargetedBlock() (int32, bool) {
 }
 
 func (c *Client) PlaceBlockInFront() bool {
-	if !c.hasTarget || c.player == nil || c.engine == nil {
+	if !c.hasTarget || c.player == nil || c.engine == nil || c.player.Inventory == nil {
 		return false
 	}
 	selected := c.player.Inventory.GetSelectedItem()
@@ -1882,7 +1893,7 @@ func (c *Client) PlaceBlockInFront() bool {
 
 // UpdateRightClick handles eating food and placing blocks/interacting with blocks.
 func (c *Client) UpdateRightClick(isRightDown bool, dt float64) {
-	if c.player == nil || c.engine == nil {
+	if c.player == nil || c.engine == nil || c.player.Inventory == nil {
 		return
 	}
 
@@ -3060,32 +3071,34 @@ func (c *Client) drawPlayerModel() {
 	c.render3DBox(pos.X+legOffX, pos.Y+0.375, pos.Z+legOffZ, 0.125, 0.375, 0.125, yaw, walkSwing, pantsCol, shoesCol, pantsCol)
 
 	// 7. Render Held Item/Block in Steve's right hand in 3D
-	sel := c.player.Inventory.GetSelectedItem()
-	if !sel.IsEmpty() {
-		rightArmPitch := (-walkSwing + armSwing) * math.Pi / 180.0
-		handForward := math.Sin(rightArmPitch) * 0.375
-		handDown := math.Cos(rightArmPitch) * 0.375
+	if c.player.Inventory != nil {
+		sel := c.player.Inventory.GetSelectedItem()
+		if !sel.IsEmpty() {
+			rightArmPitch := (-walkSwing + armSwing) * math.Pi / 180.0
+			handForward := math.Sin(rightArmPitch) * 0.375
+			handDown := math.Cos(rightArmPitch) * 0.375
 
-		hx := pos.X + armOffX + math.Sin(radY)*handForward
-		hy := pos.Y + 1.125 + yOffset - handDown
-		hz := pos.Z + armOffZ + math.Cos(radY)*handForward
+			hx := pos.X + armOffX + math.Sin(radY)*handForward
+			hy := pos.Y + 1.125 + yOffset - handDown
+			hz := pos.Z + armOffZ + math.Cos(radY)*handForward
 
-		if inventory.IsPlaceableBlock(sel.ItemID) {
-			blockCol := render.SampleBlockColor(sel.ItemID, 2, 0.5, 0.5, 1.0)
-			c.render3DBox(hx, hy, hz, 0.14, 0.14, 0.14, yaw, 0, blockCol, blockCol, blockCol)
-		} else {
-			toolCol := uint32(0xFFB8945F)
-			if props, ok := inventory.GetToolProperties(sel.ItemID); ok {
-				switch props.Tier {
-				case inventory.TierStone:
-					toolCol = 0xFF7D7D7D
-				case inventory.TierIron:
-					toolCol = 0xFFD8D8D8
-				case inventory.TierDiamond:
-					toolCol = 0xFF2CCCCC
+			if inventory.IsPlaceableBlock(sel.ItemID) {
+				blockCol := render.SampleBlockColor(sel.ItemID, 2, 0.5, 0.5, 1.0)
+				c.render3DBox(hx, hy, hz, 0.14, 0.14, 0.14, yaw, 0, blockCol, blockCol, blockCol)
+			} else {
+				toolCol := uint32(0xFFB8945F)
+				if props, ok := inventory.GetToolProperties(sel.ItemID); ok {
+					switch props.Tier {
+					case inventory.TierStone:
+						toolCol = 0xFF7D7D7D
+					case inventory.TierIron:
+						toolCol = 0xFFD8D8D8
+					case inventory.TierDiamond:
+						toolCol = 0xFF2CCCCC
+					}
 				}
+				c.render3DBox(hx, hy, hz, 0.08, 0.20, 0.08, yaw, -walkSwing+armSwing, toolCol, 0xFF6F4F37, toolCol)
 			}
-			c.render3DBox(hx, hy, hz, 0.08, 0.20, 0.08, yaw, -walkSwing+armSwing, toolCol, 0xFF6F4F37, toolCol)
 		}
 	}
 }
@@ -3126,7 +3139,7 @@ func (c *Client) DropHeldItem(dropAll bool) {
 }
 
 func (c *Client) AttackMob() bool {
-	if c.player == nil || c.engine == nil {
+	if c.player == nil || c.engine == nil || c.player.Inventory == nil {
 		return false
 	}
 	dmg := float32(1.0) // Bare fist base damage
@@ -3486,7 +3499,7 @@ func getFoodSprite16x16(itemID int32) [16][16]uint32 {
 }
 
 func (c *Client) drawHeldItem() {
-	if c.player == nil {
+	if c.player == nil || c.player.Inventory == nil {
 		return
 	}
 	selected := c.player.Inventory.GetSelectedItem()
@@ -3688,6 +3701,15 @@ func (c *Client) drawHeldItem() {
 }
 
 func main() {
+	defer func() {
+		if r := recover(); r != nil {
+			stack := debug.Stack()
+			msg := fmt.Sprintf("FATAL CLIENT PANIC: %v\n\nStack:\n%s\n", r, string(stack))
+			log.Println(msg)
+			_ = os.WriteFile("crash.log", []byte(msg), 0644)
+		}
+	}()
+
 	singleplayer := flag.Bool("singleplayer", true, "Run singleplayer embedded server with procedural world")
 	serverAddr := flag.String("server", "", "Multiplayer server address (e.g. 127.0.0.1:25565)")
 	username := flag.String("username", "Steve", "Player username")
@@ -3743,6 +3765,14 @@ func main() {
 func runGraphicalWindow(c *Client, w, h int) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+	defer func() {
+		if r := recover(); r != nil {
+			stack := debug.Stack()
+			msg := fmt.Sprintf("FATAL GRAPHICAL WINDOW PANIC: %v\n\nStack:\n%s\n", r, string(stack))
+			log.Println(msg)
+			_ = os.WriteFile("crash.log", []byte(msg), 0644)
+		}
+	}()
 
 	title := fmt.Sprintf("Minecraft-Go [Java 26.3 Parity] - %s", c.username)
 	wnd, err := render.NewNativeWindow(title, w, h)
@@ -3859,7 +3889,7 @@ func runGraphicalWindow(c *Client, w, h int) {
 			}
 		case 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39: // 1-9
 			idx := vkCode - 0x31 + 1
-			if c.player != nil && !c.showPauseMenu && !c.showInventoryGUI && !c.isFurnaceOpen {
+			if c.player != nil && c.player.Inventory != nil && !c.showPauseMenu && !c.showInventoryGUI && !c.isFurnaceOpen {
 				c.player.Inventory.SelectedHotbar = idx - 1
 			}
 		}
@@ -3867,7 +3897,7 @@ func runGraphicalWindow(c *Client, w, h int) {
 
 	// Mouse wheel hotbar switching
 	wnd.OnMouseWheel = func(delta int) {
-		if c.screenState != ScreenPlaying || c.showPauseMenu || c.showInventoryGUI || c.isFurnaceOpen || c.isChatOpen || c.player == nil {
+		if c.screenState != ScreenPlaying || c.showPauseMenu || c.showInventoryGUI || c.isFurnaceOpen || c.isChatOpen || c.player == nil || c.player.Inventory == nil {
 			return
 		}
 		if delta > 0 {

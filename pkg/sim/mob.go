@@ -152,15 +152,7 @@ func (m *MobEntity) TickMob(engine *Engine) {
 					m.IsAlive = false
 					drops := m.DeathDrops()
 					for _, stack := range drops {
-						engine.nextItemDropID++
-						engine.ItemDrops[engine.nextItemDropID] = &ItemDrop{
-							ID:          engine.nextItemDropID,
-							ItemID:      stack.ItemID,
-							Count:       stack.Count,
-							Position:    m.Position.Add(Vec3{X: 0, Y: 0.5, Z: 0}),
-							Velocity:    Vec3{X: 0, Y: 0.15, Z: 0},
-							PickupDelay: 0.2,
-						}
+						engine.SpawnItemDropWithDelay(stack.ItemID, stack.Count, m.Position.Add(Vec3{X: 0, Y: 0.5, Z: 0}), Vec3{X: 0, Y: 0.15, Z: 0}, 0.2)
 					}
 					return
 				}
@@ -186,7 +178,7 @@ func (m *MobEntity) TickMob(engine *Engine) {
 	var closestPlayer *PlayerEntity
 	closestDistSq := 16.0 * 16.0
 
-	for _, p := range engine.Players {
+	for _, p := range engine.GetPlayerList() {
 		if !p.IsAlive || p.GameMode == 1 || p.GameMode == 3 {
 			continue
 		}

@@ -4,6 +4,7 @@ package render
 
 import (
 	"fmt"
+	"log"
 	"math"
 	"runtime"
 	"sync"
@@ -178,7 +179,13 @@ type Window struct {
 
 var globalWnd *Window
 
-func wndProc(hwnd, msg, wparam, lparam uintptr) uintptr {
+func wndProc(hwnd, msg, wparam, lparam uintptr) (result uintptr) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("[Window] Recovered from panic in wndProc: %v", r)
+			result = 0
+		}
+	}()
 	switch msg {
 	case WM_SIZE:
 		if globalWnd != nil {
