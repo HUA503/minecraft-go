@@ -1091,11 +1091,21 @@ func (c *Client) processChunkStreamJob(job chunkStreamJob) {
 		c.meshMu.Lock()
 		if c.meshGeneration == job.generation && job.engine.GetDimension() == job.dimension {
 			delete(c.loadedChunks, job.pos)
+			if c.meshRevisions == nil {
+				c.meshRevisions = make(map[[3]int32]uint64)
+			}
 			for sy := int32(world.MinSectionY); sy <= world.MaxSectionY; sy++ {
-				delete(c.meshCache, [3]int32{job.pos.X, sy, job.pos.Z})
+				key := [3]int32{job.pos.X, sy, job.pos.Z}
+				c.meshRevisions[key]++
+				delete(c.meshCache, key)
+				for _, neighbor := range [][3]int32{{job.pos.X - 1, sy, job.pos.Z}, {job.pos.X + 1, sy, job.pos.Z}, {job.pos.X, sy, job.pos.Z - 1}, {job.pos.X, sy, job.pos.Z + 1}} {
+					c.meshRevisions[neighbor]++
+					delete(c.meshCache, neighbor)
+				}
 			}
 		}
 		c.meshMu.Unlock()
+		c.pruneMeshRevisions()
 		return
 	}
 
@@ -1445,6 +1455,7 @@ func (c *Client) processMeshJob(job sectionMeshJob) {
 			delete(c.meshJobsRunning, job.key)
 		}
 		c.meshJobsMu.Unlock()
+		c.pruneMeshRevisions()
 	}()
 	c.meshMu.RLock()
 	current := c.meshGeneration == job.generation && c.meshRevisions[job.key] == job.revision
@@ -1458,6 +1469,29 @@ func (c *Client) processMeshJob(job sectionMeshJob) {
 		c.meshCache[job.key] = mesh
 	}
 	c.meshMu.Unlock()
+}
+
+// pruneMeshRevisions keeps section version metadata bounded to loaded chunks
+// and jobs that still need an invalidation token.
+func (c *Client) pruneMeshRevisions() {
+	c.meshMu.Lock()
+	defer c.meshMu.Unlock()
+	c.meshJobsMu.Lock()
+	defer c.meshJobsMu.Unlock()
+	for key := range c.meshRevisions {
+		pos := world.ChunkPos{X: key[0], Z: key[2]}
+		if c.loadedChunks[pos] {
+			continue
+		}
+		if _, pending := c.meshJobsPending[key]; pending {
+			continue
+		}
+		if _, running := c.meshJobsRunning[key]; running {
+			continue
+		}
+		delete(c.meshRevisions, key)
+		delete(c.meshCache, key)
+	}
 }
 
 func affectedMeshSections(pos world.BlockPos) [][3]int32 {
