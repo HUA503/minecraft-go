@@ -106,6 +106,36 @@ func TestRegionFileRoundTrip(t *testing.T) {
 	}
 }
 
+func TestOpenRegionInitializesCompleteHeaders(t *testing.T) {
+	mcaPath := filepath.Join(t.TempDir(), "r.0.0.mca")
+	region, err := OpenRegion(mcaPath)
+	if err != nil {
+		t.Fatalf("OpenRegion failed: %v", err)
+	}
+	defer region.Close()
+
+	info, err := os.Stat(mcaPath)
+	if err != nil {
+		t.Fatalf("stat region file: %v", err)
+	}
+	if info.Size() != 8192 {
+		t.Fatalf("new region file size = %d, want complete 8192-byte header", info.Size())
+	}
+
+	data, err := os.ReadFile(mcaPath)
+	if err != nil {
+		t.Fatalf("read region header: %v", err)
+	}
+	if len(data) != 8192 {
+		t.Fatalf("read header length = %d, want 8192", len(data))
+	}
+	for i, b := range data {
+		if b != 0 {
+			t.Fatalf("new region header byte %d = %d, want zero", i, b)
+		}
+	}
+}
+
 func TestRegionInPlaceOverwriteNoBloat(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "region_bloat_test")
 	if err != nil {
@@ -222,3 +252,4 @@ func TestSaveAndLoadLevelWithPlayer(t *testing.T) {
 		t.Errorf("Player inventory item mismatch: %+v", loaded.Player.Inventory[2])
 	}
 }
+
