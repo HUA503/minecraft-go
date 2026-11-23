@@ -263,11 +263,21 @@ func (e *Encoder) writeCompoundPayload(c *CompoundTag) error {
 
 // Decoder reads NBT structures from an io.Reader.
 type Decoder struct {
-	r io.Reader
+	r     io.Reader
+	nodes int
+	depth int
 }
 
+const (
+	maxNBTBytes      = 64 * 1024 * 1024
+	maxNBTArrayBytes = 64 * 1024 * 1024
+	maxNBTListLength = 100_000
+	maxNBTNodes      = 100_000
+	maxNBTDepth      = 256
+)
+
 func NewDecoder(r io.Reader) *Decoder {
-	return &Decoder{r: r}
+	return &Decoder{r: io.LimitReader(r, maxNBTBytes)}
 }
 
 func (d *Decoder) DecodeNamed() (string, *CompoundTag, error) {
@@ -302,6 +312,11 @@ func (d *Decoder) readString() (string, error) {
 }
 
 func (d *Decoder) readPayload(tagType TagType) (Tag, error) {
+	if d.nodes >= maxNBTNodes {
+		return nil, fmt.Errorf("NBT tag count exceeds maximum %d", maxNBTNodes)
+	}
+	d.nodes++
+
 	switch tagType {
 	case TagByte:
 		var v int8
@@ -332,6 +347,9 @@ func (d *Decoder) readPayload(tagType TagType) (Tag, error) {
 		if err := binary.Read(d.r, binary.BigEndian, &len); err != nil {
 			return nil, err
 		}
+		if len < 0 || len > maxNBTArrayBytes {
+			return nil, fmt.Errorf("invalid byte array length: %d", len)
+		}
 		buf := make([]byte, len)
 		_, err := io.ReadFull(d.r, buf)
 		return &ByteArrayTag{Value: buf}, err
@@ -346,6 +364,9 @@ func (d *Decoder) readPayload(tagType TagType) (Tag, error) {
 		var count int32
 		if err := binary.Read(d.r, binary.BigEndian, &count); err != nil {
 			return nil, err
+		}
+		if count < 0 || count > maxNBTListLength {
+			return nil, fmt.Errorf("invalid list length: %d", count)
 		}
 		elemType := TagType(elemTypeByte)
 		elements := make([]Tag, 0, count)
@@ -399,6 +420,12 @@ func (d *Decoder) readPayload(tagType TagType) (Tag, error) {
 }
 
 func (d *Decoder) readCompoundPayload() (*CompoundTag, error) {
+	if d.depth >= maxNBTDepth {
+		return nil, fmt.Errorf("NBT nesting depth exceeds maximum %d", maxNBTDepth)
+	}
+	d.depth++
+	defer func() { d.depth-- }()
+
 	c := NewCompound()
 	for {
 		var tagTypeByte byte
