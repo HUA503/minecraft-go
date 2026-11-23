@@ -4,21 +4,23 @@ import "github.com/HUA503/minecraft-go/pkg/inventory"
 
 const (
 	creativeColumns = 9
-	creativeRows    = 3
+	creativeRows    = 5
 	creativePerPage = creativeColumns * creativeRows
 )
 
-var creativeTabLabels = [...]string{"全部", "方块", "工具", "材料", "食物"}
+// Icon order follows the compact tab strip used by the Java creative screen.
+var creativeTabIcons = [...]int32{345, 1, 37, 331, 328, 325, 260, 270, 268, 263}
+var creativeTabNames = [...]string{"Search Items", "Building Blocks", "Decoration Blocks", "Redstone Blocks", "Transportation", "Miscellaneous", "Foodstuffs", "Tools", "Combat", "Materials"}
 
 // DrawCreativeInventoryGUI draws a paged item catalog above the player's
 // inventory. The player inventory remains interactive so items can be moved
 // from the catalog to the hotbar using the usual cursor clicks.
-func (fb *Framebuffer) DrawCreativeInventoryGUI(inv *inventory.PlayerInventory, cursor inventory.ItemStack, category inventory.CreativeCategory, page, mouseX, mouseY int) {
+func (fb *Framebuffer) DrawCreativeInventoryGUI(inv *inventory.PlayerInventory, cursor inventory.ItemStack, category inventory.CreativeCategory, query string, page, mouseX, mouseY int) {
 	if fb == nil || inv == nil {
 		return
 	}
 	scale := CalculateGUIScaleFromDimensions(fb.Width, fb.Height)
-	panelW, panelH := 230*scale, 210*scale
+	panelW, panelH := 200*scale, 246*scale
 	px, py := fb.Width/2-panelW/2, fb.Height/2-panelH/2
 	for i, c := range fb.Color {
 		r, g, b := (c>>16)&0xFF, (c>>8)&0xFF, c&0xFF
@@ -30,53 +32,97 @@ func (fb *Framebuffer) DrawCreativeInventoryGUI(inv *inventory.PlayerInventory, 
 	fb.DrawRect(px+scale, py+scale, scale, panelH-2*scale, 0xFFFFFFFF)
 	fb.DrawRect(px+panelW-2*scale, py+scale, scale, panelH-2*scale, 0xFF555555)
 	fb.DrawRect(px+scale, py+panelH-2*scale, panelW-2*scale, scale, 0xFF555555)
-	fb.DrawText5x7(px+8*scale, py+5*scale, "创造模式物品栏", 0xFF404040, scale)
-
-	for i, label := range creativeTabLabels {
-		x := px + (7+i*43)*scale
-		col := uint32(0xFF555555)
+	for i := range creativeTabIcons {
 		if int(category) == i {
-			col = 0xFF202020
+			continue
 		}
-		fb.DrawRect(x, py+17*scale, 41*scale, 15*scale, 0xFF8B8B8B)
-		fb.DrawText5x7(x+2*scale, py+21*scale, label, col, scale)
+		x := px + (2+i*18)*scale
+		variant := "4"
+		if i == 0 {
+			variant = "1"
+		} else if i == len(creativeTabIcons)-1 {
+			variant = "7"
+		}
+		if tab, ok := GetOfficialImage("gui/sprites/container/creative_inventory/tab_top_unselected_" + variant + ".png"); ok {
+			fb.DrawRawImageScaled(x, py-2*scale, scale, tab)
+		}
+	}
+	selected := int(category)
+	if selected >= 0 && selected < len(creativeTabIcons) {
+		variant := "4"
+		if selected == 0 {
+			variant = "1"
+		} else if selected == len(creativeTabIcons)-1 {
+			variant = "7"
+		}
+		x := px + (2+selected*18)*scale
+		if tab, ok := GetOfficialImage("gui/sprites/container/creative_inventory/tab_top_selected_" + variant + ".png"); ok {
+			fb.DrawRawImageScaled(x, py-2*scale, scale, tab)
+		}
+	}
+	for i, icon := range creativeTabIcons {
+		x := px + (7+i*18)*scale
+		fb.DrawItemIconScaled(x, py+6*scale, icon, scale)
 	}
 
-	items := inventory.CreativeCatalog(category)
-	maxPage := max(0, (len(items)-1)/creativePerPage)
+	items := inventory.SearchCreativeCatalog(category, query)
+	maxScroll := max(0, (len(items)-creativePerPage+creativeColumns-1)/creativeColumns)
 	if page < 0 {
 		page = 0
 	}
-	if page > maxPage {
-		page = maxPage
+	if page > maxScroll {
+		page = maxScroll
 	}
-	start := page * creativePerPage
+	start := page * creativeColumns
+	hoveredName := ""
 	for i := 0; i < creativePerPage && start+i < len(items); i++ {
 		row, col := i/creativeColumns, i%creativeColumns
-		sx := px + (7+col*24)*scale
-		sy := py + (37+row*20)*scale
-		fb.DrawRect(sx, sy, 18*scale, 18*scale, 0xFF373737)
-		fb.DrawRect(sx+scale, sy+scale, 16*scale, 16*scale, 0xFF8B8B8B)
+		sx := px + (7+col*18)*scale
+		sy := py + (31+row*20)*scale
+		drawOfficialCreativeSlot(fb, sx, sy, scale)
 		fb.DrawItemIconScaled(sx+scale, sy+scale, items[start+i].ID, scale)
 		if mouseX >= sx && mouseX < sx+18*scale && mouseY >= sy && mouseY < sy+18*scale {
 			fb.DrawRect(sx+scale, sy+scale, 16*scale, 16*scale, 0x50FFFFFF)
+			hoveredName = items[start+i].Name
 		}
 	}
+	drawCreativeTooltip(fb, hoveredName, mouseX, mouseY, scale)
+	trackX, trackY, trackH := px+174*scale, py+31*scale, 98*scale
+	fb.DrawRect(trackX+4*scale, trackY, 4*scale, trackH, 0xFF777777)
+	thumbY := trackY
+	if maxScroll > 0 {
+		thumbY += (trackH - 15*scale) * page / maxScroll
+	}
+	if thumb, ok := GetOfficialImage("gui/sprites/container/creative_inventory/scroller.png"); ok {
+		fb.DrawRawImageScaled(trackX, thumbY, scale, thumb)
+	} else {
+		fb.DrawRect(trackX, thumbY, 12*scale, 15*scale, 0xFFAAAAAA)
+	}
 
-	pageText := "第 " + itoa(page+1) + " / " + itoa(maxPage+1) + " 页"
-	fb.DrawText5x7(px+88*scale, py+101*scale, pageText, 0xFF404040, scale)
-	fb.DrawButton(px+7*scale, py+98*scale, 54*scale, 16*scale, "上一页", page > 0 && mouseX >= px+7*scale && mouseX < px+61*scale && mouseY >= py+98*scale && mouseY < py+114*scale)
-	fb.DrawButton(px+169*scale, py+98*scale, 54*scale, 16*scale, "下一页", page < maxPage && mouseX >= px+169*scale && mouseX < px+223*scale && mouseY >= py+98*scale && mouseY < py+114*scale)
-	fb.DrawText5x7(px+8*scale, py+119*scale, "物品栏", 0xFF404040, scale)
+	searchX, searchY := px+7*scale, py+135*scale
+	fb.DrawRect(searchX, searchY, 186*scale, 16*scale, 0xFF555555)
+	fb.DrawRect(searchX+scale, searchY+scale, 184*scale, 14*scale, 0xFFFFFFFF)
+	searchLabel := "Search Items..."
+	if query != "" {
+		searchLabel = query
+	}
+	fb.DrawText5x7(searchX+3*scale, searchY+5*scale, searchLabel, 0xFF404040, scale)
 
-	invX, invY := px+7*scale, py+132*scale
+	invX, invY := px+7*scale, py+160*scale
 	for row := 0; row < 3; row++ {
 		for col := 0; col < 9; col++ {
-			drawCreativePlayerSlot(fb, inv, 9+row*9+col, invX+col*20*scale, invY+row*20*scale, scale, mouseX, mouseY)
+			drawCreativePlayerSlot(fb, inv, 9+row*9+col, invX+col*18*scale, invY+row*18*scale, scale, mouseX, mouseY)
 		}
 	}
 	for col := 0; col < 9; col++ {
-		drawCreativePlayerSlot(fb, inv, col, invX+col*20*scale, py+191*scale, scale, mouseX, mouseY)
+		drawCreativePlayerSlot(fb, inv, col, invX+col*18*scale, py+220*scale, scale, mouseX, mouseY)
+	}
+	for i := range creativeTabIcons {
+		x, y := px+(2+i*18)*scale, py+3*scale
+		if mouseX >= x && mouseX < x+18*scale && mouseY >= y && mouseY < y+22*scale {
+			drawCreativeTooltip(fb, creativeTabNames[i], mouseX, mouseY, scale)
+			break
+		}
 	}
 	if !cursor.IsEmpty() {
 		fb.DrawItemIconScaled(mouseX-8*scale, mouseY-8*scale, cursor.ItemID, scale)
@@ -87,8 +133,7 @@ func (fb *Framebuffer) DrawCreativeInventoryGUI(inv *inventory.PlayerInventory, 
 }
 
 func drawCreativePlayerSlot(fb *Framebuffer, inv *inventory.PlayerInventory, index, x, y, scale, mouseX, mouseY int) {
-	fb.DrawRect(x, y, 18*scale, 18*scale, 0xFF373737)
-	fb.DrawRect(x+scale, y+scale, 16*scale, 16*scale, 0xFF8B8B8B)
+	drawOfficialCreativeSlot(fb, x, y, scale)
 	item := inv.Slots[index]
 	if !item.IsEmpty() {
 		fb.DrawItemIconScaled(x+scale, y+scale, item.ItemID, scale)
@@ -107,60 +152,80 @@ func drawCreativePlayerSlot(fb *Framebuffer, inv *inventory.PlayerInventory, ind
 	}
 }
 
+func drawOfficialCreativeSlot(fb *Framebuffer, x, y, scale int) {
+	if slot, ok := GetOfficialImage("gui/sprites/container/slot.png"); ok && slot.Width == 18 && slot.Height == 18 {
+		fb.DrawRawImageScaled(x, y, scale, slot)
+		return
+	}
+	fb.DrawRect(x, y, 18*scale, 18*scale, 0xFF373737)
+	fb.DrawRect(x+scale, y+scale, 16*scale, 16*scale, 0xFF8B8B8B)
+}
+
+func drawCreativeTooltip(fb *Framebuffer, label string, mouseX, mouseY, scale int) {
+	if label == "" {
+		return
+	}
+	width := len([]rune(label))*6*scale + 8*scale
+	x, y := mouseX+10*scale, mouseY+10*scale
+	if x+width > fb.Width {
+		x = mouseX - width - 8*scale
+	}
+	if y+13*scale > fb.Height {
+		y = mouseY - 18*scale
+	}
+	fb.DrawRect(x, y, width, 13*scale, 0xF0100010)
+	fb.DrawRect(x+scale, y+scale, width-2*scale, 11*scale, 0xF0100010)
+	fb.DrawText5x7(x+4*scale, y+3*scale, label, 0xFFFFFFFF, scale)
+}
+
 // HitTestCreativeInventory maps mouse coordinates to a tab, catalog item,
 // page button, or player inventory slot.
-func HitTestCreativeInventory(w, h int, category inventory.CreativeCategory, page, mouseX, mouseY int) GUISlotHit {
+func HitTestCreativeInventory(w, h int, category inventory.CreativeCategory, query string, page, mouseX, mouseY int) GUISlotHit {
 	scale := CalculateGUIScaleFromDimensions(w, h)
-	px, py := w/2-230*scale/2, h/2-210*scale/2
-	for i := range creativeTabLabels {
-		x := px + (7+i*43)*scale
-		if mouseX >= x && mouseX < x+41*scale && mouseY >= py+17*scale && mouseY < py+32*scale {
+	px, py := w/2-200*scale/2, h/2-246*scale/2
+	if mouseX >= px+7*scale && mouseX < px+193*scale && mouseY >= py+135*scale && mouseY < py+151*scale {
+		return GUISlotHit{Type: SlotCreativeSearch}
+	}
+	for i := range creativeTabIcons {
+		x := px + (2+i*18)*scale
+		if mouseX >= x && mouseX < x+18*scale && mouseY >= py+3*scale && mouseY < py+25*scale {
 			return GUISlotHit{Type: SlotCreativeTab, Index: i}
 		}
 	}
-	if mouseX >= px+7*scale && mouseX < px+61*scale && mouseY >= py+98*scale && mouseY < py+114*scale {
-		return GUISlotHit{Type: SlotCreativePrevious}
+	trackX, trackY, trackH := px+174*scale, py+31*scale, 98*scale
+	if mouseX >= trackX && mouseX < trackX+12*scale && mouseY >= trackY && mouseY < trackY+trackH {
+		return GUISlotHit{Type: SlotCreativeScroll, Index: (mouseY - trackY) * 100 / max(1, trackH-1)}
 	}
-	if mouseX >= px+169*scale && mouseX < px+223*scale && mouseY >= py+98*scale && mouseY < py+114*scale {
-		return GUISlotHit{Type: SlotCreativeNext}
+	items := inventory.SearchCreativeCatalog(category, query)
+	maxScroll := max(0, (len(items)-creativePerPage+creativeColumns-1)/creativeColumns)
+	if page < 0 {
+		page = 0
 	}
-	items := inventory.CreativeCatalog(category)
+	if page > maxScroll {
+		page = maxScroll
+	}
+	start := page * creativeColumns
 	for i := 0; i < creativePerPage; i++ {
 		row, col := i/creativeColumns, i%creativeColumns
-		sx, sy := px+(7+col*24)*scale, py+(37+row*20)*scale
-		if mouseX >= sx && mouseX < sx+18*scale && mouseY >= sy && mouseY < sy+18*scale && page*creativePerPage+i < len(items) {
-			return GUISlotHit{Type: SlotCreativeItem, Index: page*creativePerPage + i}
+		sx, sy := px+(7+col*18)*scale, py+(31+row*20)*scale
+		if mouseX >= sx && mouseX < sx+18*scale && mouseY >= sy && mouseY < sy+18*scale && start+i < len(items) {
+			return GUISlotHit{Type: SlotCreativeItem, Index: start + i}
 		}
 	}
-	invX, invY := px+7*scale, py+132*scale
+	invX, invY := px+7*scale, py+160*scale
 	for row := 0; row < 3; row++ {
 		for col := 0; col < 9; col++ {
-			sx, sy := invX+col*20*scale, invY+row*20*scale
+			sx, sy := invX+col*18*scale, invY+row*18*scale
 			if mouseX >= sx && mouseX < sx+18*scale && mouseY >= sy && mouseY < sy+18*scale {
 				return GUISlotHit{Type: SlotInventory, Index: 9 + row*9 + col}
 			}
 		}
 	}
 	for col := 0; col < 9; col++ {
-		sx, sy := invX+col*20*scale, py+191*scale
+		sx, sy := invX+col*18*scale, py+220*scale
 		if mouseX >= sx && mouseX < sx+18*scale && mouseY >= sy && mouseY < sy+18*scale {
 			return GUISlotHit{Type: SlotInventory, Index: col}
 		}
 	}
 	return GUISlotHit{Type: SlotNone, Index: -1}
 }
-
-func itoa(value int) string {
-	if value == 0 {
-		return "0"
-	}
-	var digits [20]byte
-	i := len(digits)
-	for value > 0 {
-		i--
-		digits[i] = byte('0' + value%10)
-		value /= 10
-	}
-	return string(digits[i:])
-}
-

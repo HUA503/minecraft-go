@@ -177,46 +177,48 @@ type Client struct {
 	lastChunkZ               int32
 	lastChunkStreamTime      time.Time
 	// Authentic Minecraft Mining State
-	isMining            bool
-	breakProgress       float64 // 0.0 to 1.0
-	miningPos           world.BlockPos
-	hasMiningBlock      bool
-	swingProgress       float64 // 0.0 to 1.0
-	isSwinging          bool
-	lastHitSoundTime    time.Time
-	placeCooldown       float64
-	particles           []render.Particle
-	showInventoryGUI    bool
-	creativeTab         inventory.CreativeCategory
-	creativePage        int
-	showAdvancementsGUI bool
-	showPauseMenu       bool
-	backBtnRect         [4]int
-	quitBtnRect         [4]int
-	isEating            bool
-	eatTimer            float64
-	lastMunchSound      time.Time
-	showDebugF3         bool
-	lastStepTime        time.Time
-	fpsCounter          int
-	currentFPS          int
-	fpsTimer            time.Time
-	lastFrameDuration   float64
-	isChatOpen          bool
-	chatInput           string
-	chatMessages        []render.ChatMessage
-	advancements        map[string]bool
-	isCreative          bool
-	isFlying            bool
-	perspectiveMode     int // 0: 1st person, 1: 3rd person back, 2: 3rd person front
-	lastPlayerHealth    float32
-	hurtFlashTimer      float64
-	currentEyeHeight    float64
-	targetFov           float64
-	equipProgress       float64
-	lastSelectedSlot    int
-	respawnBtnRect      [4]int
-	deathTitleBtnRect   [4]int
+	isMining             bool
+	breakProgress        float64 // 0.0 to 1.0
+	miningPos            world.BlockPos
+	hasMiningBlock       bool
+	swingProgress        float64 // 0.0 to 1.0
+	isSwinging           bool
+	lastHitSoundTime     time.Time
+	placeCooldown        float64
+	particles            []render.Particle
+	showInventoryGUI     bool
+	creativeTab          inventory.CreativeCategory
+	creativeSearch       string
+	creativeSearchActive bool
+	creativePage         int
+	showAdvancementsGUI  bool
+	showPauseMenu        bool
+	backBtnRect          [4]int
+	quitBtnRect          [4]int
+	isEating             bool
+	eatTimer             float64
+	lastMunchSound       time.Time
+	showDebugF3          bool
+	lastStepTime         time.Time
+	fpsCounter           int
+	currentFPS           int
+	fpsTimer             time.Time
+	lastFrameDuration    float64
+	isChatOpen           bool
+	chatInput            string
+	chatMessages         []render.ChatMessage
+	advancements         map[string]bool
+	isCreative           bool
+	isFlying             bool
+	perspectiveMode      int // 0: 1st person, 1: 3rd person back, 2: 3rd person front
+	lastPlayerHealth     float32
+	hurtFlashTimer       float64
+	currentEyeHeight     float64
+	targetFov            float64
+	equipProgress        float64
+	lastSelectedSlot     int
+	respawnBtnRect       [4]int
+	deathTitleBtnRect    [4]int
 }
 
 func buildSectionMeshSafely(engine *sim.Engine, key [3]int32) (mesh *render.Mesh) {
@@ -3482,7 +3484,7 @@ func (c *Client) RenderFrame() {
 			mx, my = c.wndRef.GetCursorClientPos(c.framebuf.Width, c.framebuf.Height)
 		}
 		if c.isCreative && !c.isCraftingTableOpen {
-			c.framebuf.DrawCreativeInventoryGUI(c.player.Inventory, c.cursorItem, c.creativeTab, c.creativePage, mx, my)
+			c.framebuf.DrawCreativeInventoryGUI(c.player.Inventory, c.cursorItem, c.creativeTab, c.creativeSearch, c.creativePage, mx, my)
 		} else {
 			c.framebuf.DrawCraftingGUI(c.player.Inventory, c.craftGrid[:], c.craftResult, c.isCraftingTableOpen, c.cursorItem, mx, my)
 		}
@@ -5173,6 +5175,24 @@ func runGraphicalWindow(c *Client, w, h int) {
 			wnd.SetMouseCaptured(true)
 			return
 		}
+		if c.isCreative && c.showInventoryGUI && c.creativeSearchActive {
+			switch vkCode {
+			case 0x08: // Backspace
+				runes := []rune(c.creativeSearch)
+				if len(runes) > 0 {
+					c.creativeSearch = string(runes[:len(runes)-1])
+					c.creativePage = 0
+				}
+				return
+			case 0x0D: // Enter ends search editing
+				c.creativeSearchActive = false
+				return
+			case 0x1B, 0x45: // Escape or E closes the inventory below
+				c.creativeSearchActive = false
+			default:
+				return
+			}
+		}
 		switch vkCode {
 		case 0x46: // F: Mine
 			c.MineTargetedBlock()
@@ -5186,6 +5206,8 @@ func runGraphicalWindow(c *Client, w, h int) {
 					c.showInventoryGUI = true
 					c.isCraftingTableOpen = false
 					c.isFurnaceOpen = false
+					c.creativeSearch = ""
+					c.creativeSearchActive = false
 					wnd.SetMouseCaptured(false)
 				}
 			}
@@ -5245,6 +5267,16 @@ func runGraphicalWindow(c *Client, w, h int) {
 		if c.quitSaving.Load() || c.worldStarting.Load() {
 			return
 		}
+		if c.showInventoryGUI && c.isCreative && !c.isCraftingTableOpen {
+			items := inventory.SearchCreativeCatalog(c.creativeTab, c.creativeSearch)
+			maxScroll := max(0, (len(items)-45+8)/9)
+			if delta > 0 && c.creativePage > 0 {
+				c.creativePage--
+			} else if delta < 0 && c.creativePage < maxScroll {
+				c.creativePage++
+			}
+			return
+		}
 		if c.screenState != ScreenPlaying || c.showPauseMenu || c.showInventoryGUI || c.showAdvancementsGUI || c.isFurnaceOpen || c.isChatOpen || c.player == nil || c.player.Inventory == nil {
 			return
 		}
@@ -5300,6 +5332,13 @@ func runGraphicalWindow(c *Client, w, h int) {
 				} else {
 					c.newWorldSeedText += string(ch)
 				}
+			}
+			return
+		}
+		if c.isCreative && c.showInventoryGUI && !c.isCraftingTableOpen && c.creativeSearchActive {
+			if ch >= 32 && ch != 127 && len([]rune(c.creativeSearch)) < 64 {
+				c.creativeSearch += string(ch)
+				c.creativePage = 0
 			}
 			return
 		}
@@ -5475,23 +5514,24 @@ func runGraphicalWindow(c *Client, w, h int) {
 
 		if c.showInventoryGUI && c.player != nil && c.player.Inventory != nil {
 			if c.isCreative && !c.isCraftingTableOpen {
-				hit := render.HitTestCreativeInventory(c.framebuf.Width, c.framebuf.Height, c.creativeTab, c.creativePage, mx, my)
+				hit := render.HitTestCreativeInventory(c.framebuf.Width, c.framebuf.Height, c.creativeTab, c.creativeSearch, c.creativePage, mx, my)
 				switch hit.Type {
+				case render.SlotCreativeSearch:
+					c.creativeSearchActive = true
 				case render.SlotCreativeTab:
+					c.creativeSearchActive = false
 					c.creativeTab = inventory.CreativeCategory(hit.Index)
 					c.creativePage = 0
-				case render.SlotCreativePrevious:
-					if c.creativePage > 0 {
-						c.creativePage--
-					}
-				case render.SlotCreativeNext:
-					items := inventory.CreativeCatalog(c.creativeTab)
-					maxPage := max(0, (len(items)-1)/27)
-					if c.creativePage < maxPage {
-						c.creativePage++
+				case render.SlotCreativeScroll:
+					c.creativeSearchActive = false
+					items := inventory.SearchCreativeCatalog(c.creativeTab, c.creativeSearch)
+					maxScroll := max(0, (len(items)-45+8)/9)
+					if maxScroll > 0 {
+						c.creativePage = hit.Index * maxScroll / 100
 					}
 				case render.SlotCreativeItem:
-					items := inventory.CreativeCatalog(c.creativeTab)
+					c.creativeSearchActive = false
+					items := inventory.SearchCreativeCatalog(c.creativeTab, c.creativeSearch)
 					if hit.Index >= 0 && hit.Index < len(items) {
 						item := items[hit.Index]
 						count := inventory.GetMaxStackSize(item.ID)
@@ -6221,4 +6261,3 @@ func runInteractiveLoop(c *Client) {
 		}
 	}
 }
-

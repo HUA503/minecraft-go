@@ -99,11 +99,13 @@ func TestGUIHitTestingAndDrawing(t *testing.T) {
 
 func TestCreativeInventoryCatalogAndHitTesting(t *testing.T) {
 	items := inventory.CreativeCatalog(inventory.CreativeAll)
-	if len(items) < 100 {
+	if len(items) < 150 {
 		t.Fatalf("creative catalog unexpectedly small: %d items", len(items))
 	}
 	for _, category := range []inventory.CreativeCategory{
-		inventory.CreativeBlocks, inventory.CreativeTools, inventory.CreativeMaterials, inventory.CreativeFood,
+		inventory.CreativeBlocks, inventory.CreativeDecoration, inventory.CreativeRedstone,
+		inventory.CreativeTransportation, inventory.CreativeMisc, inventory.CreativeFood,
+		inventory.CreativeTools, inventory.CreativeCombat, inventory.CreativeMaterials,
 	} {
 		if got := inventory.CreativeCatalog(category); len(got) == 0 {
 			t.Errorf("creative category %d is empty", category)
@@ -112,18 +114,30 @@ func TestCreativeInventoryCatalogAndHitTesting(t *testing.T) {
 
 	w, h := 400, 300
 	scale := CalculateGUIScaleFromDimensions(w, h)
-	px, py := w/2-230*scale/2, h/2-210*scale/2
-	hitItem := HitTestCreativeInventory(w, h, inventory.CreativeAll, 0, px+8*scale, py+38*scale)
+	px, py := w/2-200*scale/2, h/2-246*scale/2
+	hitItem := HitTestCreativeInventory(w, h, inventory.CreativeAll, "", 0, px+8*scale, py+32*scale)
 	if hitItem.Type != SlotCreativeItem || hitItem.Index != 0 {
 		t.Fatalf("first creative item slot hit = %+v", hitItem)
 	}
-	hitTools := HitTestCreativeInventory(w, h, inventory.CreativeAll, 0, px+(7+2*43+2)*scale, py+20*scale)
+	hitTools := HitTestCreativeInventory(w, h, inventory.CreativeAll, "", 0, px+(2+int(inventory.CreativeTools)*18+2)*scale, py+7*scale)
 	if hitTools.Type != SlotCreativeTab || hitTools.Index != int(inventory.CreativeTools) {
 		t.Fatalf("tools tab hit = %+v", hitTools)
 	}
+	hitSearch := HitTestCreativeInventory(w, h, inventory.CreativeAll, "", 0, px+60*scale, py+137*scale)
+	if hitSearch.Type != SlotCreativeSearch {
+		t.Fatalf("creative search field hit = %+v", hitSearch)
+	}
+	hitLaterItem := HitTestCreativeInventory(w, h, inventory.CreativeAll, "", 1, px+8*scale, py+32*scale)
+	if hitLaterItem.Type != SlotCreativeItem || hitLaterItem.Index != 9 {
+		t.Fatalf("creative second-page item hit = %+v", hitLaterItem)
+	}
+	hitScroll := HitTestCreativeInventory(w, h, inventory.CreativeAll, "", 0, px+178*scale, py+80*scale)
+	if hitScroll.Type != SlotCreativeScroll || hitScroll.Index < 40 || hitScroll.Index > 60 {
+		t.Fatalf("creative scrollbar hit = %+v", hitScroll)
+	}
 
 	fb := NewFramebuffer(w, h)
-	fb.DrawCreativeInventoryGUI(inventory.NewPlayerInventory(), inventory.ItemStack{}, inventory.CreativeAll, 0, -1, -1)
+	fb.DrawCreativeInventoryGUI(inventory.NewPlayerInventory(), inventory.ItemStack{}, inventory.CreativeAll, "", 0, -1, -1)
 	nonZero := 0
 	for _, pixel := range fb.Color {
 		if pixel != 0 {
@@ -132,6 +146,18 @@ func TestCreativeInventoryCatalogAndHitTesting(t *testing.T) {
 	}
 	if nonZero < 1000 {
 		t.Fatalf("creative inventory rendered too few pixels: %d", nonZero)
+	}
+}
+
+func TestCreativeInventoryUsesEmbeddedVanillaGUITextures(t *testing.T) {
+	for _, path := range []string{
+		"assets/textures/gui/sprites/container/slot.png",
+		"assets/textures/gui/sprites/container/creative_inventory/tab_top_selected_1.png",
+		"assets/textures/gui/sprites/container/creative_inventory/tab_top_unselected_4.png",
+	} {
+		if _, err := EmbeddedTextures.ReadFile(path); err != nil {
+			t.Errorf("missing embedded vanilla GUI texture %s: %v", path, err)
+		}
 	}
 }
 
@@ -179,4 +205,3 @@ func TestVisualScreenRenders(t *testing.T) {
 		t.Fatalf("new world screen framebuffer has too few rendered pixels: %d", nonZeroNew)
 	}
 }
-

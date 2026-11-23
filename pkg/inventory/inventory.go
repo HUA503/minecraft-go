@@ -233,7 +233,7 @@ func GetMaxStackSize(itemID int32) int {
 	}
 	// Non-stackable tools, weapons, and accessories
 	switch itemID {
-	case 259, 261, 346, 359: // Flint and Steel, Bow, Fishing Rod, Shears
+	case 259, 261, 328, 333, 342, 343, 346, 359: // Flint and Steel, Bow, minecarts, boat, fishing rod, shears
 		return 1
 	case 325: // Empty bucket
 		return 16
@@ -383,4 +383,3 @@ func HandleSlotRightClick(cursor *ItemStack, slot *ItemStack) {
 		}
 	}
 }
-

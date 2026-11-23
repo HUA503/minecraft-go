@@ -25,6 +25,19 @@ func TestCreativeCatalogHasUniqueUsableItems(t *testing.T) {
 	}
 }
 
+func TestCreativeCatalogSearch(t *testing.T) {
+	diamonds := SearchCreativeCatalog(CreativeAll, "钻石")
+	if len(diamonds) < 3 {
+		t.Fatalf("search for diamond items returned only %d entries", len(diamonds))
+	}
+	if got := SearchCreativeCatalog(CreativeAll, "不存在的物品"); len(got) != 0 {
+		t.Fatalf("unknown query returned %d entries", len(got))
+	}
+	if got := SearchCreativeCatalog(CreativeFood, "钻石"); len(got) != 0 {
+		t.Fatalf("category-filtered search returned %d unrelated entries", len(got))
+	}
+}
+
 func TestInventoryStackingAndRemoval(t *testing.T) {
 	inv := NewPlayerInventory()
 
@@ -253,4 +266,3 @@ func TestSlotLeftAndRightClickLogic(t *testing.T) {
 		t.Fatalf("right click stack 1 failed: cursor=%d, slot=%d", cursor.Count, slotEmpty.Count)
 	}
 }
-

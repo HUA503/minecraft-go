@@ -20,7 +20,7 @@ const (
 	maxTexturePixels       = 4 * 1024 * 1024
 )
 
-//go:embed assets/textures/item/*.png assets/textures/block/*.png assets/textures/gui/sprites/hud/*.png assets/textures/gui/sprites/hud/heart/*.png assets/textures/entity/*/*.png
+//go:embed assets/textures/item/*.png assets/textures/block/*.png assets/textures/gui/container/*.png assets/textures/gui/container/creative_inventory/*.png assets/textures/gui/sprites/container/slot.png assets/textures/gui/sprites/container/creative_inventory/*.png assets/textures/gui/sprites/hud/*.png assets/textures/gui/sprites/hud/heart/*.png assets/textures/entity/*/*.png
 var EmbeddedTextures embed.FS
 
 var (
@@ -325,6 +325,42 @@ func GetOfficialItemSprite(itemID int32) ([16][16]uint32, bool) {
 // GetOfficialItemTextureName maps item IDs to official Mojang vanilla texture filenames.
 func GetOfficialItemTextureName(itemID int32) string {
 	switch itemID {
+	case 345:
+		return "compass_00"
+	case 346:
+		return "fishing_rod"
+	case 262:
+		return "arrow"
+	case 295:
+		return "wheat_seeds"
+	case 296:
+		return "wheat"
+	case 371:
+		return "gold_nugget"
+	case 375:
+		return "spider_eye"
+	case 381:
+		return "ender_eye"
+	case 406:
+		return "quartz"
+	case 328:
+		return "minecart"
+	case 333:
+		return "oak_boat"
+	case 342:
+		return "chest_minecart"
+	case 343:
+		return "furnace_minecart"
+	case 19:
+		return "sponge"
+	case 44:
+		return "stone"
+	case 52:
+		return "spawner"
+	case 153:
+		return "dropper_front"
+	case 154:
+		return "hopper"
 	// --- Tools ---
 	// Pickaxes
 	case 270:
@@ -433,9 +469,6 @@ func GetOfficialItemTextureName(itemID int32) string {
 		return "string"
 	case 261:
 		return "bow"
-	case 262:
-		return "arrow"
-
 	// --- Armor Sets ---
 	// Leather
 	case 298:
@@ -483,10 +516,6 @@ func GetOfficialItemTextureName(itemID int32) string {
 		return "water_bucket"
 	case 327:
 		return "lava_bucket"
-	case 296:
-		return "wheat"
-	case 295:
-		return "wheat_seeds"
 	case 318:
 		return "flint"
 	case 332:
@@ -526,4 +555,3 @@ func GetOfficialItemTextureName(itemID int32) string {
 	}
 	return ""
 }
-
