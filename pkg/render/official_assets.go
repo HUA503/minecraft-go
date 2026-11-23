@@ -341,6 +341,8 @@ func GetOfficialItemTextureName(itemID int32) string {
 		return "spider_eye"
 	case 381:
 		return "ender_eye"
+	case 383:
+		return "slime_spawn_egg"
 	case 406:
 		return "quartz"
 	case 328:

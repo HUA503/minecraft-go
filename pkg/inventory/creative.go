@@ -9,13 +9,14 @@ const (
 	CreativeAll CreativeCategory = iota
 	CreativeBlocks
 	CreativeDecoration
+	CreativeNatural
+	CreativeFunctional
 	CreativeRedstone
-	CreativeTransportation
-	CreativeMisc
-	CreativeFood
 	CreativeTools
 	CreativeCombat
+	CreativeFood
 	CreativeMaterials
+	CreativeSpawnEggs
 )
 
 // CreativeItem describes an item offered by the local creative inventory.
@@ -64,22 +65,22 @@ func SearchCreativeCatalog(category CreativeCategory, query string) []CreativeIt
 
 var creativeCatalog = []CreativeItem{
 	{1, "石头", CreativeBlocks}, {2, "草方块", CreativeBlocks}, {3, "泥土", CreativeBlocks}, {4, "圆石", CreativeBlocks},
-	{5, "橡木木板", CreativeBlocks}, {6, "橡木树苗", CreativeDecoration}, {7, "基岩", CreativeBlocks}, {8, "水", CreativeBlocks}, {9, "静止的水", CreativeBlocks}, {10, "熔岩", CreativeBlocks}, {11, "静止的熔岩", CreativeBlocks},
+	{5, "橡木木板", CreativeBlocks}, {6, "橡木树苗", CreativeNatural}, {7, "基岩", CreativeBlocks}, {8, "水", CreativeNatural}, {9, "静止的水", CreativeNatural}, {10, "熔岩", CreativeNatural}, {11, "静止的熔岩", CreativeNatural},
 	{12, "沙子", CreativeBlocks}, {13, "沙砾", CreativeBlocks}, {14, "金矿石", CreativeBlocks}, {15, "铁矿石", CreativeBlocks},
-	{16, "煤矿石", CreativeBlocks}, {17, "橡木原木", CreativeBlocks}, {18, "橡木树叶", CreativeDecoration}, {19, "海绵", CreativeBlocks}, {20, "玻璃", CreativeDecoration},
-	{21, "白桦树叶", CreativeDecoration}, {22, "云杉原木", CreativeBlocks}, {23, "云杉树叶", CreativeDecoration}, {24, "砂岩", CreativeBlocks}, {31, "高草", CreativeDecoration},
+	{16, "煤矿石", CreativeBlocks}, {17, "橡木原木", CreativeBlocks}, {18, "橡木树叶", CreativeNatural}, {19, "海绵", CreativeBlocks}, {20, "玻璃", CreativeDecoration},
+	{21, "白桦树叶", CreativeNatural}, {22, "云杉原木", CreativeBlocks}, {23, "云杉树叶", CreativeNatural}, {24, "砂岩", CreativeBlocks}, {31, "高草", CreativeNatural},
 	{25, "音符盒", CreativeRedstone}, {35, "白色羊毛", CreativeBlocks}, {43, "双石台阶", CreativeBlocks},
-	{32, "枯萎灌木", CreativeDecoration}, {33, "蕨", CreativeDecoration}, {37, "蒲公英", CreativeDecoration}, {38, "虞美人", CreativeDecoration},
+	{32, "枯萎灌木", CreativeNatural}, {33, "蕨", CreativeNatural}, {37, "蒲公英", CreativeNatural}, {38, "虞美人", CreativeNatural},
 	{41, "金块", CreativeBlocks}, {42, "铁块", CreativeBlocks}, {44, "石台阶", CreativeBlocks}, {45, "砖块", CreativeBlocks}, {46, "TNT", CreativeRedstone},
 	{47, "书架", CreativeBlocks}, {48, "苔石", CreativeBlocks}, {49, "黑曜石", CreativeBlocks}, {50, "火把", CreativeRedstone}, {52, "刷怪笼", CreativeBlocks},
 	{54, "箱子", CreativeBlocks}, {56, "钻石矿石", CreativeBlocks}, {57, "钻石块", CreativeBlocks}, {58, "工作台", CreativeBlocks},
-	{61, "熔炉", CreativeRedstone}, {65, "梯子", CreativeDecoration}, {73, "红石矿石", CreativeRedstone}, {74, "青金石矿石", CreativeBlocks},
-	{81, "仙人掌", CreativeDecoration}, {83, "甘蔗", CreativeDecoration}, {84, "唱片机", CreativeBlocks}, {86, "南瓜", CreativeDecoration}, {87, "下界岩", CreativeBlocks},
-	{79, "冰", CreativeBlocks}, {80, "雪块", CreativeBlocks}, {82, "黏土块", CreativeBlocks}, {88, "灵魂沙", CreativeBlocks}, {89, "荧石", CreativeBlocks}, {90, "下界传送门", CreativeBlocks}, {98, "石砖", CreativeBlocks}, {103, "西瓜", CreativeDecoration},
-	{91, "南瓜灯", CreativeBlocks}, {111, "睡莲", CreativeDecoration}, {112, "下界砖块", CreativeBlocks}, {119, "末地传送门", CreativeBlocks}, {120, "末地传送门框架", CreativeBlocks}, {121, "末地石", CreativeBlocks},
-	{122, "龙蛋", CreativeBlocks}, {123, "红石灯（亮）", CreativeRedstone}, {124, "红石灯（灭）", CreativeRedstone}, {126, "橡木台阶", CreativeBlocks}, {129, "绿宝石矿石", CreativeBlocks}, {133, "绿宝石块", CreativeBlocks}, {138, "信标", CreativeBlocks},
+	{61, "熔炉", CreativeRedstone}, {65, "梯子", CreativeFunctional}, {73, "红石矿石", CreativeRedstone}, {74, "青金石矿石", CreativeBlocks},
+	{81, "仙人掌", CreativeNatural}, {83, "甘蔗", CreativeNatural}, {84, "唱片机", CreativeFunctional}, {86, "南瓜", CreativeNatural}, {87, "下界岩", CreativeBlocks},
+	{79, "冰", CreativeNatural}, {80, "雪块", CreativeNatural}, {82, "黏土块", CreativeBlocks}, {88, "灵魂沙", CreativeNatural}, {89, "荧石", CreativeBlocks}, {90, "下界传送门", CreativeFunctional}, {98, "石砖", CreativeBlocks}, {103, "西瓜", CreativeNatural},
+	{91, "南瓜灯", CreativeFunctional}, {111, "睡莲", CreativeNatural}, {112, "下界砖块", CreativeBlocks}, {119, "末地传送门", CreativeFunctional}, {120, "末地传送门框架", CreativeFunctional}, {121, "末地石", CreativeBlocks},
+	{122, "龙蛋", CreativeFunctional}, {123, "红石灯（亮）", CreativeRedstone}, {124, "红石灯（灭）", CreativeRedstone}, {126, "橡木台阶", CreativeBlocks}, {129, "绿宝石矿石", CreativeBlocks}, {133, "绿宝石块", CreativeBlocks}, {138, "信标", CreativeFunctional},
 	{150, "深板岩", CreativeBlocks}, {152, "红石块", CreativeRedstone}, {153, "投掷器", CreativeBlocks}, {154, "漏斗", CreativeBlocks},
-	{155, "石英块", CreativeBlocks}, {159, "白色陶瓦", CreativeBlocks}, {165, "黏液块", CreativeBlocks}, {168, "海晶石", CreativeBlocks}, {169, "海晶灯", CreativeBlocks}, {170, "干草块", CreativeBlocks}, {172, "陶瓦", CreativeBlocks}, {173, "煤炭块", CreativeBlocks}, {174, "浮冰", CreativeBlocks}, {179, "红砂岩", CreativeBlocks},
+	{155, "石英块", CreativeBlocks}, {159, "白色陶瓦", CreativeDecoration}, {165, "黏液块", CreativeBlocks}, {168, "海晶石", CreativeBlocks}, {169, "海晶灯", CreativeFunctional}, {170, "干草块", CreativeBlocks}, {172, "陶瓦", CreativeDecoration}, {173, "煤炭块", CreativeBlocks}, {174, "浮冰", CreativeNatural}, {179, "红砂岩", CreativeBlocks},
 
 	{268, "木剑", CreativeCombat}, {272, "石剑", CreativeCombat}, {267, "铁剑", CreativeCombat}, {276, "钻石剑", CreativeCombat},
 	{283, "金剑", CreativeCombat}, {270, "木镐", CreativeTools}, {274, "石镐", CreativeTools}, {257, "铁镐", CreativeTools},
@@ -97,10 +98,10 @@ var creativeCatalog = []CreativeItem{
 	{262, "箭", CreativeMaterials}, {263, "煤炭", CreativeMaterials}, {264, "钻石", CreativeMaterials}, {265, "铁锭", CreativeMaterials}, {266, "金锭", CreativeMaterials},
 	{280, "木棍", CreativeMaterials}, {331, "红石粉", CreativeRedstone}, {352, "骨头", CreativeMaterials}, {288, "羽毛", CreativeMaterials},
 	{289, "火药", CreativeMaterials}, {287, "线", CreativeMaterials}, {334, "皮革", CreativeMaterials}, {318, "燧石", CreativeMaterials}, {295, "小麦种子", CreativeMaterials}, {296, "小麦", CreativeMaterials},
-	{322, "金苹果", CreativeFood}, {325, "铁桶", CreativeMisc}, {326, "水桶", CreativeMisc}, {327, "熔岩桶", CreativeMisc}, {346, "钓鱼竿", CreativeTools},
-	{332, "雪球", CreativeMisc}, {344, "鸡蛋", CreativeMisc}, {368, "末影珍珠", CreativeMisc}, {324, "橡木门", CreativeDecoration},
-	{330, "铁门", CreativeDecoration}, {336, "砖", CreativeMaterials}, {337, "黏土球", CreativeMaterials}, {340, "书", CreativeMisc}, {345, "指南针", CreativeMisc}, {371, "金粒", CreativeMaterials}, {375, "蜘蛛眼", CreativeMisc}, {381, "末影之眼", CreativeMisc}, {406, "下界石英", CreativeMaterials},
-	{328, "矿车", CreativeTransportation}, {333, "橡木船", CreativeTransportation}, {342, "运输矿车", CreativeTransportation}, {343, "熔炉矿车", CreativeTransportation},
+	{322, "金苹果", CreativeFood}, {325, "铁桶", CreativeTools}, {326, "水桶", CreativeTools}, {327, "熔岩桶", CreativeTools}, {346, "钓鱼竿", CreativeTools},
+	{332, "雪球", CreativeTools}, {344, "鸡蛋", CreativeTools}, {368, "末影珍珠", CreativeTools}, {324, "橡木门", CreativeFunctional},
+	{330, "铁门", CreativeFunctional}, {336, "砖", CreativeMaterials}, {337, "黏土球", CreativeMaterials}, {340, "书", CreativeTools}, {345, "指南针", CreativeTools}, {371, "金粒", CreativeMaterials}, {375, "蜘蛛眼", CreativeTools}, {381, "末影之眼", CreativeTools}, {406, "下界石英", CreativeMaterials},
+	{328, "矿车", CreativeFunctional}, {333, "橡木船", CreativeFunctional}, {342, "运输矿车", CreativeFunctional}, {343, "熔炉矿车", CreativeFunctional},
 
 	{260, "苹果", CreativeFood}, {297, "面包", CreativeFood}, {319, "生猪排", CreativeFood}, {320, "熟猪排", CreativeFood},
 	{363, "生牛肉", CreativeFood}, {364, "牛排", CreativeFood}, {367, "腐肉", CreativeFood}, {365, "生鸡肉", CreativeFood},

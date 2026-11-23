@@ -103,18 +103,21 @@ func TestCreativeInventoryCatalogAndHitTesting(t *testing.T) {
 		t.Fatalf("creative catalog unexpectedly small: %d items", len(items))
 	}
 	for _, category := range []inventory.CreativeCategory{
-		inventory.CreativeBlocks, inventory.CreativeDecoration, inventory.CreativeRedstone,
-		inventory.CreativeTransportation, inventory.CreativeMisc, inventory.CreativeFood,
-		inventory.CreativeTools, inventory.CreativeCombat, inventory.CreativeMaterials,
+		inventory.CreativeBlocks, inventory.CreativeDecoration, inventory.CreativeNatural,
+		inventory.CreativeFunctional, inventory.CreativeRedstone, inventory.CreativeTools,
+		inventory.CreativeCombat, inventory.CreativeFood, inventory.CreativeMaterials,
 	} {
 		if got := inventory.CreativeCatalog(category); len(got) == 0 {
 			t.Errorf("creative category %d is empty", category)
 		}
 	}
+	if got := inventory.CreativeCatalog(inventory.CreativeSpawnEggs); len(got) != 0 {
+		t.Fatalf("spawn-egg tab has %d items, expected the explicitly unsupported tab to be empty", len(got))
+	}
 
 	w, h := 400, 300
 	scale := CalculateGUIScaleFromDimensions(w, h)
-	px, py := w/2-200*scale/2, h/2-234*scale/2
+	px, py := w/2-204*scale/2, h/2-234*scale/2
 	hitItem := HitTestCreativeInventory(w, h, inventory.CreativeAll, "", 0, px+8*scale, py+28*scale)
 	if hitItem.Type != SlotCreativeItem || hitItem.Index != 0 {
 		t.Fatalf("first creative item slot hit = %+v", hitItem)
@@ -152,9 +155,9 @@ func TestCreativeInventoryCatalogAndHitTesting(t *testing.T) {
 func TestCreativeInventoryFitsMinimumGUIResolution(t *testing.T) {
 	w, h := 320, 240
 	scale := CalculateGUIScaleFromDimensions(w, h)
-	panelH := 234 * scale
-	if panelH > h {
-		t.Fatalf("creative inventory height %d exceeds framebuffer height %d", panelH, h)
+	panelW, panelH := 204*scale, 234*scale
+	if panelH > h || panelW > w {
+		t.Fatalf("creative inventory size %dx%d exceeds framebuffer %dx%d", panelW, panelH, w, h)
 	}
 	fb := NewFramebuffer(w, h)
 	fb.DrawCreativeInventoryGUI(inventory.NewPlayerInventory(), inventory.ItemStack{}, inventory.CreativeAll, "", 0, -1, -1)

@@ -9,8 +9,8 @@ const (
 )
 
 // Icon order follows the compact tab strip used by the Java creative screen.
-var creativeTabIcons = [...]int32{345, 1, 37, 331, 328, 325, 260, 270, 268, 263}
-var creativeTabNames = [...]string{"Search Items", "Building Blocks", "Decoration Blocks", "Redstone Blocks", "Transportation", "Miscellaneous", "Foodstuffs", "Tools", "Combat", "Materials"}
+var creativeTabIcons = [...]int32{345, 1, 35, 6, 54, 331, 270, 268, 260, 296, 383}
+var creativeTabNames = [...]string{"Search Items", "Building Blocks", "Colored Blocks", "Natural Blocks", "Functional Blocks", "Redstone Blocks", "Tools & Utilities", "Combat", "Food & Drinks", "Ingredients", "Spawn Eggs"}
 
 // DrawCreativeInventoryGUI draws a paged item catalog above the player's
 // inventory. The player inventory remains interactive so items can be moved
@@ -20,7 +20,7 @@ func (fb *Framebuffer) DrawCreativeInventoryGUI(inv *inventory.PlayerInventory, 
 		return
 	}
 	scale := CalculateGUIScaleFromDimensions(fb.Width, fb.Height)
-	panelW, panelH := 200*scale, 234*scale
+	panelW, panelH := 204*scale, 234*scale
 	px, py := fb.Width/2-panelW/2, fb.Height/2-panelH/2
 	for i, c := range fb.Color {
 		r, g, b := (c>>16)&0xFF, (c>>8)&0xFF, c&0xFF
@@ -182,7 +182,7 @@ func drawCreativeTooltip(fb *Framebuffer, label string, mouseX, mouseY, scale in
 // page button, or player inventory slot.
 func HitTestCreativeInventory(w, h int, category inventory.CreativeCategory, query string, page, mouseX, mouseY int) GUISlotHit {
 	scale := CalculateGUIScaleFromDimensions(w, h)
-	px, py := w/2-200*scale/2, h/2-234*scale/2
+	px, py := w/2-204*scale/2, h/2-234*scale/2
 	if mouseX >= px+7*scale && mouseX < px+193*scale && mouseY >= py+120*scale && mouseY < py+136*scale {
 		return GUISlotHit{Type: SlotCreativeSearch}
 	}
