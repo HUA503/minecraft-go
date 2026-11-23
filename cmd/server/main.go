@@ -47,6 +47,7 @@ type ClientSession struct {
 	playerID int32
 	closed   bool
 	mu       sync.Mutex
+	writeMu  sync.Mutex
 }
 
 func NewServer(addr, worldDir string) *Server {
@@ -198,8 +199,9 @@ func (sess *ClientSession) canModifyBlock(bu protocol.BlockUpdatePacket) bool {
 	if bu.BlockID != 0 && !inventory.IsPlaceableBlock(bu.BlockID) {
 		return false
 	}
+	_, playerID, _, _ := sess.snapshot()
 	for _, player := range sess.server.simEngine.GetPlayerList() {
-		if player.ID != sess.playerID {
+		if player.ID != playerID {
 			continue
 		}
 		dx := float64(bu.X) + 0.5 - player.Position.X
@@ -227,7 +229,8 @@ func (s *Server) broadcastLoop() {
 		s.mu.Lock()
 		sessions := make([]*ClientSession, 0, len(s.sessions))
 		for _, sess := range s.sessions {
-			if sess.state == protocol.StatePlay {
+			state, _, _, _ := sess.snapshot()
+			if state == protocol.StatePlay {
 				sessions = append(sessions, sess)
 			}
 		}
@@ -254,7 +257,8 @@ func (s *Server) broadcastLoop() {
 				OnGround: true,
 			}
 			for _, sess := range sessions {
-				if sess.playerID != ev.PlayerID { // Broadcast to other players
+				_, playerID, _, _ := sess.snapshot()
+				if playerID != ev.PlayerID { // Broadcast to other players
 					sess.Send(pkt)
 				}
 			}
@@ -288,21 +292,25 @@ func (s *Server) handleConnection(conn net.Conn) {
 }
 
 func (sess *ClientSession) Send(pkt protocol.Packet) error {
+	sess.writeMu.Lock()
+	defer sess.writeMu.Unlock()
 	sess.mu.Lock()
-	defer sess.mu.Unlock()
 	if sess.closed {
+		sess.mu.Unlock()
 		return net.ErrClosed
 	}
-	if err := sess.conn.SetWriteDeadline(time.Now().Add(5 * time.Second)); err != nil {
-		_ = sess.conn.Close()
+	conn := sess.conn
+	sess.mu.Unlock()
+	if err := conn.SetWriteDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		_ = conn.Close()
 		return err
 	}
-	if err := protocol.SendPacket(sess.conn, pkt); err != nil {
-		_ = sess.conn.Close()
+	if err := protocol.SendPacket(conn, pkt); err != nil {
+		_ = conn.Close()
 		return err
 	}
-	if err := sess.conn.SetWriteDeadline(time.Time{}); err != nil {
-		_ = sess.conn.Close()
+	if err := conn.SetWriteDeadline(time.Time{}); err != nil {
+		_ = conn.Close()
 		return err
 	}
 	return nil
@@ -310,14 +318,44 @@ func (sess *ClientSession) Send(pkt protocol.Packet) error {
 
 func (sess *ClientSession) Close() {
 	sess.mu.Lock()
-	defer sess.mu.Unlock()
-	if !sess.closed {
-		sess.closed = true
-		sess.conn.Close()
-		if sess.playerID > 0 {
-			sess.server.simEngine.RemovePlayer(sess.playerID)
-		}
+	if sess.closed {
+		sess.mu.Unlock()
+		return
 	}
+	sess.closed = true
+	conn := sess.conn
+	playerID := sess.playerID
+	sess.mu.Unlock()
+	_ = conn.Close()
+	if playerID > 0 {
+		sess.server.simEngine.RemovePlayer(playerID)
+	}
+}
+
+func (sess *ClientSession) snapshot() (protocol.ConnectionState, int32, string, [16]byte) {
+	sess.mu.Lock()
+	defer sess.mu.Unlock()
+	return sess.state, sess.playerID, sess.username, sess.uuid
+}
+
+func (sess *ClientSession) setState(state protocol.ConnectionState) {
+	sess.mu.Lock()
+	sess.state = state
+	sess.mu.Unlock()
+}
+
+func (sess *ClientSession) setIdentity(username string, uuid [16]byte) {
+	sess.mu.Lock()
+	sess.username = username
+	sess.uuid = uuid
+	sess.mu.Unlock()
+}
+
+func (sess *ClientSession) activatePlayer(playerID int32) {
+	sess.mu.Lock()
+	sess.playerID = playerID
+	sess.state = protocol.StatePlay
+	sess.mu.Unlock()
 }
 
 func (sess *ClientSession) readLoop() {
@@ -328,15 +366,17 @@ func (sess *ClientSession) readLoop() {
 		}
 
 		if err := sess.handlePacket(raw); err != nil {
+			state, _, _, _ := sess.snapshot()
 			log.Printf("[Session %d] Error handling packet (state %v, id 0x%02X): %v",
-				sess.ID, sess.state, raw.ID, err)
+				sess.ID, state, raw.ID, err)
 			return
 		}
 	}
 }
 
 func (sess *ClientSession) handlePacket(raw *protocol.RawPacket) error {
-	switch sess.state {
+	state, _, _, _ := sess.snapshot()
+	switch state {
 	case protocol.StateHandshake:
 		if raw.ID == 0x00 {
 			var hs protocol.HandshakePacket
@@ -344,9 +384,9 @@ func (sess *ClientSession) handlePacket(raw *protocol.RawPacket) error {
 				return err
 			}
 			if hs.NextState == 1 {
-				sess.state = protocol.StateStatus
+				sess.setState(protocol.StateStatus)
 			} else if hs.NextState == 2 {
-				sess.state = protocol.StateLogin
+				sess.setState(protocol.StateLogin)
 			}
 		}
 
@@ -355,7 +395,8 @@ func (sess *ClientSession) handlePacket(raw *protocol.RawPacket) error {
 			sess.server.mu.Lock()
 			onlineCount := 0
 			for _, s := range sess.server.sessions {
-				if s.state == protocol.StatePlay {
+				state, _, _, _ := s.snapshot()
+				if state == protocol.StatePlay {
 					onlineCount++
 				}
 			}
@@ -390,21 +431,19 @@ func (sess *ClientSession) handlePacket(raw *protocol.RawPacket) error {
 			if err := ls.Decode(raw.Reader()); err != nil {
 				return err
 			}
-			sess.username = ls.Username
-			sess.uuid = ls.PlayerUUID
+			sess.setIdentity(ls.Username, ls.PlayerUUID)
 
 			// Send LoginSuccess
 			if err := sess.Send(&protocol.LoginSuccessPacket{
-				UUID:     sess.uuid,
-				Username: sess.username,
+				UUID:     ls.PlayerUUID,
+				Username: ls.Username,
 			}); err != nil {
 				return err
 			}
 
 			// Add player to simulation engine at spawn (X=8, Y=65, Z=8)
-			player := sess.server.simEngine.AddPlayer(sess.username, sess.uuid, sim.Vec3{X: 8, Y: 65, Z: 8})
-			sess.playerID = player.ID
-			sess.state = protocol.StatePlay
+			player := sess.server.simEngine.AddPlayer(ls.Username, ls.PlayerUUID, sim.Vec3{X: 8, Y: 65, Z: 8})
+			sess.activatePlayer(player.ID)
 
 			// Send existing modified blocks to the new player
 			sess.server.mu.Lock()
@@ -417,24 +456,33 @@ func (sess *ClientSession) handlePacket(raw *protocol.RawPacket) error {
 				})
 			}
 
-			// Send existing players to the new player
+			others := make([]*ClientSession, 0, len(sess.server.sessions))
 			for _, other := range sess.server.sessions {
-				if other.ID != sess.ID && other.state == protocol.StatePlay {
-					if otherP, ok := sess.server.simEngine.Players[other.playerID]; ok {
-						_ = sess.Send(&protocol.PlayerPositionPacket{
-							X:        otherP.Position.X,
-							Y:        otherP.Position.Y,
-							Z:        otherP.Position.Z,
-							Yaw:      otherP.Yaw,
-							Pitch:    otherP.Pitch,
-							OnGround: true,
-						})
-					}
+				if other.ID != sess.ID {
+					others = append(others, other)
 				}
 			}
 			sess.server.mu.Unlock()
+			playersByID := make(map[int32]sim.PlayerEntity)
+			for _, otherPlayer := range sess.server.simEngine.GetPlayerList() {
+				playersByID[otherPlayer.ID] = otherPlayer
+			}
+			for _, other := range others {
+				otherState, otherID, _, _ := other.snapshot()
+				otherP, exists := playersByID[otherID]
+				if otherState == protocol.StatePlay && exists {
+					_ = sess.Send(&protocol.PlayerPositionPacket{
+						X:        otherP.Position.X,
+						Y:        otherP.Position.Y,
+						Z:        otherP.Position.Z,
+						Yaw:      otherP.Yaw,
+						Pitch:    otherP.Pitch,
+						OnGround: true,
+					})
+				}
+			}
 
-			log.Printf("[Server] Player joined: %s (UUID: %x, EntityID: %d)", sess.username, sess.uuid, sess.playerID)
+			log.Printf("[Server] Player joined: %s (UUID: %x, EntityID: %d)", ls.Username, ls.PlayerUUID, player.ID)
 		}
 
 	case protocol.StatePlay:
@@ -445,9 +493,11 @@ func (sess *ClientSession) handlePacket(raw *protocol.RawPacket) error {
 				return err
 			}
 			if !validPlayerPosition(pos) {
-				return fmt.Errorf("invalid player position from %q", sess.username)
+				_, _, username, _ := sess.snapshot()
+				return fmt.Errorf("invalid player position from %q", username)
 			}
-			sess.server.simEngine.MovePlayer(sess.playerID, sim.Vec3{X: pos.X, Y: pos.Y, Z: pos.Z}, pos.Yaw, pos.Pitch, pos.OnGround)
+			_, playerID, _, _ := sess.snapshot()
+			sess.server.simEngine.MovePlayer(playerID, sim.Vec3{X: pos.X, Y: pos.Y, Z: pos.Z}, pos.Yaw, pos.Pitch, pos.OnGround)
 
 		case 0x09: // BlockUpdate (Place/Break)
 			var bu protocol.BlockUpdatePacket
