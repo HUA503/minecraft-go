@@ -23,6 +23,43 @@ func TestAABBIntersection(t *testing.T) {
 	}
 }
 
+func TestTickDoesNotDeadlockAtHundredthTick(t *testing.T) {
+	eng := NewEngine()
+	player := eng.AddPlayer("test", [16]byte{}, Vec3{X: 0.5, Y: 64, Z: 0.5})
+	if player == nil {
+		t.Fatal("expected player to be added")
+	}
+	eng.TickCount = 99
+
+	// The removed 100-tick spawning path selected a random position 24–54
+	// blocks from the player. Make every candidate a valid grass surface so the
+	// regression reliably reaches the former nested SpawnMob lock.
+	for chunkX := int32(-4); chunkX <= 3; chunkX++ {
+		for chunkZ := int32(-4); chunkZ <= 3; chunkZ++ {
+			pos := world.ChunkPos{X: chunkX, Z: chunkZ}
+			chunk := world.NewChunk(pos)
+			for localX := int32(0); localX < world.ChunkWidth; localX++ {
+				for localZ := int32(0); localZ < world.ChunkWidth; localZ++ {
+					chunk.SetBlock(chunkX*world.ChunkWidth+localX, 63, chunkZ*world.ChunkWidth+localZ, 2)
+				}
+			}
+			eng.World[pos] = chunk
+		}
+	}
+
+	done := make(chan struct{})
+	go func() {
+		eng.Tick()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Engine.Tick deadlocked during natural mob spawning at tick 100")
+	}
+}
+
 func TestRaycastHitBlock(t *testing.T) {
 	solidBlocks := map[[3]int32]bool{
 		{5, 64, 0}: true,
@@ -900,3 +937,4 @@ func TestFurnaceSmeltingAndDrop(t *testing.T) {
 		t.Fatalf("expected furnace contents (iron ingot) dropped when broken")
 	}
 }
+
