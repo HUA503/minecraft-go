@@ -1611,8 +1611,9 @@ func (c *Client) networkReceiveLoop() {
 			var bu protocol.BlockUpdatePacket
 			if err := bu.Decode(raw.Reader()); err == nil && world.ValidBlockCoordinates(bu.X, bu.Y, bu.Z) && bu.BlockID >= 0 {
 				if c.engine != nil {
-					c.engine.SetBlock(bu.X, bu.Y, bu.Z, bu.BlockID)
-					c.RebuildAffectedMeshes(world.BlockPos{X: bu.X, Y: bu.Y, Z: bu.Z})
+					if c.engine.SetBlockChecked(bu.X, bu.Y, bu.Z, bu.BlockID) {
+						c.RebuildAffectedMeshes(world.BlockPos{X: bu.X, Y: bu.Y, Z: bu.Z})
+					}
 				}
 			}
 		case 0x1A: // PlayerPositionPacket
@@ -5491,11 +5492,11 @@ func runInteractiveLoop(c *Client) {
 				by, _ := strconv.Atoi(parts[2])
 				bz, _ := strconv.Atoi(parts[3])
 				bid, _ := strconv.Atoi(parts[4])
-				if c.engine != nil {
-					c.engine.SetBlock(int32(bx), int32(by), int32(bz), int32(bid))
+				applied := c.engine != nil && c.engine.SetBlockChecked(int32(bx), int32(by), int32(bz), int32(bid))
+				if applied {
 					c.RebuildAffectedMeshes(world.BlockPos{X: int32(bx), Y: int32(by), Z: int32(bz)})
 				}
-				if c.conn != nil {
+				if applied && c.conn != nil {
 					_ = protocol.SendPacket(c.conn, &protocol.BlockUpdatePacket{
 						X:       int32(bx),
 						Y:       int32(by),
@@ -5503,18 +5504,22 @@ func runInteractiveLoop(c *Client) {
 						BlockID: int32(bid),
 					})
 				}
-				fmt.Printf("Placed block ID %d at (%d, %d, %d)\n", bid, bx, by, bz)
+				if applied {
+					fmt.Printf("Placed block ID %d at (%d, %d, %d)\n", bid, bx, by, bz)
+				} else {
+					fmt.Printf("Could not update block at (%d, %d, %d)\n", bx, by, bz)
+				}
 			}
 		case "mine_at":
 			if len(parts) >= 4 {
 				bx, _ := strconv.Atoi(parts[1])
 				by, _ := strconv.Atoi(parts[2])
 				bz, _ := strconv.Atoi(parts[3])
-				if c.engine != nil {
-					c.engine.SetBlock(int32(bx), int32(by), int32(bz), 0)
+				applied := c.engine != nil && c.engine.SetBlockChecked(int32(bx), int32(by), int32(bz), 0)
+				if applied {
 					c.RebuildAffectedMeshes(world.BlockPos{X: int32(bx), Y: int32(by), Z: int32(bz)})
 				}
-				if c.conn != nil {
+				if applied && c.conn != nil {
 					_ = protocol.SendPacket(c.conn, &protocol.BlockUpdatePacket{
 						X:       int32(bx),
 						Y:       int32(by),
@@ -5522,7 +5527,11 @@ func runInteractiveLoop(c *Client) {
 						BlockID: 0,
 					})
 				}
-				fmt.Printf("Mined block at (%d, %d, %d)\n", bx, by, bz)
+				if applied {
+					fmt.Printf("Mined block at (%d, %d, %d)\n", bx, by, bz)
+				} else {
+					fmt.Printf("Could not update block at (%d, %d, %d)\n", bx, by, bz)
+				}
 			}
 		case "mine":
 			drop, ok := c.MineTargetedBlock()

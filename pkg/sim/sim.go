@@ -773,20 +773,26 @@ func (e *Engine) setBlockLocked(x, y, z int32, state int32) {
 }
 
 func (e *Engine) SetBlock(x, y, z int32, state int32) {
+	_ = e.SetBlockChecked(x, y, z, state)
+}
+
+// SetBlockChecked writes to a loaded or genuinely absent chunk and reports
+// whether the mutation was applied. An unreadable stored chunk is left intact.
+func (e *Engine) SetBlockChecked(x, y, z int32, state int32) bool {
 	if !world.ValidBlockCoordinates(x, y, z) || state < 0 {
-		return
+		return false
 	}
 	dimension := e.GetDimension()
 	cp := world.BlockPos{X: x, Y: y, Z: z}.ToChunkPos()
 	loaded, err := e.GetChunkInDimensionWithError(dimension, cp)
 	if err != nil {
 		log.Printf("[World] Refusing block update in unreadable chunk %v (dimension %d): %v", cp, dimension, err)
-		return
+		return false
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if e.CurrentDimension != dimension || dimension < 0 || dimension >= len(e.DimensionWorlds) {
-		return
+		return false
 	}
 	if e.World[cp] == nil {
 		chunk := loaded
@@ -796,6 +802,7 @@ func (e *Engine) SetBlock(x, y, z int32, state int32) {
 		e.World[cp] = chunk
 	}
 	e.setBlockLocked(x, y, z, state)
+	return e.World[cp] != nil && e.World[cp].GetBlock(x, y, z) == state
 }
 
 // UnloadChunk purges a distant chunk from active simulation, saving it to disk if dirty.
@@ -848,7 +855,9 @@ func (e *Engine) BreakBlockWithTool(playerID int32, pos world.BlockPos, toolID i
 		return 0, false
 	}
 
-	e.SetBlock(pos.X, pos.Y, pos.Z, 0) // Air
+	if !e.SetBlockChecked(pos.X, pos.Y, pos.Z, 0) {
+		return 0, false
+	}
 	if origBlock == 61 || origBlock == 62 {
 		e.mu.Lock()
 		if f, ok := e.Furnaces[pos]; ok && f != nil {
@@ -933,7 +942,9 @@ func (e *Engine) BreakBlock(playerID int32, pos world.BlockPos) int32 {
 		return 0
 	}
 
-	e.SetBlock(pos.X, pos.Y, pos.Z, 0) // Air
+	if !e.SetBlockChecked(pos.X, pos.Y, pos.Z, 0) {
+		return 0
+	}
 	if origBlock == 61 || origBlock == 62 {
 		e.mu.Lock()
 		if f, ok := e.Furnaces[pos]; ok && f != nil {
@@ -1000,6 +1011,10 @@ func (e *Engine) PlaceBlock(playerID int32, pos world.BlockPos, blockID int32) b
 		e.mu.RUnlock()
 	}
 
+	if !e.SetBlockChecked(pos.X, pos.Y, pos.Z, blockID) {
+		return false
+	}
+
 	// Decrement item from player's inventory if matching item is held (In Creative mode GameMode==1, items are not consumed)
 	e.mu.Lock()
 	if p, ok := e.Players[playerID]; ok && p.Inventory != nil {
@@ -1012,7 +1027,6 @@ func (e *Engine) PlaceBlock(playerID int32, pos world.BlockPos, blockID int32) b
 	}
 	e.mu.Unlock()
 
-	e.SetBlock(pos.X, pos.Y, pos.Z, blockID)
 	if blockID == 61 {
 		e.mu.Lock()
 		if e.Furnaces == nil {

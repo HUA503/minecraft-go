@@ -442,7 +442,9 @@ func (sess *ClientSession) handlePacket(raw *protocol.RawPacket) error {
 				return err
 			}
 			if world.ValidBlockCoordinates(bu.X, bu.Y, bu.Z) && bu.BlockID >= 0 && sess.canModifyBlock(bu) {
-				sess.server.simEngine.SetBlock(bu.X, bu.Y, bu.Z, bu.BlockID)
+				if !sess.server.simEngine.SetBlockChecked(bu.X, bu.Y, bu.Z, bu.BlockID) {
+					return nil
+				}
 				sess.server.mu.Lock()
 				sess.server.modifiedBlocks[world.BlockPos{X: bu.X, Y: bu.Y, Z: bu.Z}] = bu.BlockID
 				sess.server.mu.Unlock()
