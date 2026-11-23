@@ -46,6 +46,10 @@ func OpenRegion(path string) (*Region, error) {
 			file.Close()
 			return nil, err
 		}
+		if err := file.Sync(); err != nil {
+			file.Close()
+			return nil, err
+		}
 	} else if info.Size() < 8192 {
 		file.Close()
 		return nil, fmt.Errorf("corrupt region file: size %d is less than 8192 header bytes", info.Size())
