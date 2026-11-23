@@ -577,9 +577,9 @@ func (c *Client) StartSingleplayerWorld(worldDirName string, isNew bool, newSeed
 	c.loadedChunks = make(map[world.ChunkPos]bool)
 	c.meshMu.Unlock()
 
-	for i := 0; i < 25; i++ {
-		c.EnsureChunksAroundPlayer(c.player.Position.X, c.player.Position.Z, 3)
-	}
+	// Prime only the nearby chunks here; the normal simulation loop streams the
+	// remaining chunks progressively so world creation does not block the window callback.
+	c.EnsureChunksAroundPlayer(c.player.Position.X, c.player.Position.Z, 3)
 
 	c.screenState = ScreenPlaying
 	if c.wndRef != nil {
@@ -799,9 +799,8 @@ func (c *Client) SwitchDimension(dim gen.Dimension) {
 	c.camera.Y = newPos.Y + 1.62
 	c.camera.Z = newPos.Z
 
-	for i := 0; i < 25; i++ {
-		c.EnsureChunksAroundPlayer(newPos.X, newPos.Z, 3)
-	}
+	// Let the regular loop progressively stream the rest of the destination dimension.
+	c.EnsureChunksAroundPlayer(newPos.X, newPos.Z, 3)
 }
 
 // EnsureChunksAroundPlayer streams procedural world chunks and progressively meshes sections around the player.
