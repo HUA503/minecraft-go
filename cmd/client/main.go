@@ -1661,6 +1661,7 @@ func (c *Client) advancementLines() []string {
 		{"minecraft:story/root", "进入世界"},
 		{"minecraft:story/mine_wood", "获取木头"},
 		{"minecraft:story/mine_stone", "石器时代"},
+		{"minecraft:story/upgrade_tools", "装配升级"},
 		{"minecraft-go:story/place_crafting_table", "搭建工作台"},
 		{"minecraft:nether/root", "进入下界"},
 		{"minecraft:story/enter_the_end", "进入末地"},
@@ -3375,6 +3376,7 @@ func (c *Client) TryQuickCraft(recipeIndex int) bool {
 			_ = inv.RemoveItem(sSlot, 2)
 			inv.AddItem(inventory.ItemStonePickaxe, 1)
 			sound.PlayHardwareFeedback("minecraft:item.craft")
+			c.UnlockAdvancement("minecraft:story/upgrade_tools", "装配升级")
 			return true
 		}
 	case 7: // 8 Cobble -> Furnace
@@ -4272,10 +4274,14 @@ func runGraphicalWindow(c *Client, w, h int) {
 							canCraft = true
 						}
 						if canCraft {
+							craftedItemID := c.craftResult.ItemID
 							if c.cursorItem.IsEmpty() {
 								c.cursorItem = c.craftResult
 							} else {
 								c.cursorItem.Count += c.craftResult.Count
+							}
+							if craftedItemID == inventory.ItemStonePickaxe || craftedItemID == inventory.ItemStoneAxe || craftedItemID == inventory.ItemStoneShovel || craftedItemID == inventory.ItemStoneSword {
+								c.UnlockAdvancement("minecraft:story/upgrade_tools", "装配升级")
 							}
 							sound.PlayHardwareFeedback("minecraft:item.craft")
 							gridSize := 4
