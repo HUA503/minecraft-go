@@ -5254,9 +5254,7 @@ func runGraphicalWindow(c *Client, w, h int) {
 			if targetH < 300 {
 				targetH = 300
 			}
-			if targetW != c.framebuf.Width || targetH != c.framebuf.Height {
-				c.framebuf = render.NewFramebuffer(targetW, targetH)
-			}
+			c.framebuf.Resize(targetW, targetH)
 		}
 
 		now := time.Now()

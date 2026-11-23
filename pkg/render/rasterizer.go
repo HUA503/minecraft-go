@@ -36,6 +36,17 @@ func validScreenVertex(v ScreenVertex) bool {
 }
 
 func NewFramebuffer(w, h int) *Framebuffer {
+	w, h = framebufferDimensions(w, h)
+	return &Framebuffer{
+		Width:           w,
+		Height:          h,
+		Color:           make([]uint32, w*h),
+		Depth:           make([]float32, w*h),
+		HorizonFogColor: 0xFFC3DEFF,
+	}
+}
+
+func framebufferDimensions(w, h int) (int, int) {
 	if w <= 0 || h <= 0 {
 		w, h = 800, 600
 	}
@@ -59,13 +70,33 @@ func NewFramebuffer(w, h int) *Framebuffer {
 			}
 		}
 	}
-	return &Framebuffer{
-		Width:           w,
-		Height:          h,
-		Color:           make([]uint32, w*h),
-		Depth:           make([]float32, w*h),
-		HorizonFogColor: 0xFFC3DEFF,
+	return w, h
+}
+
+// Resize changes the render target while reusing buffer capacity from a
+// previous window size so interactive resizes do not allocate every frame.
+func (fb *Framebuffer) Resize(w, h int) bool {
+	if fb == nil {
+		return false
 	}
+	w, h = framebufferDimensions(w, h)
+	pixels := w * h
+	if fb.Width == w && fb.Height == h && len(fb.Color) == pixels && len(fb.Depth) == pixels {
+		return false
+	}
+	if cap(fb.Color) < pixels {
+		fb.Color = make([]uint32, pixels)
+	} else {
+		fb.Color = fb.Color[:pixels]
+	}
+	if cap(fb.Depth) < pixels {
+		fb.Depth = make([]float32, pixels)
+	} else {
+		fb.Depth = fb.Depth[:pixels]
+	}
+	fb.Width = w
+	fb.Height = h
+	return true
 }
 
 func (fb *Framebuffer) Clear(clearColor uint32) {
