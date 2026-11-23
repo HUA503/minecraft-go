@@ -137,7 +137,7 @@ func IsPlaceableBlock(itemID int32) bool {
 	switch itemID {
 	case ItemStone, ItemGrass, ItemDirt, ItemCobblestone, ItemOakPlanks,
 		7, 8, 9, 10, 11, 12, 13, 14, 15, 16, ItemOakLog, 18, 19, 20, 21, 22, 23,
-		31, 32, 33, 37, 38, 44, 45, 48, 49, ItemTorch, 52, 54, 56, ItemCraftingTable, ItemFurnace,
+		31, 32, 33, 37, 38, ItemGoldBlock, ItemIronBlock, ItemStoneSlab, 45, 48, 49, ItemTorch, 52, ItemChest, 56, ItemDiamondBlock, ItemCraftingTable, ItemFurnace,
 		65, 73, 74, 81, 83, 86, 87, 88, 89, 90, 103, 111, 119, 120, 121, 122, 126, 150, 153, 154, 324, 330:
 		return true
 	default:

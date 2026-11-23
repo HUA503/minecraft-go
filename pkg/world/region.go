@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"reflect"
 	"sort"
 	"sync"
 	"time"
@@ -171,7 +172,10 @@ func (r *Region) findFreeSectors(sectorsNeeded int, fileSize int64) (int, error)
 func (r *Region) ReadChunkData(chunkX, chunkZ int32) (*nbt.CompoundTag, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	return r.readChunkDataLocked(chunkX, chunkZ)
+}
 
+func (r *Region) readChunkDataLocked(chunkX, chunkZ int32) (*nbt.CompoundTag, error) {
 	idx := chunkIndex(chunkX, chunkZ)
 	locBuf := make([]byte, 4)
 	if _, err := r.file.ReadAt(locBuf, int64(idx*4)); err != nil {
@@ -271,6 +275,21 @@ func (r *Region) WriteChunkData(chunkX, chunkZ int32, chunkNBT *nbt.CompoundTag)
 	oldLocation := make([]byte, 4)
 	if _, err := r.file.ReadAt(oldLocation, int64(idx*4)); err != nil {
 		return err
+	}
+	oldOffset := (int(oldLocation[0]) << 16) | (int(oldLocation[1]) << 8) | int(oldLocation[2])
+	oldSectors := int(oldLocation[3])
+	if oldOffset >= 2 && oldSectors > 0 {
+		if existing, err := r.readChunkDataLocked(chunkX, chunkZ); err == nil && reflect.DeepEqual(existing, chunkNBT) {
+			// Identical writes need no new sector allocation. Keep the timestamp
+			// current while avoiding region-file growth on redundant saves.
+			now := uint32(time.Now().Unix())
+			tsHeader := make([]byte, 4)
+			binary.BigEndian.PutUint32(tsHeader, now)
+			if err := writeAtFull(r.file, tsHeader, int64(4096+idx*4)); err != nil {
+				return err
+			}
+			return r.file.Sync()
+		}
 	}
 	info, err := r.file.Stat()
 	if err != nil {
