@@ -35,7 +35,7 @@ var (
 	procShowCursor                    = user32.NewProc("ShowCursor")
 	procClientToScreen                = user32.NewProc("ClientToScreen")
 	procScreenToClient                = user32.NewProc("ScreenToClient")
-	procStretchDIBits                  = gdi32.NewProc("StretchDIBits")
+	procStretchDIBits                 = gdi32.NewProc("StretchDIBits")
 	procGetAsyncKeyState              = user32.NewProc("GetAsyncKeyState")
 	procGetForegroundWindow           = user32.NewProc("GetForegroundWindow")
 	procSetProcessDPIAware            = user32.NewProc("SetProcessDPIAware")
@@ -157,22 +157,22 @@ type BITMAPINFO struct {
 
 // Window represents a native Win32 graphical game window.
 type Window struct {
-	Hwnd           uintptr
-	Hdc            uintptr
-	closeOnce      sync.Once
-	Width          int
-	Height         int
-	Closed         bool
-	KeyDown        [256]bool
-	mu             sync.Mutex
-	OnKeyClick     func(vkCode int)
-	OnMouseClick   func(btn int)
-	OnMouseWheel   func(delta int)
-	OnCharInput    func(ch rune)
-	MouseCaptured  bool
-	centerScreenX  int32
-	centerScreenY  int32
-	bmi            BITMAPINFO
+	Hwnd          uintptr
+	Hdc           uintptr
+	closeOnce     sync.Once
+	Width         int
+	Height        int
+	Closed        bool
+	KeyDown       [256]bool
+	mu            sync.Mutex
+	OnKeyClick    func(vkCode int)
+	OnMouseClick  func(btn int)
+	OnMouseWheel  func(delta int)
+	OnCharInput   func(ch rune)
+	MouseCaptured bool
+	centerScreenX int32
+	centerScreenY int32
+	bmi           BITMAPINFO
 
 	IsFullscreen   bool
 	savedPlacement WINDOWPLACEMENT
@@ -299,8 +299,8 @@ func wndProc(hwnd, msg, wparam, lparam uintptr) (result uintptr) {
 
 // NewNativeWindow creates a real graphical desktop window.
 func NewNativeWindow(title string, width, height int) (*Window, error) {
-	runtime.LockOSThread()                  // Pin goroutine to native OS thread for reliable Win32 message pumping
-	procSetProcessDPIAware.Call()           // Enable 1:1 hardware pixel scaling
+	runtime.LockOSThread()                   // Pin goroutine to native OS thread for reliable Win32 message pumping
+	procSetProcessDPIAware.Call()            // Enable 1:1 hardware pixel scaling
 	procDisableProcessWindowsGhosting.Call() // Prevent Windows from falsely marking application as "Not Responding"
 
 	className, _ := syscall.UTF16PtrFromString("MinecraftGoClass")
@@ -502,7 +502,15 @@ func (w *Window) PollEvents() bool {
 }
 
 func (w *Window) Present(fb *Framebuffer) {
-	if w.Closed || w.Hdc == 0 || fb == nil || len(fb.Color) == 0 {
+	if w == nil || w.Closed || w.Hdc == 0 || fb == nil ||
+		w.Width <= 0 || w.Height <= 0 || fb.Width <= 0 || fb.Height <= 0 {
+		return
+	}
+	// StretchDIBits receives a pointer into a Go slice. Reject inconsistent
+	// dimensions before crossing the native boundary so GDI cannot read past it.
+	const maxBitmapDimension = int(^uint32(0) >> 1)
+	if fb.Width > maxBitmapDimension || fb.Height > maxBitmapDimension ||
+		fb.Width > len(fb.Color)/fb.Height {
 		return
 	}
 	w.bmi.BmiHeader.BiWidth = int32(fb.Width)
