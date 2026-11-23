@@ -10,5 +10,5 @@ func replaceFile(src, dst string) error {
 
 func syncDirectory(string) error { return nil }
 
-func syncDirectoryTree(string) error { return nil }
+func syncDirectoryTree(string, string) error { return nil }
 
