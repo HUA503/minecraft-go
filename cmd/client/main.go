@@ -307,7 +307,42 @@ func (c *Client) scanSavedWorlds() {
 	}
 }
 
+func validSavedPlayerPosition(pos sim.Vec3) bool {
+	return !math.IsNaN(pos.X) && !math.IsInf(pos.X, 0) && math.Abs(pos.X) <= 29_999_984 &&
+		!math.IsNaN(pos.Y) && !math.IsInf(pos.Y, 0) && pos.Y >= -2048 && pos.Y <= 2048 &&
+		!math.IsNaN(pos.Z) && !math.IsInf(pos.Z, 0) && math.Abs(pos.Z) <= 29_999_984
+}
+
+func restoreSavedInventory(target *inventory.PlayerInventory, saved []world.SavedItemStack) {
+	if target == nil {
+		return
+	}
+	for _, item := range saved {
+		if item.Slot < 0 || item.Slot >= len(target.Slots) || item.ItemID <= 0 || item.Count <= 0 {
+			continue
+		}
+		if !target.Slots[item.Slot].IsEmpty() {
+			continue
+		}
+		count := item.Count
+		if max := inventory.GetMaxStackSize(item.ItemID); count > max {
+			count = max
+		}
+		damage := item.Damage
+		if damage < 0 {
+			damage = 0
+		}
+		if props, ok := inventory.GetToolProperties(item.ItemID); ok && props.MaxDurability > 0 && damage >= props.MaxDurability {
+			continue
+		}
+		target.Slots[item.Slot] = inventory.ItemStack{ItemID: item.ItemID, Count: count, Damage: damage}
+	}
+}
+
 func (c *Client) StartSingleplayerWorld(worldDirName string, isNew bool, newSeed int64, newLevelName string, newGameMode int) {
+	if newGameMode != 1 {
+		newGameMode = 0
+	}
 	worldPath := filepath.Join("saves", worldDirName)
 	_ = os.MkdirAll(worldPath, 0755)
 
@@ -413,7 +448,10 @@ func (c *Client) StartSingleplayerWorld(worldDirName string, isNew bool, newSeed
 				c.engine.SetWorldClock(0, 6000)
 			}
 			seed = lvlData.Seed
-			newGameMode = lvlData.GameMode
+			newGameMode = 0
+			if lvlData.GameMode == 1 {
+				newGameMode = 1
+			}
 			if lvlData.LevelName != "" {
 				c.currentWorldName = lvlData.LevelName
 			}
@@ -433,10 +471,16 @@ func (c *Client) StartSingleplayerWorld(worldDirName string, isNew bool, newSeed
 		c.genNether = gen.NewGenerator(seed, gen.DimensionNether)
 		c.genEnd = gen.NewGenerator(seed, gen.DimensionEnd)
 		c.currentDim = gen.DimensionOverworld
+		if (spawnPos.X == 0 && spawnPos.Y == 0 && spawnPos.Z == 0) || spawnPos.Y < float64(world.MinWorldY) || spawnPos.Y > float64(world.MaxWorldY) || math.Abs(spawnPos.X) > 29_999_984 || math.Abs(spawnPos.Z) > 29_999_984 {
+			spawnPos = findSafeSpawnPoint(c.genOverworld, c.engine)
+		}
 
 		posToSpawn := spawnPos
-		if savedPlayer != nil && savedPlayer.Y > 0 {
-			posToSpawn = sim.Vec3{X: savedPlayer.X, Y: savedPlayer.Y, Z: savedPlayer.Z}
+		if savedPlayer != nil {
+			savedPos := sim.Vec3{X: savedPlayer.X, Y: savedPlayer.Y, Z: savedPlayer.Z}
+			if validSavedPlayerPosition(savedPos) && (savedPos.X != 0 || savedPos.Y != 0 || savedPos.Z != 0) {
+				posToSpawn = savedPos
+			}
 		}
 		c.player = c.engine.AddPlayer(c.username, c.uuid, posToSpawn)
 		c.engine.SetPlayerClientDriven(c.player.ID, true)
@@ -450,19 +494,19 @@ func (c *Client) StartSingleplayerWorld(worldDirName string, isNew bool, newSeed
 			for _, id := range savedPlayer.Advancements {
 				c.advancements[id] = true
 			}
-			c.player.Health = savedPlayer.Health
-			c.player.Hunger = savedPlayer.Hunger
-			c.camera.Yaw = float64(savedPlayer.Yaw)
-			c.camera.Pitch = float64(savedPlayer.Pitch)
-			for _, item := range savedPlayer.Inventory {
-				if item.Slot >= 0 && item.Slot < 36 {
-					c.player.Inventory.Slots[item.Slot] = inventory.ItemStack{
-						ItemID: item.ItemID,
-						Count:  item.Count,
-						Damage: item.Damage,
-					}
-				}
+			if math.IsNaN(float64(savedPlayer.Health)) || math.IsInf(float64(savedPlayer.Health), 0) {
+				c.player.Health = 20
+			} else {
+				c.player.Health = float32(math.Max(0, math.Min(20, float64(savedPlayer.Health))))
 			}
+			c.player.Hunger = max(0, min(20, savedPlayer.Hunger))
+			if !math.IsNaN(float64(savedPlayer.Yaw)) && !math.IsInf(float64(savedPlayer.Yaw), 0) {
+				c.camera.Yaw = float64(savedPlayer.Yaw)
+			}
+			if !math.IsNaN(float64(savedPlayer.Pitch)) && !math.IsInf(float64(savedPlayer.Pitch), 0) {
+				c.camera.Pitch = math.Max(-90, math.Min(90, float64(savedPlayer.Pitch)))
+			}
+			restoreSavedInventory(c.player.Inventory, savedPlayer.Inventory)
 		}
 		c.UnlockAdvancement("minecraft:story/root", "进入世界")
 	}
