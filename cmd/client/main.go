@@ -198,6 +198,17 @@ func buildSectionMeshSafely(engine *sim.Engine, key [3]int32) (mesh *render.Mesh
 	}, key[0]*16, key[1]*16, key[2]*16)
 }
 
+func meshTriangle(mesh *render.Mesh, index int) (render.Vertex, render.Vertex, render.Vertex, bool) {
+	if mesh == nil || index < 0 || index+2 >= len(mesh.Indices) {
+		return render.Vertex{}, render.Vertex{}, render.Vertex{}, false
+	}
+	i0, i1, i2 := mesh.Indices[index], mesh.Indices[index+1], mesh.Indices[index+2]
+	if uint64(i0) >= uint64(len(mesh.Vertices)) || uint64(i1) >= uint64(len(mesh.Vertices)) || uint64(i2) >= uint64(len(mesh.Vertices)) {
+		return render.Vertex{}, render.Vertex{}, render.Vertex{}, false
+	}
+	return mesh.Vertices[int(i0)], mesh.Vertices[int(i1)], mesh.Vertices[int(i2)], true
+}
+
 // findSafeSpawnPoint discovers an authentic, randomized safe surface spawn location in the procedural world.
 // Evaluates terrain elevation across random coordinates within the spawn region, ensuring the player
 // is placed firmly on a solid walkable surface (grass, dirt, sand, stone) strictly above sea level (>= 62),
@@ -2654,13 +2665,14 @@ func (c *Client) RenderFrame() {
 	// Pass 1: Render all OPAQUE solid/cutout terrain blocks first (Stone, Dirt, Sand, Wood, Leaves, etc.)
 	for _, sec := range visibleSections {
 		mesh := sec.mesh
-		for i := 0; i < len(mesh.Indices); i += 3 {
-			v0 := mesh.Vertices[mesh.Indices[i]]
+		for i := 0; i+2 < len(mesh.Indices); i += 3 {
+			v0, v1, v2, valid := meshTriangle(mesh, i)
+			if !valid {
+				continue
+			}
 			if v0.BlockID == 8 || v0.BlockID == 9 {
 				continue // Deferred to translucent Pass 2 to eliminate all water flickering
 			}
-			v1 := mesh.Vertices[mesh.Indices[i+1]]
-			v2 := mesh.Vertices[mesh.Indices[i+2]]
 
 			// World-space exact normal culling for planar voxel face
 			switch v0.FaceIndex {
@@ -2756,13 +2768,14 @@ func (c *Client) RenderFrame() {
 	})
 	for _, sec := range visibleSections {
 		mesh := sec.mesh
-		for i := 0; i < len(mesh.Indices); i += 3 {
-			v0 := mesh.Vertices[mesh.Indices[i]]
+		for i := 0; i+2 < len(mesh.Indices); i += 3 {
+			v0, v1, v2, valid := meshTriangle(mesh, i)
+			if !valid {
+				continue
+			}
 			if v0.BlockID != 8 && v0.BlockID != 9 {
 				continue
 			}
-			v1 := mesh.Vertices[mesh.Indices[i+1]]
-			v2 := mesh.Vertices[mesh.Indices[i+2]]
 
 			// Exact face normal culling for translucent water faces (skips non-facing surfaces & eliminates water z-fighting)
 			switch v0.FaceIndex {
