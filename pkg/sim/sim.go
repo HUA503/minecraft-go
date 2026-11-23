@@ -455,18 +455,27 @@ func (e *Engine) AttackMobInFront(origin, look Vec3, reach float64, damage float
 }
 
 // SetStorage configures an optional world SaveManager for persistence.
-func (e *Engine) SetStorage(s *world.SaveManager) {
+func (e *Engine) SetStorage(s *world.SaveManager) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	var nether, end *world.SaveManager
+	if s != nil {
+		var err error
+		nether, err = s.GetDimensionStorage(1)
+		if err != nil {
+			return err
+		}
+		end, err = s.GetDimensionStorage(2)
+		if err != nil {
+			_ = nether.Close()
+			return err
+		}
+	}
 	e.Storage = s
 	e.DimensionStorage[0] = s
-	if s != nil {
-		e.DimensionStorage[1] = s.GetDimensionStorage(1)
-		e.DimensionStorage[2] = s.GetDimensionStorage(2)
-	} else {
-		e.DimensionStorage[1] = nil
-		e.DimensionStorage[2] = nil
-	}
+	e.DimensionStorage[1] = nether
+	e.DimensionStorage[2] = end
+	return nil
 }
 
 // SaveAll flushes all dirty loaded chunks across all dimensions to storage.

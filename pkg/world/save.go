@@ -80,15 +80,14 @@ func NewDimensionSaveManager(worldDir string, dim int) (*SaveManager, error) {
 }
 
 // GetDimensionStorage returns a SaveManager targeting the specified dimension.
-func (sm *SaveManager) GetDimensionStorage(dim int) *SaveManager {
+func (sm *SaveManager) GetDimensionStorage(dim int) (*SaveManager, error) {
+	if sm == nil {
+		return nil, fmt.Errorf("cannot create dimension storage from a nil save manager")
+	}
 	if dim == 0 && sm.regionDir == filepath.Join(sm.worldDir, "region") {
-		return sm
+		return sm, nil
 	}
-	dsm, err := NewDimensionSaveManager(sm.worldDir, dim)
-	if err != nil {
-		return sm
-	}
-	return dsm
+	return NewDimensionSaveManager(sm.worldDir, dim)
 }
 
 // getRegion returns or opens the Region file for the given chunk coordinates.

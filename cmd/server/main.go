@@ -60,8 +60,12 @@ func NewServer(addr, worldDir string) *Server {
 	if worldDir != "" {
 		sm, err := world.NewSaveManager(worldDir)
 		if err == nil {
-			s.saveManager = sm
-			s.simEngine.SetStorage(sm)
+			if err := s.simEngine.SetStorage(sm); err != nil {
+				log.Printf("[Server] Warning: failed to init dimension storage: %v", err)
+				_ = sm.Close()
+			} else {
+				s.saveManager = sm
+			}
 		} else {
 			log.Printf("[Server] Warning: failed to init SaveManager: %v", err)
 		}

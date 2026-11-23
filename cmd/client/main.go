@@ -362,7 +362,12 @@ func (c *Client) StartSingleplayerWorld(worldDirName string, isNew bool, newSeed
 	c.engine = sim.NewEngine()
 	c.advancements = make(map[string]bool)
 	if sm != nil {
-		c.engine.SetStorage(sm)
+		if err := c.engine.SetStorage(sm); err != nil {
+			log.Printf("[Client] Failed to initialize dimension storage: %v", err)
+			_ = sm.Close()
+			c.saveMgr = nil
+			return
+		}
 	}
 
 	var seed int64

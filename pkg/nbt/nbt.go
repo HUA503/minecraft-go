@@ -452,8 +452,12 @@ func (d *Decoder) readCompoundPayload() (*CompoundTag, error) {
 // WriteGzipped encodes an NBT compound compressed with gzip.
 func WriteGzipped(w io.Writer, name string, root *CompoundTag) error {
 	gw := gzip.NewWriter(w)
-	defer gw.Close()
-	return NewEncoder(gw).EncodeNamed(name, root)
+	encodeErr := NewEncoder(gw).EncodeNamed(name, root)
+	closeErr := gw.Close()
+	if encodeErr != nil {
+		return encodeErr
+	}
+	return closeErr
 }
 
 // ReadGzipped decodes an NBT compound from a gzip-compressed stream.
@@ -480,8 +484,12 @@ func ReadGzipped(r io.Reader) (string, *CompoundTag, error) {
 // WriteZlib encodes an NBT compound compressed with zlib (as in MCA chunks).
 func WriteZlib(w io.Writer, name string, root *CompoundTag) error {
 	zw := zlib.NewWriter(w)
-	defer zw.Close()
-	return NewEncoder(zw).EncodeNamed(name, root)
+	encodeErr := NewEncoder(zw).EncodeNamed(name, root)
+	closeErr := zw.Close()
+	if encodeErr != nil {
+		return encodeErr
+	}
+	return closeErr
 }
 
 // ReadZlib decodes an NBT compound from a zlib-compressed stream.
