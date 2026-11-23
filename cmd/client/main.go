@@ -3985,6 +3985,7 @@ func runGraphicalWindow(c *Client, w, h int) {
 	}
 	defer wnd.Close()
 	c.wndRef = wnd
+	defer c.SaveAndQuitToTitle()
 
 	if c.screenState == ScreenTitle {
 		wnd.SetMouseCaptured(false)
@@ -4710,6 +4711,8 @@ func runGraphicalWindow(c *Client, w, h int) {
 }
 
 func runInteractiveLoop(c *Client) {
+	defer c.SaveAndQuitToTitle()
+
 	fmt.Println("\nCommands:")
 	fmt.Println("  w / s / a / d   : Move player")
 	fmt.Println("  goto <x> <y> <z>: Teleport/move to coordinates")
