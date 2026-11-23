@@ -20,11 +20,11 @@ type SavedItemStack struct {
 
 // PlayerSaveData holds persistent player information matching vanilla Minecraft level.dat.
 type PlayerSaveData struct {
-	X, Y, Z    float64
-	Yaw, Pitch float32
-	Health     float32
-	Hunger     int
-	GameMode   int // 0: Survival, 1: Creative
+	X, Y, Z      float64
+	Yaw, Pitch   float32
+	Health       float32
+	Hunger       int
+	GameMode     int // 0: Survival, 1: Creative
 	Inventory    []SavedItemStack
 	Advancements []string
 }
@@ -47,6 +47,7 @@ type SaveManager struct {
 	worldDir  string
 	regionDir string
 	regions   map[string]*Region
+	closed    bool
 	mu        sync.Mutex
 }
 
@@ -98,6 +99,9 @@ func (sm *SaveManager) getRegion(chunkX, chunkZ int32) (*Region, error) {
 
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
+	if sm.closed {
+		return nil, os.ErrClosed
+	}
 
 	if reg, exists := sm.regions[key]; exists {
 		return reg, nil
@@ -148,6 +152,9 @@ func (sm *SaveManager) SaveLevel(data *LevelData) error {
 	}
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
+	if sm.closed {
+		return os.ErrClosed
+	}
 
 	root := nbt.NewCompound()
 	dataTag := nbt.NewCompound()
@@ -233,6 +240,9 @@ func (sm *SaveManager) SaveLevel(data *LevelData) error {
 func (sm *SaveManager) LoadLevel() (*LevelData, error) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
+	if sm.closed {
+		return nil, os.ErrClosed
+	}
 
 	datPath := filepath.Join(sm.worldDir, "level.dat")
 	f, err := os.Open(datPath)
@@ -328,6 +338,10 @@ func (sm *SaveManager) LoadLevel() (*LevelData, error) {
 func (sm *SaveManager) Close() error {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
+	if sm.closed {
+		return nil
+	}
+	sm.closed = true
 
 	var firstErr error
 	for _, reg := range sm.regions {
