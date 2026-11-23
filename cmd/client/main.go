@@ -4540,7 +4540,7 @@ func runGraphicalWindow(c *Client, w, h int) {
 	loopHeartbeat.Store(time.Now().UnixNano())
 	var hangReported atomic.Bool
 	go func() {
-		ticker := time.NewTicker(3 * time.Second)
+		ticker := time.NewTicker(time.Second)
 		defer ticker.Stop()
 		for {
 			select {
@@ -4549,7 +4549,9 @@ func runGraphicalWindow(c *Client, w, h int) {
 			case <-ticker.C:
 				lastProgress := time.Unix(0, loopHeartbeat.Load())
 				stalledFor := time.Since(lastProgress)
-				if stalledFor < 8*time.Second {
+				// Capture a stack before Windows' longer AppHang detection window
+				// can terminate the process without leaving useful diagnostics.
+				if stalledFor < 3*time.Second {
 					hangReported.Store(false)
 					continue
 				}
