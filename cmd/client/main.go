@@ -1,5 +1,5 @@
-Warning: truncated output (original token count: 48749)
-Total output lines: 6066
+Warning: truncated output (original token count: 48767)
+Total output lines: 6069
 
 package main
 
@@ -218,7 +218,10 @@ type Client struct {
 func buildSectionMeshSafely(engine *sim.Engine, key [3]int32) (mesh *render.Mesh) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			log.Printf("[Client] section mesh build failed for section %v: %v\n%s", key, recovered, debug.Stack())
+			stack := debug.Stack()
+			msg := fmt.Sprintf("CLIENT SECTION MESH BUILD PANIC at section %v: %v\n\nStack:\n%s", key, recovered, stack)
+			log.Print(msg)
+			writeCrashLog(msg)
 			// Keep a failed section empty so one malformed chunk cannot crash or
 			// repeatedly stall the render loop while the rest of the world loads.
 			mesh = &render.Mesh{}
@@ -1969,11 +1972,7 @@ func (c *Client) stopNetworkSender() {
 // checkWaterState examines the player's bounding volume to determine if they are in water,
 // and whether they are positioned near the water surface.
 func (c *Client) checkWaterState() (inWater bool, atSurface bool) {
-	if c.player == nil || c.engine == nil {
-		return false, false
-	}
-	px := c.player.Position.X
-	py := c.player.P…18749 tokens truncated…3]]
+	if c.player == nil || c.engine == nil…18767 tokens truncated…3]]
 
 		uv := faceUVs[fIdx]
 		if tex != nil && (uv.U1 > uv.U0 && uv.V1 > uv.V0) {
