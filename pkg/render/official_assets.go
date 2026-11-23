@@ -43,6 +43,9 @@ func (img *RawImage) Sample(u, v float32) uint32 {
 	if img == nil || img.Width <= 0 || img.Height <= 0 || img.Height > len(img.Pixels)/img.Width {
 		return 0
 	}
+	if u != u || v != v { // NaN UVs can otherwise convert to an invalid pixel index.
+		return 0
+	}
 	if u < 0 {
 		u = 0
 	} else if u > 1.0 {
