@@ -749,6 +749,17 @@ func TestPoplarCreativeItemsHaveOfficialTexturesAndRenderShapes(t *testing.T) {
 	}
 }
 
+func TestCreativeSpawnEggsHaveOfficialTextures(t *testing.T) {
+	for _, egg := range inventory.SpawnEggDefinitions() {
+		if got := GetOfficialItemTextureName(egg.RuntimeID); got != egg.Texture {
+			t.Errorf("spawn egg %s texture = %q, want %q", egg.EntityName, got, egg.Texture)
+		}
+		if _, ok := GetOfficialItemSprite(egg.RuntimeID); !ok {
+			t.Errorf("spawn egg %s has no official icon", egg.EntityName)
+		}
+	}
+}
+
 func TestDrawCloudsAestheticsAndDepth(t *testing.T) {
 	fb := NewFramebuffer(160, 120)
 	fb.ClearSky()

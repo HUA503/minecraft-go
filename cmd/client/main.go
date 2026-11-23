@@ -3056,6 +3056,33 @@ func (c *Client) UpdateRightClick(isRightDown bool, dt float64) {
 	}
 
 	sel := c.player.Inventory.GetSelectedItem()
+	if egg, ok := inventory.SpawnEggByID(sel.ItemID); ok {
+		if isRightDown && c.isLocal && c.placeCooldown <= 0 && c.hasTarget {
+			ground := c.engine.GetBlockIfLoaded(c.targetedPos.X, c.targetedPos.Y, c.targetedPos.Z)
+			spawnY := c.targetedPos.Y + 1
+			feet := c.engine.GetBlockIfLoaded(c.targetedPos.X, spawnY, c.targetedPos.Z)
+			head := c.engine.GetBlockIfLoaded(c.targetedPos.X, spawnY+1, c.targetedPos.Z)
+			if world.ValidBlockCoordinates(c.targetedPos.X, spawnY+1, c.targetedPos.Z) &&
+				sim.IsSolidBlock(ground) && !sim.IsSolidBlock(feet) && !sim.IsSolidBlock(head) {
+				if mobType, supported := spawnEggMobType(egg.EntityName); supported {
+					c.engine.SpawnMob(mobType, sim.Vec3{
+						X: float64(c.targetedPos.X) + 0.5,
+						Y: float64(spawnY),
+						Z: float64(c.targetedPos.Z) + 0.5,
+					})
+					if !c.isCreative {
+						slot := &c.player.Inventory.Slots[c.player.Inventory.SelectedHotbar]
+						slot.Count--
+						if slot.Count <= 0 {
+							*slot = inventory.ItemStack{}
+						}
+					}
+					c.placeCooldown = 0.3
+				}
+			}
+		}
+		return
+	}
 
 	// 1. Food Consumption
 	if !sel.IsEmpty() && inventory.IsFood(sel.ItemID) && c.player.Hunger < 20 {
@@ -3125,6 +3152,31 @@ func (c *Client) UpdateRightClick(isRightDown bool, dt float64) {
 				sound.PlayHardwareFeedback(sound.GetBlockPlaceSound(sel.ItemID))
 			}
 		}
+	}
+}
+
+func spawnEggMobType(entityName string) (sim.MobType, bool) {
+	switch entityName {
+	case "zombie":
+		return sim.MobZombie, true
+	case "skeleton":
+		return sim.MobSkeleton, true
+	case "creeper":
+		return sim.MobCreeper, true
+	case "cow":
+		return sim.MobCow, true
+	case "pig":
+		return sim.MobPig, true
+	case "sheep":
+		return sim.MobSheep, true
+	case "chicken":
+		return sim.MobChicken, true
+	case "enderman":
+		return sim.MobEnderman, true
+	case "spider":
+		return sim.MobSpider, true
+	default:
+		return 0, false
 	}
 }
 

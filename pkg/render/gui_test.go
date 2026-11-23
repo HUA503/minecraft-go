@@ -111,8 +111,8 @@ func TestCreativeInventoryCatalogAndHitTesting(t *testing.T) {
 			t.Errorf("creative category %d is empty", category)
 		}
 	}
-	if got := inventory.CreativeCatalog(inventory.CreativeSpawnEggs); len(got) != 0 {
-		t.Fatalf("spawn-egg tab has %d items, expected the explicitly unsupported tab to be empty", len(got))
+	if got := inventory.CreativeCatalog(inventory.CreativeSpawnEggs); len(got) != len(inventory.SpawnEggDefinitions()) || len(got) == 0 {
+		t.Fatalf("spawn-egg tab has %d items, want %d supported mobs", len(got), len(inventory.SpawnEggDefinitions()))
 	}
 
 	w, h := 400, 300

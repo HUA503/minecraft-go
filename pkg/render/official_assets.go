@@ -327,6 +327,9 @@ func GetOfficialItemTextureName(itemID int32) string {
 	if texture := inventory.ExtendedBlockItemTextureName(itemID); texture != "" {
 		return texture
 	}
+	if texture := inventory.SpawnEggTextureName(itemID); texture != "" {
+		return texture
+	}
 	switch itemID {
 	case 345:
 		return "compass_00"
