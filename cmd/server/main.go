@@ -25,6 +25,7 @@ type Server struct {
 	saveManager    *world.SaveManager
 	listener       net.Listener
 	mu             sync.Mutex
+	sessionWG      sync.WaitGroup
 	sessions       map[int32]*ClientSession
 	nextSessID     int32
 	modifiedBlocks map[world.BlockPos]int32
@@ -112,7 +113,14 @@ func (s *Server) Start() error {
 	s.simEngine.StartTickLoop()
 	go s.broadcastLoop()
 
-	for s.running {
+	for {
+		s.mu.Lock()
+		running := s.running
+		s.mu.Unlock()
+		if !running {
+			break
+		}
+
 		conn, err := s.listener.Accept()
 		if err != nil {
 			if !s.running {
@@ -121,7 +129,18 @@ func (s *Server) Start() error {
 			log.Printf("[Server] Accept error: %v", err)
 			continue
 		}
-		go s.handleConnection(conn)
+		s.mu.Lock()
+		if !s.running {
+			s.mu.Unlock()
+			_ = conn.Close()
+			break
+		}
+		s.sessionWG.Add(1)
+		s.mu.Unlock()
+		go func(conn net.Conn) {
+			defer s.sessionWG.Done()
+			s.handleConnection(conn)
+		}(conn)
 	}
 	<-s.stopDone
 	return nil
@@ -146,6 +165,7 @@ func (s *Server) Stop() {
 	for _, sess := range sessions {
 		sess.Close()
 	}
+	s.sessionWG.Wait()
 
 	s.simEngine.Stop()
 	log.Printf("[Server] Flushing world chunks to storage...")
