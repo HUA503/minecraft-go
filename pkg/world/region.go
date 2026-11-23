@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"sync"
 	"time"
 
@@ -92,6 +93,62 @@ func (r *Region) chunkRangeOverlaps(index, offset, sectors int) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+type sectorRange struct {
+	start int
+	end   int
+}
+
+// findFreeSectors validates the location table and finds a free contiguous run.
+// The current chunk allocation remains occupied until its replacement header is committed.
+func (r *Region) findFreeSectors(sectorsNeeded int, fileSize int64) (int, error) {
+	locations := make([]byte, SectorSize)
+	if _, err := r.file.ReadAt(locations, 0); err != nil {
+		return 0, err
+	}
+	allocations := make([]sectorRange, 0, ChunksPerRegion)
+	for i := 0; i < ChunksPerRegion; i++ {
+		base := i * 4
+		offset := (int(locations[base]) << 16) | (int(locations[base+1]) << 8) | int(locations[base+2])
+		sectors := int(locations[base+3])
+		if offset == 0 && sectors == 0 {
+			continue
+		}
+		if offset < 2 || sectors == 0 {
+			return 0, fmt.Errorf("corrupt region location entry %d: offset %d, sectors %d", i, offset, sectors)
+		}
+		end := offset + sectors
+		if int64(end)*SectorSize > fileSize {
+			return 0, fmt.Errorf("corrupt region location entry %d: sectors [%d, %d) exceed file size %d", i, offset, end, fileSize)
+		}
+		allocations = append(allocations, sectorRange{start: offset, end: end})
+	}
+	sort.Slice(allocations, func(i, j int) bool {
+		return allocations[i].start < allocations[j].start
+	})
+
+	cursor := 2
+	for i, allocation := range allocations {
+		if allocation.start < cursor {
+			return 0, fmt.Errorf("corrupt region location table: overlapping allocations at sector %d", allocation.start)
+		}
+		if allocation.start-cursor >= sectorsNeeded {
+			return cursor, nil
+		}
+		cursor = allocation.end
+		if i == len(allocations)-1 {
+			break
+		}
+	}
+	fileSectors := int((fileSize + SectorSize - 1) / SectorSize)
+	if fileSectors-cursor >= sectorsNeeded {
+		return cursor, nil
+	}
+	if fileSectors < cursor {
+		fileSectors = cursor
+	}
+	return fileSectors, nil
 }
 
 // ReadChunkData reads raw uncompressed NBT bytes of a chunk at (chunkX, chunkZ).
@@ -199,16 +256,10 @@ func (r *Region) WriteChunkData(chunkX, chunkZ int32, chunkNBT *nbt.CompoundTag)
 	if err != nil {
 		return err
 	}
-	// Use copy-on-write: keep the currently indexed sectors intact until the
-	// complete replacement payload has reached disk and the location header is
-	// switched. This lets the old chunk survive a failed or interrupted save.
 	fileSize := info.Size()
-	if fileSize < 8192 {
-		fileSize = 8192
-	}
-	sectorOffset := int((fileSize + SectorSize - 1) / SectorSize)
-	if sectorOffset < 2 {
-		sectorOffset = 2
+	sectorOffset, err := r.findFreeSectors(sectorsNeeded, fileSize)
+	if err != nil {
+		return err
 	}
 	allocSectors := sectorsNeeded
 	if sectorOffset > 0xFFFFFF {
