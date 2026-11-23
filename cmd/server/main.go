@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"syscall"
@@ -239,6 +240,9 @@ func (s *Server) handleConnection(conn net.Conn) {
 	s.mu.Unlock()
 
 	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("[Session %d] Recovered panic while handling connection: %v\n%s", sess.ID, r, debug.Stack())
+		}
 		sess.Close()
 		s.mu.Lock()
 		delete(s.sessions, sess.ID)
