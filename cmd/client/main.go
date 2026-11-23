@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"crypto/rand"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -112,6 +113,7 @@ type Client struct {
 	framebuf            *render.Framebuffer
 	renderPanicCount    int
 	quitSaving          atomic.Bool
+	quitSaveFailed      atomic.Bool
 	quitSaveDone        chan struct{}
 	camera              *render.Camera
 	engine              *sim.Engine
@@ -765,7 +767,8 @@ func (c *Client) RespawnLocalPlayer() {
 	c.EnsureChunksAroundPlayer(spawnPos.X, spawnPos.Z, 3)
 }
 
-func (c *Client) SaveAndQuitToTitle() {
+func (c *Client) SaveAndQuitToTitle() error {
+	var saveErrors []error
 	// Do not close region files while a periodic save still uses them.
 	c.autosaveWG.Wait()
 	if c.conn != nil {
@@ -782,6 +785,7 @@ func (c *Client) SaveAndQuitToTitle() {
 		c.engine.Stop()
 		if err := c.engine.SaveAll(); err != nil {
 			log.Printf("[Client] Failed to save one or more chunks while leaving the world: %v", err)
+			saveErrors = append(saveErrors, fmt.Errorf("save chunks: %w", err))
 		}
 
 		if c.saveMgr != nil && c.player != nil {
@@ -837,11 +841,13 @@ func (c *Client) SaveAndQuitToTitle() {
 			}
 			if err := c.saveMgr.SaveLevel(lvl); err != nil {
 				log.Printf("[Client] Failed to save level data while leaving the world: %v", err)
+				saveErrors = append(saveErrors, fmt.Errorf("save level data: %w", err))
 			}
 			c.saveMgr = nil
 		}
 		if err := c.engine.CloseStorage(); err != nil {
 			log.Printf("[Client] Failed to close world save files: %v", err)
+			saveErrors = append(saveErrors, fmt.Errorf("close world storage: %w", err))
 		}
 
 		c.engine = nil
@@ -855,6 +861,15 @@ func (c *Client) SaveAndQuitToTitle() {
 	c.isCraftingTableOpen = false
 	c.isFurnaceOpen = false
 	c.screenState = ScreenTitle
+	if len(saveErrors) > 0 {
+		saveErr := errors.Join(saveErrors...)
+		msg := fmt.Sprintf("WORLD SAVE FAILED: %v", saveErr)
+		writeCrashLog(msg)
+		c.quitSaveFailed.Store(true)
+		return saveErr
+	}
+	c.quitSaveFailed.Store(false)
+	return nil
 }
 
 // beginSaveAndQuitToTitle keeps the native message loop responsive while the
@@ -864,6 +879,7 @@ func (c *Client) beginSaveAndQuitToTitle(wnd *render.Window) {
 	if !c.quitSaving.CompareAndSwap(false, true) {
 		return
 	}
+	c.quitSaveFailed.Store(false)
 	if c.engine != nil {
 		c.engine.SetPaused(true)
 	}
@@ -879,9 +895,12 @@ func (c *Client) beginSaveAndQuitToTitle(wnd *render.Window) {
 				msg := fmt.Sprintf("CLIENT SAVE-AND-QUIT PANIC: %v\n\nStack:\n%s", recovered, debug.Stack())
 				log.Print(msg)
 				writeCrashLog(msg)
+				c.quitSaveFailed.Store(true)
 			}
 		}()
-		c.SaveAndQuitToTitle()
+		if err := c.SaveAndQuitToTitle(); err != nil {
+			log.Printf("[Client] World save finished with errors: %v", err)
+		}
 		c.quitSaving.Store(false)
 	}()
 }
@@ -5355,6 +5374,9 @@ func runGraphicalWindow(c *Client, w, h int) {
 		if c.quitSaving.Load() {
 			c.framebuf.Clear(0xFF171717)
 			text := "正在保存世界，请稍候..."
+			if c.quitSaveFailed.Load() {
+				text = "保存过程异常，请关闭窗口重试并检查 crash.log"
+			}
 			textWidth := render.MeasureText5x7(text, 1)
 			c.framebuf.DrawText5x7((c.framebuf.Width-textWidth)/2, c.framebuf.Height/2, text, 0xFFFFFFFF, 1)
 			wnd.Present(c.framebuf)
@@ -5440,6 +5462,11 @@ func runGraphicalWindow(c *Client, w, h int) {
 			time.Sleep(16 * time.Millisecond)
 			mx, my := wnd.GetCursorClientPos(c.framebuf.Width, c.framebuf.Height)
 			c.titleSpBtn, c.titleMpBtn, c.titleQuitBtn = c.framebuf.DrawTitleScreen(mx, my)
+			if c.quitSaveFailed.Load() {
+				msg := "存档保存失败，详情见 crash.log"
+				textWidth := render.MeasureText5x7(msg, 1)
+				c.framebuf.DrawText5x7((c.framebuf.Width-textWidth)/2, c.framebuf.Height-18, msg, 0xFFFF7777, 1)
+			}
 			wnd.Present(c.framebuf)
 			continue
 		}
