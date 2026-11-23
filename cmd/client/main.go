@@ -824,9 +824,7 @@ func (c *Client) SwitchDimension(dim gen.Dimension) {
 	}
 	oldDimension := int(c.currentDim)
 	engine := c.engine
-	oldChunks := c.resetMeshCacheAndTakeChunks()
-	c.currentDim = dim
-	engine.SwitchDimension(int(dim))
+	oldChunks := c.switchDimensionAndTakeChunks(engine, int(dim))
 	c.meshMu.RLock()
 	streamGeneration := c.meshGeneration
 	c.meshMu.RUnlock()
@@ -865,13 +863,15 @@ func (c *Client) SwitchDimension(dim gen.Dimension) {
 	c.EnsureChunksAroundPlayer(newPos.X, newPos.Z, 3)
 }
 
-func (c *Client) resetMeshCacheAndTakeChunks() []world.ChunkPos {
+func (c *Client) switchDimensionAndTakeChunks(engine *sim.Engine, dimension int) []world.ChunkPos {
 	c.meshMu.Lock()
 	defer c.meshMu.Unlock()
 	chunks := make([]world.ChunkPos, 0, len(c.loadedChunks))
 	for pos := range c.loadedChunks {
 		chunks = append(chunks, pos)
 	}
+	engine.SwitchDimension(dimension)
+	c.currentDim = gen.Dimension(dimension)
 	c.meshGeneration++
 	c.meshCache = make(map[[3]int32]*render.Mesh)
 	c.meshRevisions = make(map[[3]int32]uint64)
@@ -1010,6 +1010,14 @@ func (c *Client) processChunkStreamJob(job chunkStreamJob) {
 	}
 
 	chunk := job.engine.GetChunkInDimension(job.dimension, job.pos)
+	if !c.meshGenerationIs(job.generation) {
+		if job.engine.GetDimension() != job.dimension {
+			if err := job.engine.UnloadChunkInDimension(job.dimension, job.pos); err != nil {
+				log.Printf("[Client] Failed to save stale chunk %v in dimension %d: %v", job.pos, job.dimension, err)
+			}
+		}
+		return
+	}
 	if chunk == nil {
 		if job.generator == nil {
 			return
@@ -1021,7 +1029,7 @@ func (c *Client) processChunkStreamJob(job chunkStreamJob) {
 		job.engine.LoadGeneratedChunkInDimension(job.dimension, job.pos, chunk)
 	}
 	c.meshMu.Lock()
-	if c.meshGeneration == job.generation {
+	if c.meshGeneration == job.generation && job.engine.GetDimension() == job.dimension {
 		if c.loadedChunks == nil {
 			c.loadedChunks = make(map[world.ChunkPos]bool)
 		}
