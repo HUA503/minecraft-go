@@ -51,6 +51,8 @@ type RawPacket struct {
 	Data []byte
 }
 
+const maxPacketSize = 2 * 1024 * 1024
+
 func (r *RawPacket) Reader() io.Reader {
 	return bytes.NewReader(r.Data)
 }
@@ -63,6 +65,9 @@ func ReadRawPacket(r io.Reader) (*RawPacket, error) {
 	}
 	if length <= 0 {
 		return nil, fmt.Errorf("invalid packet length: %d", length)
+	}
+	if length > maxPacketSize {
+		return nil, fmt.Errorf("packet length %d exceeds maximum %d", length, maxPacketSize)
 	}
 
 	frame := make([]byte, length)
@@ -90,7 +95,11 @@ func WriteRawPacket(w io.Writer, packetID int32, data []byte) error {
 		return err
 	}
 
-	totalLen := int32(idBuf.Len() + len(data))
+	frameLen := idBuf.Len() + len(data)
+	if frameLen > maxPacketSize {
+		return fmt.Errorf("packet length %d exceeds maximum %d", frameLen, maxPacketSize)
+	}
+	totalLen := int32(frameLen)
 	if _, err := WriteVarInt(w, totalLen); err != nil {
 		return err
 	}
@@ -156,7 +165,7 @@ func (p *HandshakePacket) Decode(r io.Reader) error {
 // StatusRequestPacket (Serverbound 0x00 in Status state)
 type StatusRequestPacket struct{}
 
-func (p *StatusRequestPacket) PacketID() int32        { return 0x00 }
+func (p *StatusRequestPacket) PacketID() int32          { return 0x00 }
 func (p *StatusRequestPacket) Encode(w io.Writer) error { return nil }
 func (p *StatusRequestPacket) Decode(r io.Reader) error { return nil }
 
@@ -190,7 +199,7 @@ func (p *PingPacket) Decode(r io.Reader) error {
 
 // LoginStartPacket (Serverbound 0x00 in Login state)
 type LoginStartPacket struct {
-	Username string
+	Username   string
 	PlayerUUID [16]byte
 }
 
@@ -267,17 +276,17 @@ func (p *LoginSuccessPacket) Decode(r io.Reader) error {
 // FinishConfigurationPacket (Bidirectional in modern Configuration state)
 type FinishConfigurationPacket struct{}
 
-func (p *FinishConfigurationPacket) PacketID() int32        { return 0x03 }
+func (p *FinishConfigurationPacket) PacketID() int32          { return 0x03 }
 func (p *FinishConfigurationPacket) Encode(w io.Writer) error { return nil }
 func (p *FinishConfigurationPacket) Decode(r io.Reader) error { return nil }
 
 // PlayerPositionPacket (Clientbound/Serverbound in Play state)
 type PlayerPositionPacket struct {
-	X     float64
-	Y     float64
-	Z     float64
-	Yaw   float32
-	Pitch float32
+	X        float64
+	Y        float64
+	Z        float64
+	Yaw      float32
+	Pitch    float32
 	OnGround bool
 }
 
