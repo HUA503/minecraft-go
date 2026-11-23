@@ -19,6 +19,10 @@ const (
 	SlotFurnaceInput              // Furnace smelting input slot (0)
 	SlotFurnaceFuel               // Furnace fuel slot (1)
 	SlotFurnaceOutput             // Furnace smelted output slot (2)
+	SlotCreativeItem
+	SlotCreativeTab
+	SlotCreativePrevious
+	SlotCreativeNext
 )
 
 // GUISlotHit records the detected slot hit during mouse interactions.
@@ -904,3 +908,4 @@ func (fb *Framebuffer) DrawNewWorldScreen(worldName string, gameMode int, seedTe
 
 	return createBtn, cancelBtn, modeBtn, nameBox, seedBox
 }
+

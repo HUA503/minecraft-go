@@ -16,59 +16,59 @@ type Item struct {
 
 // Common item catalog
 const (
-	ItemAir           int32 = 0
-	ItemStone         int32 = 1
-	ItemGrass         int32 = 2
-	ItemDirt          int32 = 3
-	ItemCobblestone   int32 = 4
-	ItemOakPlanks     int32 = 5
-	ItemOakLog        int32 = 17
-	ItemCraftingTable int32 = 58
-	ItemFurnace       int32 = 61
-	ItemTorch         int32 = 50
-	ItemStick         int32 = 280
-	ItemWoodenPickaxe int32 = 270
-	ItemWoodenSword   int32 = 268
-	ItemWoodenShovel  int32 = 269
-	ItemWoodenAxe     int32 = 271
-	ItemStonePickaxe  int32 = 274
-	ItemStoneSword    int32 = 272
-	ItemStoneShovel   int32 = 273
-	ItemStoneAxe      int32 = 275
-	ItemIronPickaxe   int32 = 257
-	ItemIronSword     int32 = 267
-	ItemIronShovel    int32 = 256
-	ItemIronAxe       int32 = 258
+	ItemAir            int32 = 0
+	ItemStone          int32 = 1
+	ItemGrass          int32 = 2
+	ItemDirt           int32 = 3
+	ItemCobblestone    int32 = 4
+	ItemOakPlanks      int32 = 5
+	ItemOakLog         int32 = 17
+	ItemCraftingTable  int32 = 58
+	ItemFurnace        int32 = 61
+	ItemTorch          int32 = 50
+	ItemStick          int32 = 280
+	ItemWoodenPickaxe  int32 = 270
+	ItemWoodenSword    int32 = 268
+	ItemWoodenShovel   int32 = 269
+	ItemWoodenAxe      int32 = 271
+	ItemStonePickaxe   int32 = 274
+	ItemStoneSword     int32 = 272
+	ItemStoneShovel    int32 = 273
+	ItemStoneAxe       int32 = 275
+	ItemIronPickaxe    int32 = 257
+	ItemIronSword      int32 = 267
+	ItemIronShovel     int32 = 256
+	ItemIronAxe        int32 = 258
 	ItemDiamondPickaxe int32 = 278
-	ItemDiamondSword  int32 = 276
-	ItemDiamondShovel int32 = 277
-	ItemDiamondAxe    int32 = 279
-	ItemIronIngot     int32 = 265
-	ItemGoldIngot     int32 = 266
-	ItemDiamond       int32 = 264
-	ItemCoal          int32 = 263
-	ItemApple         int32 = 260
-	ItemBread         int32 = 297
-	ItemIronBlock     int32 = 42
-	ItemGoldBlock     int32 = 41
-	ItemDiamondBlock  int32 = 57
-	ItemChest         int32 = 54
-	ItemRawPorkchop   int32 = 319
+	ItemDiamondSword   int32 = 276
+	ItemDiamondShovel  int32 = 277
+	ItemDiamondAxe     int32 = 279
+	ItemIronIngot      int32 = 265
+	ItemGoldIngot      int32 = 266
+	ItemDiamond        int32 = 264
+	ItemCoal           int32 = 263
+	ItemApple          int32 = 260
+	ItemBread          int32 = 297
+	ItemIronBlock      int32 = 42
+	ItemGoldBlock      int32 = 41
+	ItemDiamondBlock   int32 = 57
+	ItemChest          int32 = 54
+	ItemRawPorkchop    int32 = 319
 	ItemCookedPorkchop int32 = 320
-	ItemRawBeef       int32 = 363
-	ItemSteak         int32 = 364
-	ItemRottenFlesh   int32 = 367
-	ItemEnderPearl    int32 = 368
-	ItemEyeOfEnder    int32 = 381
-	ItemString        int32 = 287
-	ItemSpiderEye     int32 = 375
-	ItemGunpowder     int32 = 289
-	ItemBone          int32 = 352
-	ItemArrow         int32 = 262
-	ItemBow           int32 = 261
-	ItemFlintAndSteel int32 = 259
-	ItemGoldNugget    int32 = 371
-	ItemNetherQuartz  int32 = 406
+	ItemRawBeef        int32 = 363
+	ItemSteak          int32 = 364
+	ItemRottenFlesh    int32 = 367
+	ItemEnderPearl     int32 = 368
+	ItemEyeOfEnder     int32 = 381
+	ItemString         int32 = 287
+	ItemSpiderEye      int32 = 375
+	ItemGunpowder      int32 = 289
+	ItemBone           int32 = 352
+	ItemArrow          int32 = 262
+	ItemBow            int32 = 261
+	ItemFlintAndSteel  int32 = 259
+	ItemGoldNugget     int32 = 371
+	ItemNetherQuartz   int32 = 406
 
 	// Gold Tools
 	ItemGoldenSword   int32 = 283
@@ -137,7 +137,7 @@ func IsPlaceableBlock(itemID int32) bool {
 	switch itemID {
 	case ItemStone, ItemGrass, ItemDirt, ItemCobblestone, ItemOakPlanks,
 		7, 8, 9, 10, 11, 12, 13, 14, 15, 16, ItemOakLog, 18, 19, 20, 21, 22, 23,
-		31, 32, 33, 37, 38, ItemGoldBlock, ItemIronBlock, ItemStoneSlab, 45, 48, 49, ItemTorch, 52, ItemChest, 56, ItemDiamondBlock, ItemCraftingTable, ItemFurnace,
+		31, 32, 33, 37, 38, ItemGoldBlock, ItemIronBlock, ItemStoneSlab, 45, 46, 47, 48, 49, ItemTorch, 52, ItemChest, 56, ItemDiamondBlock, ItemCraftingTable, ItemFurnace,
 		65, 73, 74, 81, 83, 86, 87, 88, 89, 90, 103, 111, 119, 120, 121, 122, 126, 150, 153, 154, 324, 330:
 		return true
 	default:
@@ -170,6 +170,7 @@ var FoodRegistry = map[int32]FoodProperties{
 	ItemRawBeef:        {HungerRestored: 3, Saturation: 1.8},
 	ItemSteak:          {HungerRestored: 8, Saturation: 12.8},
 	ItemRottenFlesh:    {HungerRestored: 4, Saturation: 0.8},
+	360:                {HungerRestored: 2, Saturation: 1.2},
 	ItemRawChicken:     {HungerRestored: 2, Saturation: 1.2},
 	ItemCookedChicken:  {HungerRestored: 6, Saturation: 7.2},
 	ItemRawMutton:      {HungerRestored: 2, Saturation: 1.2},
@@ -204,8 +205,8 @@ func (s ItemStack) String() string {
 
 // PlayerInventory manages hotbar, main storage, armor, and active slot.
 type PlayerInventory struct {
-	Slots       [36]ItemStack // 0..8 Hotbar, 9..35 Main Inventory
-	SelectedHotbar int       // 0..8
+	Slots          [36]ItemStack // 0..8 Hotbar, 9..35 Main Inventory
+	SelectedHotbar int           // 0..8
 }
 
 func NewPlayerInventory() *PlayerInventory {
@@ -236,6 +237,8 @@ func GetMaxStackSize(itemID int32) int {
 		return 1
 	case 325: // Empty bucket
 		return 16
+	case 326, 327: // Filled buckets are not stackable.
+		return 1
 	case 332, 344, 368: // Snowball, Egg, Ender Pearl
 		return 16
 	default:
@@ -380,3 +383,4 @@ func HandleSlotRightClick(cursor *ItemStack, slot *ItemStack) {
 		}
 	}
 }
+

@@ -97,6 +97,44 @@ func TestGUIHitTestingAndDrawing(t *testing.T) {
 	}
 }
 
+func TestCreativeInventoryCatalogAndHitTesting(t *testing.T) {
+	items := inventory.CreativeCatalog(inventory.CreativeAll)
+	if len(items) < 100 {
+		t.Fatalf("creative catalog unexpectedly small: %d items", len(items))
+	}
+	for _, category := range []inventory.CreativeCategory{
+		inventory.CreativeBlocks, inventory.CreativeTools, inventory.CreativeMaterials, inventory.CreativeFood,
+	} {
+		if got := inventory.CreativeCatalog(category); len(got) == 0 {
+			t.Errorf("creative category %d is empty", category)
+		}
+	}
+
+	w, h := 400, 300
+	scale := CalculateGUIScaleFromDimensions(w, h)
+	px, py := w/2-230*scale/2, h/2-210*scale/2
+	hitItem := HitTestCreativeInventory(w, h, inventory.CreativeAll, 0, px+8*scale, py+38*scale)
+	if hitItem.Type != SlotCreativeItem || hitItem.Index != 0 {
+		t.Fatalf("first creative item slot hit = %+v", hitItem)
+	}
+	hitTools := HitTestCreativeInventory(w, h, inventory.CreativeAll, 0, px+(7+2*43+2)*scale, py+20*scale)
+	if hitTools.Type != SlotCreativeTab || hitTools.Index != int(inventory.CreativeTools) {
+		t.Fatalf("tools tab hit = %+v", hitTools)
+	}
+
+	fb := NewFramebuffer(w, h)
+	fb.DrawCreativeInventoryGUI(inventory.NewPlayerInventory(), inventory.ItemStack{}, inventory.CreativeAll, 0, -1, -1)
+	nonZero := 0
+	for _, pixel := range fb.Color {
+		if pixel != 0 {
+			nonZero++
+		}
+	}
+	if nonZero < 1000 {
+		t.Fatalf("creative inventory rendered too few pixels: %d", nonZero)
+	}
+}
+
 func TestVisualScreenRenders(t *testing.T) {
 	fb := NewFramebuffer(400, 300)
 	worlds := []WorldInfo{
@@ -141,3 +179,4 @@ func TestVisualScreenRenders(t *testing.T) {
 		t.Fatalf("new world screen framebuffer has too few rendered pixels: %d", nonZeroNew)
 	}
 }
+

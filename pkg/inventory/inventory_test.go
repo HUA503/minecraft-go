@@ -4,6 +4,27 @@ import (
 	"testing"
 )
 
+func TestCreativeCatalogHasUniqueUsableItems(t *testing.T) {
+	seen := make(map[int32]struct{})
+	for _, item := range CreativeCatalog(CreativeAll) {
+		if item.ID <= 0 || item.Name == "" {
+			t.Errorf("invalid creative item: %+v", item)
+		}
+		if _, duplicate := seen[item.ID]; duplicate {
+			t.Errorf("duplicate creative item ID %d", item.ID)
+		}
+		seen[item.ID] = struct{}{}
+	}
+	for _, item := range CreativeCatalog(CreativeBlocks) {
+		if !IsPlaceableBlock(item.ID) {
+			t.Errorf("creative block %d (%s) cannot be placed", item.ID, item.Name)
+		}
+	}
+	if got := CreativeCatalog(CreativeFood); len(got) == 0 {
+		t.Fatal("food tab is empty")
+	}
+}
+
 func TestInventoryStackingAndRemoval(t *testing.T) {
 	inv := NewPlayerInventory()
 
@@ -120,7 +141,7 @@ func TestToolTiersAndDurability(t *testing.T) {
 
 func TestFurnaceSmeltingCycle(t *testing.T) {
 	furnace := NewFurnaceBlockEntity()
-	furnace.InputSlot = ItemStack{ItemID: 15, Count: 1}  // 1 Raw Iron Ore
+	furnace.InputSlot = ItemStack{ItemID: 15, Count: 1}      // 1 Raw Iron Ore
 	furnace.FuelSlot = ItemStack{ItemID: ItemCoal, Count: 1} // 1 Coal (burns 1600 ticks)
 
 	// Before ticking: not burning, cook progress 0
@@ -232,3 +253,4 @@ func TestSlotLeftAndRightClickLogic(t *testing.T) {
 		t.Fatalf("right click stack 1 failed: cursor=%d, slot=%d", cursor.Count, slotEmpty.Count)
 	}
 }
+

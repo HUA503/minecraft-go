@@ -187,6 +187,8 @@ type Client struct {
 	placeCooldown       float64
 	particles           []render.Particle
 	showInventoryGUI    bool
+	creativeTab         inventory.CreativeCategory
+	creativePage        int
 	showAdvancementsGUI bool
 	showPauseMenu       bool
 	backBtnRect         [4]int
@@ -3479,7 +3481,11 @@ func (c *Client) RenderFrame() {
 		if c.wndRef != nil {
 			mx, my = c.wndRef.GetCursorClientPos(c.framebuf.Width, c.framebuf.Height)
 		}
-		c.framebuf.DrawCraftingGUI(c.player.Inventory, c.craftGrid[:], c.craftResult, c.isCraftingTableOpen, c.cursorItem, mx, my)
+		if c.isCreative && !c.isCraftingTableOpen {
+			c.framebuf.DrawCreativeInventoryGUI(c.player.Inventory, c.cursorItem, c.creativeTab, c.creativePage, mx, my)
+		} else {
+			c.framebuf.DrawCraftingGUI(c.player.Inventory, c.craftGrid[:], c.craftResult, c.isCraftingTableOpen, c.cursorItem, mx, my)
+		}
 	} else if c.isFurnaceOpen && c.player != nil && c.player.Inventory != nil && c.engine != nil {
 		mx, my := -1, -1
 		if c.wndRef != nil {
@@ -5468,6 +5474,44 @@ func runGraphicalWindow(c *Client, w, h int) {
 		}
 
 		if c.showInventoryGUI && c.player != nil && c.player.Inventory != nil {
+			if c.isCreative && !c.isCraftingTableOpen {
+				hit := render.HitTestCreativeInventory(c.framebuf.Width, c.framebuf.Height, c.creativeTab, c.creativePage, mx, my)
+				switch hit.Type {
+				case render.SlotCreativeTab:
+					c.creativeTab = inventory.CreativeCategory(hit.Index)
+					c.creativePage = 0
+				case render.SlotCreativePrevious:
+					if c.creativePage > 0 {
+						c.creativePage--
+					}
+				case render.SlotCreativeNext:
+					items := inventory.CreativeCatalog(c.creativeTab)
+					maxPage := max(0, (len(items)-1)/27)
+					if c.creativePage < maxPage {
+						c.creativePage++
+					}
+				case render.SlotCreativeItem:
+					items := inventory.CreativeCatalog(c.creativeTab)
+					if hit.Index >= 0 && hit.Index < len(items) {
+						item := items[hit.Index]
+						count := inventory.GetMaxStackSize(item.ID)
+						if btn == 2 {
+							count = 1
+						}
+						c.cursorItem = inventory.ItemStack{ItemID: item.ID, Count: count}
+					}
+				case render.SlotInventory:
+					if hit.Index >= 0 && hit.Index < len(c.player.Inventory.Slots) {
+						slot := &c.player.Inventory.Slots[hit.Index]
+						if btn == 1 {
+							handleSlotLeftClick(&c.cursorItem, slot)
+						} else if btn == 2 {
+							handleSlotRightClick(&c.cursorItem, slot)
+						}
+					}
+				}
+				return
+			}
 			hit := render.HitTestCraftingGUI(c.framebuf.Width, c.framebuf.Height, mx, my, c.isCraftingTableOpen)
 			if hit.Type == render.SlotNone {
 				return

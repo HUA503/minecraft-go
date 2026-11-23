@@ -503,6 +503,8 @@ func GetOfficialItemTextureName(itemID int32) string {
 		return "ender_pearl"
 	case 359:
 		return "shears"
+	case 360:
+		return "melon_slice"
 	case 324:
 		return "oak_door"
 	case 330:
@@ -524,3 +526,4 @@ func GetOfficialItemTextureName(itemID int32) string {
 	}
 	return ""
 }
+
