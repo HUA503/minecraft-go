@@ -30,6 +30,7 @@ type Server struct {
 	listener       net.Listener
 	mu             sync.Mutex
 	sessionWG      sync.WaitGroup
+	writeWG        sync.WaitGroup
 	sessions       map[int32]*ClientSession
 	nextSessID     int32
 	modifiedBlocks map[world.BlockPos]int32
@@ -47,7 +48,9 @@ type ClientSession struct {
 	playerID int32
 	closed   bool
 	mu       sync.Mutex
-	writeMu  sync.Mutex
+	outbound chan protocol.Packet
+	done     chan struct{}
+	doneOnce sync.Once
 }
 
 func NewServer(addr, worldDir string) *Server {
@@ -175,6 +178,7 @@ func (s *Server) Stop() {
 		sess.Close()
 	}
 	s.sessionWG.Wait()
+	s.writeWG.Wait()
 
 	s.simEngine.Stop()
 	log.Printf("[Server] Flushing world chunks to storage...")
@@ -270,10 +274,12 @@ func (s *Server) handleConnection(conn net.Conn) {
 	s.mu.Lock()
 	s.nextSessID++
 	sess := &ClientSession{
-		ID:     s.nextSessID,
-		conn:   conn,
-		server: s,
-		state:  protocol.StateHandshake,
+		ID:       s.nextSessID,
+		conn:     conn,
+		server:   s,
+		state:    protocol.StateHandshake,
+		outbound: make(chan protocol.Packet, 256),
+		done:     make(chan struct{}),
 	}
 	s.sessions[sess.ID] = sess
 	s.mu.Unlock()
@@ -288,32 +294,68 @@ func (s *Server) handleConnection(conn net.Conn) {
 		s.mu.Unlock()
 	}()
 
+	s.writeWG.Add(1)
+	go sess.writeLoop()
 	sess.readLoop()
 }
 
 func (sess *ClientSession) Send(pkt protocol.Packet) error {
-	sess.writeMu.Lock()
-	defer sess.writeMu.Unlock()
 	sess.mu.Lock()
 	if sess.closed {
 		sess.mu.Unlock()
 		return net.ErrClosed
 	}
-	conn := sess.conn
+	outbound := sess.outbound
+	done := sess.done
 	sess.mu.Unlock()
-	if err := conn.SetWriteDeadline(time.Now().Add(5 * time.Second)); err != nil {
-		_ = conn.Close()
+	select {
+	case <-done:
+		return net.ErrClosed
+	default:
+	}
+	select {
+	case <-done:
+		return net.ErrClosed
+	case outbound <- pkt:
+		return nil
+	default:
+		err := fmt.Errorf("session %d outbound queue is full", sess.ID)
+		log.Printf("[Session %d] Disconnecting slow client: %v", sess.ID, err)
+		sess.Close()
 		return err
 	}
-	if err := protocol.SendPacket(conn, pkt); err != nil {
-		_ = conn.Close()
-		return err
+}
+
+func (sess *ClientSession) writeLoop() {
+	defer sess.server.writeWG.Done()
+	for {
+		select {
+		case <-sess.done:
+			return
+		case pkt := <-sess.outbound:
+			sess.mu.Lock()
+			closed, conn := sess.closed, sess.conn
+			sess.mu.Unlock()
+			if closed {
+				return
+			}
+			if err := conn.SetWriteDeadline(time.Now().Add(5 * time.Second)); err != nil {
+				log.Printf("[Session %d] Failed to set packet write deadline: %v", sess.ID, err)
+				sess.Close()
+				return
+			}
+			if err := protocol.SendPacket(conn, pkt); err != nil {
+				log.Printf("[Session %d] Packet write failed: %v", sess.ID, err)
+				sess.Close()
+				return
+			}
+			if err := conn.SetWriteDeadline(time.Time{}); err != nil {
+				log.Printf("[Session %d] Failed to clear packet write deadline: %v", sess.ID, err)
+				sess.Close()
+				return
+			}
+		}
 	}
-	if err := conn.SetWriteDeadline(time.Time{}); err != nil {
-		_ = conn.Close()
-		return err
-	}
-	return nil
 }
 
 func (sess *ClientSession) Close() {
@@ -326,6 +368,7 @@ func (sess *ClientSession) Close() {
 	conn := sess.conn
 	playerID := sess.playerID
 	sess.mu.Unlock()
+	sess.doneOnce.Do(func() { close(sess.done) })
 	_ = conn.Close()
 	if playerID > 0 {
 		sess.server.simEngine.RemovePlayer(playerID)
