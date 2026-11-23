@@ -129,6 +129,46 @@ func TestCameraLookVectorAndProjection(t *testing.T) {
 	}
 }
 
+func TestCameraSphereInFrustum(t *testing.T) {
+	cam := NewCamera(0, 0, 0)
+	const width, height = 640, 480
+	tanHalfY := math.Tan(cam.Fov * math.Pi / 360)
+	tanHalfX := tanHalfY * width / height
+
+	tests := []struct {
+		name            string
+		x, y, z, radius float64
+		want            bool
+	}{
+		{name: "center ahead", x: 0, y: 0, z: 10, radius: 1, want: true},
+		{name: "fully behind", x: 0, y: 0, z: -10, radius: 1, want: false},
+		{name: "intersects left edge", x: -10*tanHalfX - 0.5, y: 0, z: 10, radius: 1, want: true},
+		{name: "outside left edge", x: -10*tanHalfX - 2, y: 0, z: 10, radius: 1, want: false},
+		{name: "intersects top edge", x: 0, y: 10*tanHalfY + 0.5, z: 10, radius: 1, want: true},
+		{name: "outside top edge", x: 0, y: 10*tanHalfY + 2, z: 10, radius: 1, want: false},
+		{name: "intersects near plane", x: 0, y: 0, z: 0.5, radius: 1, want: true},
+		{name: "outside near plane", x: 0, y: 0, z: -2, radius: 1, want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := cam.SphereInFrustum(tt.x, tt.y, tt.z, tt.radius, width, height, 0.1); got != tt.want {
+				t.Fatalf("SphereInFrustum(%v, %v, %v, r=%v) = %v, want %v", tt.x, tt.y, tt.z, tt.radius, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCameraSphereInFrustumConservativeOnInvalidInputs(t *testing.T) {
+	cam := NewCamera(0, 0, 0)
+	if !cam.SphereInFrustum(0, 0, 10, 1, 0, 480, 0.1) {
+		t.Fatal("invalid viewport must conservatively retain the sphere")
+	}
+	cam.Fov = math.NaN()
+	if !cam.SphereInFrustum(0, 0, 10, 1, 640, 480, 0.1) {
+		t.Fatal("invalid camera FOV must conservatively retain the sphere")
+	}
+}
+
 func TestHUDDrawing(t *testing.T) {
 	fb := NewFramebuffer(640, 480)
 	fb.Clear(0xFF000000)
@@ -740,3 +780,4 @@ func TestCrossedQuadsFoliageUprightOrientation(t *testing.T) {
 		}
 	}
 }
+
