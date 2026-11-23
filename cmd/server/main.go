@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math"
 	"net"
 	"os"
 	"os/signal"
@@ -14,6 +15,7 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/HUA503/minecraft-go/pkg/inventory"
 	"github.com/HUA503/minecraft-go/pkg/protocol"
 	"github.com/HUA503/minecraft-go/pkg/sim"
 	"github.com/HUA503/minecraft-go/pkg/world"
@@ -189,6 +191,34 @@ func (s *Server) Stop() {
 		close(s.stopDone)
 	}
 	s.mu.Unlock()
+}
+
+func (sess *ClientSession) canModifyBlock(bu protocol.BlockUpdatePacket) bool {
+	if bu.BlockID != 0 && !inventory.IsPlaceableBlock(bu.BlockID) {
+		return false
+	}
+	for _, player := range sess.server.simEngine.GetPlayerList() {
+		if player.ID != sess.playerID {
+			continue
+		}
+		dx := float64(bu.X) + 0.5 - player.Position.X
+		dy := float64(bu.Y) + 0.5 - player.Position.Y
+		dz := float64(bu.Z) + 0.5 - player.Position.Z
+		return !math.IsNaN(dx) && !math.IsNaN(dy) && !math.IsNaN(dz) &&
+			!math.IsInf(dx, 0) && !math.IsInf(dy, 0) && !math.IsInf(dz, 0) &&
+			dx*dx+dy*dy+dz*dz <= 36 // Six-block interaction limit.
+	}
+	return false
+}
+
+func validPlayerPosition(pos protocol.PlayerPositionPacket) bool {
+	return !math.IsNaN(pos.X) && !math.IsNaN(pos.Y) && !math.IsNaN(pos.Z) &&
+		!math.IsInf(pos.X, 0) && !math.IsInf(pos.Y, 0) && !math.IsInf(pos.Z, 0) &&
+		math.Abs(pos.X) <= world.WorldBorderLimit && math.Abs(pos.Z) <= world.WorldBorderLimit &&
+		pos.Y >= world.MinWorldY-64 && pos.Y <= world.MaxWorldY+64 &&
+		!math.IsNaN(float64(pos.Yaw)) && !math.IsNaN(float64(pos.Pitch)) &&
+		!math.IsInf(float64(pos.Yaw), 0) && !math.IsInf(float64(pos.Pitch), 0) &&
+		pos.Pitch >= -90 && pos.Pitch <= 90
 }
 
 func (s *Server) broadcastLoop() {
@@ -401,6 +431,9 @@ func (sess *ClientSession) handlePacket(raw *protocol.RawPacket) error {
 			if err := pos.Decode(raw.Reader()); err != nil {
 				return err
 			}
+			if !validPlayerPosition(pos) {
+				return fmt.Errorf("invalid player position from %q", sess.username)
+			}
 			sess.server.simEngine.MovePlayer(sess.playerID, sim.Vec3{X: pos.X, Y: pos.Y, Z: pos.Z}, pos.Yaw, pos.Pitch, pos.OnGround)
 
 		case 0x09: // BlockUpdate (Place/Break)
@@ -408,7 +441,7 @@ func (sess *ClientSession) handlePacket(raw *protocol.RawPacket) error {
 			if err := bu.Decode(raw.Reader()); err != nil {
 				return err
 			}
-			if world.ValidBlockCoordinates(bu.X, bu.Y, bu.Z) && bu.BlockID >= 0 {
+			if world.ValidBlockCoordinates(bu.X, bu.Y, bu.Z) && bu.BlockID >= 0 && sess.canModifyBlock(bu) {
 				sess.server.simEngine.SetBlock(bu.X, bu.Y, bu.Z, bu.BlockID)
 				sess.server.mu.Lock()
 				sess.server.modifiedBlocks[world.BlockPos{X: bu.X, Y: bu.Y, Z: bu.Z}] = bu.BlockID
