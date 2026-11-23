@@ -114,6 +114,8 @@ type Client struct {
 	streamJobsMu        sync.Mutex
 	streamJobsPending   map[world.ChunkPos]chunkStreamJob
 	streamJobsWake      chan struct{}
+	streamJobsIdle      chan struct{}
+	streamJobsActive    int
 	streamWorkerOnce    sync.Once
 	remoteMu            sync.RWMutex
 	remotePlayers       map[string]*RemotePlayer
@@ -659,6 +661,10 @@ func (c *Client) SaveAndQuitToTitle() {
 		}
 	}
 	if c.engine != nil {
+		// Invalidate and drain in-flight chunk reads/generation/saves before the
+		// final world flush, or a late worker could install data after SaveAll.
+		c.resetMeshCache(true)
+		c.waitForChunkStreamIdle()
 		c.engine.Stop()
 		if err := c.engine.SaveAll(); err != nil {
 			log.Printf("[Client] Failed to save one or more chunks while leaving the world: %v", err)
@@ -758,6 +764,7 @@ func NewClient(serverAddr, username string, isSingleplayer bool, width, height i
 		meshJobsWake:      make(chan struct{}, 1),
 		streamJobsPending: make(map[world.ChunkPos]chunkStreamJob),
 		streamJobsWake:    make(chan struct{}, 1),
+		streamJobsIdle:    make(chan struct{}, 1),
 		loadedChunks:      make(map[world.ChunkPos]bool),
 		remotePlayers:     make(map[string]*RemotePlayer),
 		lastChunkX:        -999,
@@ -888,6 +895,7 @@ func (c *Client) chunkStreamLoop() {
 				batch = append(batch, job)
 				delete(c.streamJobsPending, pos)
 			}
+			c.streamJobsActive += len(batch)
 			c.streamJobsMu.Unlock()
 			if len(batch) == 0 {
 				break
@@ -902,54 +910,87 @@ func (c *Client) chunkStreamLoop() {
 				return batch[i].pos.Z < batch[j].pos.Z
 			})
 			for _, job := range batch {
-				if job.engine == nil || !c.meshGenerationIs(job.generation) {
-					continue
-				}
-				if job.unload {
-					if err := job.engine.UnloadChunkInDimension(job.dimension, job.pos); err != nil {
-						log.Printf("[Client] Failed to save chunk %v while unloading; retaining it in memory: %v", job.pos, err)
-						continue
-					}
-					c.meshMu.Lock()
-					if c.meshGeneration == job.generation {
-						delete(c.loadedChunks, job.pos)
-						for sy := int32(world.MinSectionY); sy <= world.MaxSectionY; sy++ {
-							delete(c.meshCache, [3]int32{job.pos.X, sy, job.pos.Z})
-						}
-					}
-					c.meshMu.Unlock()
-					continue
-				}
-
-				chunk := job.engine.GetChunkInDimension(job.dimension, job.pos)
-				if chunk == nil {
-					if job.generator == nil {
-						continue
-					}
-					chunk = generateChunkSafely(job.generator, job.pos)
-					if !c.meshGenerationIs(job.generation) {
-						continue
-					}
-					job.engine.LoadGeneratedChunkInDimension(job.dimension, job.pos, chunk)
-				}
-				c.meshMu.Lock()
-				if c.meshGeneration == job.generation {
-					if c.loadedChunks == nil {
-						c.loadedChunks = make(map[world.ChunkPos]bool)
-					}
-					c.loadedChunks[job.pos] = true
-					for sy := int32(world.MinSectionY); sy <= world.MaxSectionY; sy++ {
-						key := [3]int32{job.pos.X, sy, job.pos.Z}
-						c.meshRevisions[key]++
-						delete(c.meshCache, key)
-						for _, neighbor := range [][3]int32{{job.pos.X - 1, sy, job.pos.Z}, {job.pos.X + 1, sy, job.pos.Z}, {job.pos.X, sy, job.pos.Z - 1}, {job.pos.X, sy, job.pos.Z + 1}} {
-							c.meshRevisions[neighbor]++
-							delete(c.meshCache, neighbor)
-						}
+				c.processChunkStreamJob(job)
+				c.streamJobsMu.Lock()
+				c.streamJobsActive--
+				if c.streamJobsActive == 0 && len(c.streamJobsPending) == 0 {
+					select {
+					case c.streamJobsIdle <- struct{}{}:
+					default:
 					}
 				}
-				c.meshMu.Unlock()
+				c.streamJobsMu.Unlock()
 			}
+		}
+	}
+}
+
+func (c *Client) processChunkStreamJob(job chunkStreamJob) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			log.Printf("[Client] chunk stream job failed for %v (dimension %d): %v\n%s", job.pos, job.dimension, recovered, debug.Stack())
+		}
+	}()
+	if job.engine == nil || !c.meshGenerationIs(job.generation) {
+		return
+	}
+	if job.unload {
+		if err := job.engine.UnloadChunkInDimension(job.dimension, job.pos); err != nil {
+			log.Printf("[Client] Failed to save chunk %v while unloading; retaining it in memory: %v", job.pos, err)
+			return
+		}
+		c.meshMu.Lock()
+		if c.meshGeneration == job.generation {
+			delete(c.loadedChunks, job.pos)
+			for sy := int32(world.MinSectionY); sy <= world.MaxSectionY; sy++ {
+				delete(c.meshCache, [3]int32{job.pos.X, sy, job.pos.Z})
+			}
+		}
+		c.meshMu.Unlock()
+		return
+	}
+
+	chunk := job.engine.GetChunkInDimension(job.dimension, job.pos)
+	if chunk == nil {
+		if job.generator == nil {
+			return
+		}
+		chunk = generateChunkSafely(job.generator, job.pos)
+		if !c.meshGenerationIs(job.generation) {
+			return
+		}
+		job.engine.LoadGeneratedChunkInDimension(job.dimension, job.pos, chunk)
+	}
+	c.meshMu.Lock()
+	if c.meshGeneration == job.generation {
+		if c.loadedChunks == nil {
+			c.loadedChunks = make(map[world.ChunkPos]bool)
+		}
+		c.loadedChunks[job.pos] = true
+		for sy := int32(world.MinSectionY); sy <= world.MaxSectionY; sy++ {
+			key := [3]int32{job.pos.X, sy, job.pos.Z}
+			c.meshRevisions[key]++
+			delete(c.meshCache, key)
+			for _, neighbor := range [][3]int32{{job.pos.X - 1, sy, job.pos.Z}, {job.pos.X + 1, sy, job.pos.Z}, {job.pos.X, sy, job.pos.Z - 1}, {job.pos.X, sy, job.pos.Z + 1}} {
+				c.meshRevisions[neighbor]++
+				delete(c.meshCache, neighbor)
+			}
+		}
+	}
+	c.meshMu.Unlock()
+}
+
+func (c *Client) waitForChunkStreamIdle() {
+	for {
+		c.streamJobsMu.Lock()
+		idle := c.streamJobsActive == 0 && len(c.streamJobsPending) == 0
+		c.streamJobsMu.Unlock()
+		if idle {
+			return
+		}
+		select {
+		case <-c.streamJobsIdle:
+		case <-time.After(25 * time.Millisecond):
 		}
 	}
 }
