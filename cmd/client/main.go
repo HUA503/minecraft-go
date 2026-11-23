@@ -3097,13 +3097,13 @@ func (c *Client) RenderFrame() {
 			continue
 		}
 
-		// Section bounding sphere culling against camera plane (safe -18.0 threshold)
+		// Conservatively reject sections outside the camera frustum before walking
+		// their triangle indices; the sphere encloses the full 16x16x16 section.
 		scx := float64(key[0]*16 + 8)
 		scy := float64(key[1]*16 + 8)
 		scz := float64(key[2]*16 + 8)
 		distForward := (scx-camX)*lx + (scy-camY)*ly + (scz-camZ)*lz
-		if distForward < -18.0 {
-			// Entire section is safely behind camera plane, skip!
+		if !c.camera.SphereInFrustum(scx, scy, scz, 13.856406460551018, c.framebuf.Width, c.framebuf.Height, 0.10) {
 			continue
 		}
 		visibleSections = append(visibleSections, visibleSection{mesh: mesh, distForward: distForward})
