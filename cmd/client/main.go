@@ -339,12 +339,49 @@ func restoreSavedInventory(target *inventory.PlayerInventory, saved []world.Save
 	}
 }
 
+func createUniqueWorldDirectory(dirName string) (string, error) {
+	name := filepath.Base(filepath.Clean(dirName))
+	if name == "." || name == string(filepath.Separator) || name == "" {
+		return "", fmt.Errorf("invalid world directory name %q", dirName)
+	}
+	root := "saves"
+	if err := os.MkdirAll(root, 0755); err != nil {
+		return "", err
+	}
+	for suffix := 0; suffix < 1000; suffix++ {
+		candidate := name
+		if suffix > 0 {
+			candidate = fmt.Sprintf("%s_%d", name, suffix)
+		}
+		path := filepath.Join(root, candidate)
+		if err := os.Mkdir(path, 0755); err == nil {
+			return path, nil
+		} else if !os.IsExist(err) {
+			return "", err
+		}
+	}
+	return "", fmt.Errorf("could not allocate a unique directory for world %q", dirName)
+}
+
 func (c *Client) StartSingleplayerWorld(worldDirName string, isNew bool, newSeed int64, newLevelName string, newGameMode int) {
 	if newGameMode != 1 {
 		newGameMode = 0
 	}
 	worldPath := filepath.Join("saves", worldDirName)
-	_ = os.MkdirAll(worldPath, 0755)
+	if isNew {
+		var err error
+		worldPath, err = createUniqueWorldDirectory(worldDirName)
+		if err != nil {
+			log.Printf("[Client] Failed to create world directory: %v", err)
+			return
+		}
+	} else if info, err := os.Stat(worldPath); err != nil || !info.IsDir() {
+		if err == nil {
+			err = fmt.Errorf("path is not a directory")
+		}
+		log.Printf("[Client] Failed to open world directory %q: %v", worldPath, err)
+		return
+	}
 
 	sm, err := world.NewSaveManager(worldPath)
 	if err != nil {
