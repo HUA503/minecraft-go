@@ -416,6 +416,33 @@ func TestRegionWriteRecoversRealInterruptedCommitStages(t *testing.T) {
 	}
 }
 
+func TestRegionOpenPreservesInvalidFullJournalInsteadOfIgnoringIt(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "r.0.0.mca")
+	region, err := OpenRegion(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := region.WriteChunkData(1, 1, testChunkTag("preserve")); err != nil {
+		t.Fatal(err)
+	}
+	if err := region.file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	region.file = nil
+
+	journal := encodeRegionJournalRecord(regionJournalPrepared, regionTransaction{index: chunkIndex(1, 1)})
+	journal[8] ^= 0xFF // invalidate the checksum after a complete record exists
+	if err := os.WriteFile(path+".txn", journal, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := OpenRegion(path); err == nil {
+		t.Fatal("opening a region with an ambiguous full transaction record should fail")
+	}
+	if _, err := os.Stat(path + ".txn"); err != nil {
+		t.Fatalf("invalid journal was removed instead of preserved: %v", err)
+	}
+}
+
 func TestSaveChunkKeepsDirtyFlagWhenRegionCommitFails(t *testing.T) {
 	sm, err := NewSaveManager(t.TempDir())
 	if err != nil {

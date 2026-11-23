@@ -121,8 +121,11 @@ func recoverRegionJournal(path string, file regionFile) error {
 		return removeRegionJournal(journalPath)
 	}
 	state, transaction, ok := decodeRegionJournalRecord(data[:regionJournalRecordSize])
-	if !ok || state != regionJournalPrepared {
-		return removeRegionJournal(journalPath)
+	if !ok {
+		return fmt.Errorf("region transaction journal has an invalid prepared record; preserved at %s", journalPath)
+	}
+	if state != regionJournalPrepared {
+		return fmt.Errorf("region transaction journal starts in invalid state %d; preserved at %s", state, journalPath)
 	}
 	committed := false
 	if len(data) >= regionJournalRecordSize*2 {
