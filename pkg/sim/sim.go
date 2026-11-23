@@ -484,15 +484,13 @@ func (e *Engine) SetStorage(s *world.SaveManager) error {
 func (e *Engine) SaveAll() error {
 	e.saveMu.Lock()
 	defer e.saveMu.Unlock()
-	type pendingSave struct {
+	type pendingChunk struct {
 		dimension int
 		position  world.ChunkPos
 		storage   *world.SaveManager
 		live      *world.Chunk
-		revision  uint64
-		snapshot  *world.Chunk
 	}
-	var pending []pendingSave
+	var pending []pendingChunk
 	e.mu.RLock()
 	for dim, chunks := range e.DimensionWorlds {
 		storage := e.DimensionStorage[dim]
@@ -504,23 +502,32 @@ func (e *Engine) SaveAll() error {
 		}
 		for pos, chunk := range chunks {
 			if chunk != nil && chunk.IsDirty {
-				pending = append(pending, pendingSave{dimension: dim, position: pos, storage: storage, live: chunk, revision: chunk.Revision, snapshot: chunk.Clone()})
+				pending = append(pending, pendingChunk{dimension: dim, position: pos, storage: storage, live: chunk})
 			}
 		}
 	}
 	e.mu.RUnlock()
 	var firstErr error
-	for _, save := range pending {
-		if err := save.storage.SaveChunk(save.snapshot); err != nil {
+	for _, item := range pending {
+		e.mu.RLock()
+		if item.dimension < 0 || item.dimension >= len(e.DimensionWorlds) ||
+			e.DimensionWorlds[item.dimension][item.position] != item.live || !item.live.IsDirty {
+			e.mu.RUnlock()
+			continue
+		}
+		revision := item.live.Revision
+		snapshot := item.live.Clone()
+		e.mu.RUnlock()
+		if err := item.storage.SaveChunk(snapshot); err != nil {
 			if firstErr == nil {
 				firstErr = err
 			}
 			continue
 		}
 		e.mu.Lock()
-		if save.dimension >= 0 && save.dimension < len(e.DimensionWorlds) &&
-			e.DimensionWorlds[save.dimension][save.position] == save.live && save.live.Revision == save.revision {
-			save.live.IsDirty = false
+		if item.dimension >= 0 && item.dimension < len(e.DimensionWorlds) &&
+			e.DimensionWorlds[item.dimension][item.position] == item.live && item.live.Revision == revision {
+			item.live.IsDirty = false
 		}
 		e.mu.Unlock()
 	}
