@@ -147,6 +147,7 @@ func (s *Server) Stop() {
 		sess.Close()
 	}
 
+	s.simEngine.Stop()
 	log.Printf("[Server] Flushing world chunks to storage...")
 	if err := s.simEngine.SaveAll(); err != nil {
 		log.Printf("[Server] Error in SaveAll: %v", err)
@@ -156,7 +157,6 @@ func (s *Server) Stop() {
 			log.Printf("[Server] Error closing SaveManager: %v", err)
 		}
 	}
-	s.simEngine.Stop()
 	log.Printf("[Server] Server stopped successfully.")
 
 	s.mu.Lock()

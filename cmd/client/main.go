@@ -507,6 +507,7 @@ func (c *Client) RespawnLocalPlayer() {
 
 func (c *Client) SaveAndQuitToTitle() {
 	if c.engine != nil {
+		c.engine.Stop()
 		if err := c.engine.SaveAll(); err != nil {
 			log.Printf("[Client] Failed to save one or more chunks while leaving the world: %v", err)
 		}
@@ -567,7 +568,6 @@ func (c *Client) SaveAndQuitToTitle() {
 			c.saveMgr = nil
 		}
 
-		c.engine.Stop()
 		c.engine = nil
 		c.player = nil
 	}

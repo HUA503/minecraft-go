@@ -136,7 +136,10 @@ type Engine struct {
 	WorldTime        int64
 	Events           chan WorldEvent
 	stopChan         chan struct{}
-	startLoopOnce    sync.Once
+	loopMu           sync.Mutex
+	tickDone         chan struct{}
+	tickLoopStarted  bool
+	stopped          bool
 	stopOnce         sync.Once
 	Storage          *world.SaveManager
 	DimensionStorage [3]*world.SaveManager
@@ -162,6 +165,7 @@ func NewEngine() *Engine {
 		Difficulty:       2,    // Default: Normal difficulty
 		Events:           make(chan WorldEvent, 1024),
 		stopChan:         make(chan struct{}),
+		tickDone:         make(chan struct{}),
 		Furnaces:         make(map[world.BlockPos]*inventory.FurnaceBlockEntity),
 	}
 	eng.DimensionWorlds[0] = eng.World
@@ -1300,29 +1304,44 @@ func (e *Engine) Tick() {
 
 // StartTickLoop runs the 20 TPS loop in a background goroutine.
 func (e *Engine) StartTickLoop() {
-	e.startLoopOnce.Do(func() {
-		ticker := time.NewTicker(50 * time.Millisecond)
-		go func() {
-			defer ticker.Stop()
-			defer func() {
-				if r := recover(); r != nil {
-					log.Printf("[Simulation] Tick loop panicked: %v\n%s", r, debug.Stack())
-				}
-			}()
-			for {
-				select {
-				case <-ticker.C:
-					e.Tick()
-				case <-e.stopChan:
-					return
-				}
+	e.loopMu.Lock()
+	if e.stopped || e.tickLoopStarted {
+		e.loopMu.Unlock()
+		return
+	}
+	e.tickLoopStarted = true
+	ticker := time.NewTicker(50 * time.Millisecond)
+	go func() {
+		defer ticker.Stop()
+		defer close(e.tickDone)
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[Simulation] Tick loop panicked: %v\n%s", r, debug.Stack())
 			}
 		}()
-	})
+		for {
+			select {
+			case <-ticker.C:
+				e.Tick()
+			case <-e.stopChan:
+				return
+			}
+		}
+	}()
+	e.loopMu.Unlock()
 }
 
 func (e *Engine) Stop() {
-	e.stopOnce.Do(func() { close(e.stopChan) })
+	e.stopOnce.Do(func() {
+		close(e.stopChan)
+		e.loopMu.Lock()
+		e.stopped = true
+		started := e.tickLoopStarted
+		e.loopMu.Unlock()
+		if started {
+			<-e.tickDone
+		}
+	})
 }
 
 // GetOrCreateFurnace retrieves or creates a FurnaceBlockEntity at pos.
