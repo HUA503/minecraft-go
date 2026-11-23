@@ -36,6 +36,7 @@ type Region struct {
 	path                        string
 	journalPresent              bool
 	journalDirectorySyncPending bool
+	crashHook                   func(stage string) error
 	mu                          sync.Mutex
 }
 
@@ -401,6 +402,11 @@ func (r *Region) WriteChunkData(chunkX, chunkZ int32, chunkNBT *nbt.CompoundTag)
 	if err := syncDirectory(filepath.Dir(r.path)); err != nil {
 		return fmt.Errorf("sync prepared region transaction: %w", err)
 	}
+	if r.crashHook != nil {
+		if err := r.crashHook("prepared"); err != nil {
+			return fmt.Errorf("interrupted after prepared transaction: %w", err)
+		}
+	}
 	if err := applyRegionTransaction(r.file, transaction, true); err != nil {
 		recoveryErr := r.recoverPendingJournal()
 		if recoveryErr != nil {
@@ -408,12 +414,22 @@ func (r *Region) WriteChunkData(chunkX, chunkZ int32, chunkNBT *nbt.CompoundTag)
 		}
 		return fmt.Errorf("commit chunk header: %w; previous chunk restored", err)
 	}
+	if r.crashHook != nil {
+		if err := r.crashHook("header"); err != nil {
+			return fmt.Errorf("interrupted after chunk header sync: %w", err)
+		}
+	}
 	if err := writeRegionJournal(journalPath, regionJournalCommitted, transaction); err != nil {
 		recoveryErr := r.recoverPendingJournal()
 		if recoveryErr != nil {
 			return fmt.Errorf("commit region transaction record: %w (transaction recovery: %v)", err, recoveryErr)
 		}
 		return fmt.Errorf("commit region transaction record: %w; transaction recovered", err)
+	}
+	if r.crashHook != nil {
+		if err := r.crashHook("committed"); err != nil {
+			return fmt.Errorf("interrupted after committed transaction: %w", err)
+		}
 	}
 	if err := removeRegionJournal(journalPath); err != nil {
 		if _, statErr := os.Stat(journalPath); os.IsNotExist(statErr) {

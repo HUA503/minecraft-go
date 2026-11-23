@@ -363,6 +363,59 @@ func TestRegionRecoveryReplaysCommittedHeaderAfterCrash(t *testing.T) {
 	}
 }
 
+func TestRegionWriteRecoversRealInterruptedCommitStages(t *testing.T) {
+	tests := []struct {
+		stage      string
+		wantStatus string
+	}{
+		{stage: "prepared", wantStatus: "old"},
+		{stage: "header", wantStatus: "old"},
+		{stage: "committed", wantStatus: "new"},
+	}
+	for _, test := range tests {
+		t.Run(test.stage, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "r.0.0.mca")
+			region, err := OpenRegion(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := region.WriteChunkData(1, 1, testChunkTag("old")); err != nil {
+				t.Fatal(err)
+			}
+			region.crashHook = func(stage string) error {
+				if stage == test.stage {
+					return errors.New("simulated process termination")
+				}
+				return nil
+			}
+			if err := region.WriteChunkData(1, 1, testChunkTag("new")); err == nil {
+				t.Fatal("expected simulated interruption")
+			}
+			// A real process exit bypasses Region.Close's recovery path.
+			if err := region.file.Close(); err != nil {
+				t.Fatal(err)
+			}
+			region.file = nil
+
+			recovered, err := OpenRegion(path)
+			if err != nil {
+				t.Fatalf("reopen after interruption at %q: %v", test.stage, err)
+			}
+			defer recovered.Close()
+			got, err := recovered.ReadChunkData(1, 1)
+			if err != nil {
+				t.Fatalf("read chunk after recovery: %v", err)
+			}
+			if status := got.GetString("Status"); status != test.wantStatus {
+				t.Fatalf("recovered status = %q, want %q", status, test.wantStatus)
+			}
+			if _, err := os.Stat(path + ".txn"); !os.IsNotExist(err) {
+				t.Fatalf("transaction journal still exists after recovery: %v", err)
+			}
+		})
+	}
+}
+
 func TestSaveChunkKeepsDirtyFlagWhenRegionCommitFails(t *testing.T) {
 	sm, err := NewSaveManager(t.TempDir())
 	if err != nil {
