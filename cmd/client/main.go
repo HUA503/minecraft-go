@@ -1011,6 +1011,13 @@ func (c *Client) meshGenerationIs(generation uint64) bool {
 	return c.meshGeneration == generation
 }
 
+func (c *Client) meshJobPending(key [3]int32, generation, revision uint64) bool {
+	c.meshJobsMu.Lock()
+	defer c.meshJobsMu.Unlock()
+	job, exists := c.meshJobsPending[key]
+	return exists && job.generation == generation && job.revision == revision
+}
+
 // EnsureChunksAroundPlayer schedules world streaming and progressively meshes sections around the player.
 func (c *Client) EnsureChunksAroundPlayer(playerX, playerZ float64, radius int32) {
 	generator := c.getGenerator()
@@ -1090,21 +1097,28 @@ func (c *Client) EnsureChunksAroundPlayer(playerX, playerZ float64, radius int32
 	// Prioritize sections closest to player camera (covering Y=-64 up to Y=256)
 	camSY := int32(math.Floor(c.camera.Y / 16.0))
 	c.meshMu.RLock()
-	var unmeshed []sectionMeshJob
+	unmeshed := make([]sectionMeshJob, 0, 2)
 	orderedSY := sectionBuildOrder(camSY)
 
+scanMeshes:
 	for dx := -radius; dx <= radius; dx++ {
 		for dz := -radius; dz <= radius; dz++ {
 			cp := world.ChunkPos{X: pcx + dx, Z: pcz + dz}
 			for _, sy := range orderedSY {
 				key := [3]int32{cp.X, sy, cp.Z}
 				if c.meshCache[key] == nil {
-					unmeshed = append(unmeshed, sectionMeshJob{
+					job := sectionMeshJob{
 						key:        key,
 						generation: c.meshGeneration,
 						revision:   c.meshRevisions[key],
 						engine:     engine,
-					})
+					}
+					if !c.meshJobPending(key, job.generation, job.revision) {
+						unmeshed = append(unmeshed, job)
+						if len(unmeshed) == cap(unmeshed) {
+							break scanMeshes
+						}
+					}
 				}
 			}
 		}
@@ -1115,21 +1129,7 @@ func (c *Client) EnsureChunksAroundPlayer(playerX, playerZ float64, radius int32
 		return
 	}
 
-	maxBuild := 2
-	if len(unmeshed) < maxBuild {
-		maxBuild = len(unmeshed)
-	}
-
-	for i := 0; i < maxBuild; i++ {
-		job := unmeshed[i]
-		key := job.key
-		mesh := buildSectionMeshSafely(engine, key)
-		c.meshMu.Lock()
-		if c.meshGeneration == job.generation && c.meshRevisions[key] == job.revision && c.meshCache[key] == nil {
-			c.meshCache[key] = mesh
-		}
-		c.meshMu.Unlock()
-	}
+	c.enqueueMeshJobs(unmeshed)
 }
 
 func sectionBuildOrder(cameraSectionY int32) []int32 {
@@ -1206,6 +1206,9 @@ func (c *Client) enqueueMeshJobs(jobs []sectionMeshJob) {
 	})
 	c.meshJobsMu.Lock()
 	for _, job := range jobs {
+		if _, exists := c.meshJobsPending[job.key]; !exists && len(c.meshJobsPending) >= 128 {
+			continue
+		}
 		c.meshJobsPending[job.key] = job
 	}
 	c.meshJobsMu.Unlock()
