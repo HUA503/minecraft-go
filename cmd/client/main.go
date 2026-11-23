@@ -437,6 +437,20 @@ func validSavedPlayerPosition(pos sim.Vec3) bool {
 		!math.IsNaN(pos.Z) && !math.IsInf(pos.Z, 0) && math.Abs(pos.Z) <= 29_999_984
 }
 
+func savedWorldSpawn(player *sim.PlayerEntity) sim.Vec3 {
+	validSpawn := func(pos sim.Vec3) bool {
+		return validSavedPlayerPosition(pos) && pos.Y >= float64(world.MinWorldY) && pos.Y <= float64(world.MaxWorldY) &&
+			(pos.X != 0 || pos.Y != 0 || pos.Z != 0)
+	}
+	if player != nil && validSpawn(player.SpawnPos) {
+		return player.SpawnPos
+	}
+	if player != nil && validSpawn(player.Position) {
+		return player.Position
+	}
+	return sim.Vec3{X: 8.5, Y: 66, Z: 8.5}
+}
+
 func validRemotePlayerPosition(pos protocol.PlayerPositionPacket) bool {
 	return !math.IsNaN(pos.X) && !math.IsInf(pos.X, 0) && math.Abs(pos.X) <= world.WorldBorderLimit &&
 		!math.IsNaN(pos.Y) && !math.IsInf(pos.Y, 0) && pos.Y >= float64(world.MinWorldY-64) && pos.Y <= float64(world.MaxWorldY+64) &&
@@ -727,7 +741,7 @@ func (c *Client) RespawnLocalPlayer() {
 	if c.player == nil || c.engine == nil {
 		return
 	}
-	spawnPos := findSafeSpawnPoint(c.genOverworld, c.engine)
+	spawnPos := savedWorldSpawn(c.player)
 	c.engine.RespawnPlayer(c.player.ID, spawnPos)
 	c.player.Health = 20.0
 	c.player.Hunger = 20
@@ -792,17 +806,18 @@ func (c *Client) SaveAndQuitToTitle() {
 			saveX, saveY, saveZ := c.player.Position.X, c.player.Position.Y, c.player.Position.Z
 			if saveHealth <= 0 {
 				saveHealth = 20.0
-				sp := findSafeSpawnPoint(c.genOverworld, c.engine)
+				sp := savedWorldSpawn(c.player)
 				saveX, saveY, saveZ = sp.X, sp.Y, sp.Z
 			}
+			spawnPos := savedWorldSpawn(c.player)
 			ticks, dayTime := c.engine.GetWorldClock()
 			lvl := &world.LevelData{
 				Seed:      seed,
 				Time:      ticks,
 				DayTime:   dayTime,
-				SpawnX:    int32(saveX),
-				SpawnY:    int32(saveY),
-				SpawnZ:    int32(saveZ),
+				SpawnX:    int32(spawnPos.X),
+				SpawnY:    int32(spawnPos.Y),
+				SpawnZ:    int32(spawnPos.Z),
 				LevelName: c.currentWorldName,
 				GameMode:  gm,
 				Player: &world.PlayerSaveData{
@@ -866,9 +881,10 @@ func (c *Client) snapshotLevelData() *world.LevelData {
 	}
 	ticks, dayTime := c.engine.GetWorldClock()
 	position := c.player.Position
+	spawnPos := savedWorldSpawn(c.player)
 	return &world.LevelData{
 		Seed: seed, Time: ticks, DayTime: dayTime,
-		SpawnX: int32(position.X), SpawnY: int32(position.Y), SpawnZ: int32(position.Z),
+		SpawnX: int32(spawnPos.X), SpawnY: int32(spawnPos.Y), SpawnZ: int32(spawnPos.Z),
 		LevelName: c.currentWorldName, GameMode: gm,
 		Player: &world.PlayerSaveData{
 			X: position.X, Y: position.Y, Z: position.Z,
