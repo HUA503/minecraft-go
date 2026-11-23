@@ -744,15 +744,18 @@ func (e *Engine) setBlockLocked(x, y, z int32, state int32) {
 		return
 	}
 	cp := world.BlockPos{X: x, Y: y, Z: z}.ToChunkPos()
-	chunk, ok := e.World[cp]
-	if (!ok || chunk == nil) && e.Storage != nil {
-		if loaded, err := e.Storage.LoadChunk(cp); err == nil && loaded != nil {
-			e.World[cp] = loaded
-			chunk = loaded
-			ok = true
-		}
+	chunk := e.World[cp]
+	storage := e.DimensionStorage[e.CurrentDimension]
+	if storage == nil && e.CurrentDimension == 0 {
+		storage = e.Storage
 	}
-	if !ok || chunk == nil {
+	if chunk == nil && storage != nil {
+		// Tick-owned block changes must never synthesize a blank chunk over a
+		// missing or damaged saved chunk. User-facing SetBlock loads outside
+		// this lock before reaching the mutation path.
+		return
+	}
+	if chunk == nil {
 		chunk = world.NewChunk(cp)
 		e.World[cp] = chunk
 	}
@@ -770,8 +773,28 @@ func (e *Engine) setBlockLocked(x, y, z int32, state int32) {
 }
 
 func (e *Engine) SetBlock(x, y, z int32, state int32) {
+	if !world.ValidBlockCoordinates(x, y, z) || state < 0 {
+		return
+	}
+	dimension := e.GetDimension()
+	cp := world.BlockPos{X: x, Y: y, Z: z}.ToChunkPos()
+	loaded, err := e.GetChunkInDimensionWithError(dimension, cp)
+	if err != nil {
+		log.Printf("[World] Refusing block update in unreadable chunk %v (dimension %d): %v", cp, dimension, err)
+		return
+	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	if e.CurrentDimension != dimension || dimension < 0 || dimension >= len(e.DimensionWorlds) {
+		return
+	}
+	if e.World[cp] == nil {
+		chunk := loaded
+		if chunk == nil {
+			chunk = world.NewChunk(cp)
+		}
+		e.World[cp] = chunk
+	}
 	e.setBlockLocked(x, y, z, state)
 }
 
