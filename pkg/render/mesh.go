@@ -1,5 +1,7 @@
 package render
 
+import "github.com/HUA503/minecraft-go/pkg/inventory"
+
 // Vertex represents a 3D textured, lit vertex in the chunk mesh.
 type Vertex struct {
 	X, Y, Z      float32
@@ -51,6 +53,9 @@ var NeighborOffsets = [6][3]int32{
 
 // IsOpaqueCube returns whether a block is a solid, fully opaque 1x1x1 cube that hides neighbor faces.
 func IsOpaqueCube(blockID int32) bool {
+	if inventory.IsExtendedLeaves(blockID) || inventory.IsExtendedFoliage(blockID) {
+		return false
+	}
 	switch blockID {
 	case 0: // Air
 		return false
@@ -92,12 +97,22 @@ func IsTranslucentBlock(blockID int32) bool {
 
 // IsFoliage returns true if the block is rendered as crossed diagonal quads.
 func IsFoliage(blockID int32) bool {
+	if inventory.IsExtendedFoliage(blockID) {
+		return true
+	}
 	switch blockID {
 	case 6, 31, 32, 37, 38, 50, 65, 83:
 		return true
 	default:
 		return false
 	}
+}
+
+func isCutoutCube(blockID int32) bool {
+	if inventory.IsExtendedLeaves(blockID) {
+		return true
+	}
+	return blockID == 18 || blockID == 20 || blockID == 90
 }
 
 // BuildSectionMesh generates face-culled geometry for a 16x16x16 section.
@@ -137,7 +152,7 @@ func BuildSectionMesh(getBlock func(x, y, z int32) int32, originX, originY, orig
 					// Internal face culling between transparent/translucent blocks (both water blocks 8 and 9 cull mutually)
 					isWaterA := (blockID == 8 || blockID == 9)
 					isWaterB := (neighborID == 8 || neighborID == 9)
-					if (isWaterA && isWaterB) || (blockID == neighborID && (blockID == 18 || blockID == 20 || blockID == 90)) {
+					if (isWaterA && isWaterB) || (blockID == neighborID && isCutoutCube(blockID)) {
 						continue
 					}
 					addFaceQuad(mesh, originX+x, originY+y, originZ+z, face, blockID, getBlock)
@@ -411,4 +426,3 @@ func addLadderQuad(mesh *Mesh, x, y, z int32, getBlock func(x, y, z int32) int32
 		base+3, base+2, base,
 	)
 }
-

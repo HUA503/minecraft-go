@@ -725,6 +725,30 @@ func TestOfficialItemAndBlockTextures(t *testing.T) {
 	}
 }
 
+func TestPoplarCreativeItemsHaveOfficialTexturesAndRenderShapes(t *testing.T) {
+	for _, id := range []int32{10060, 10061, 10062, 10063} {
+		if _, ok := GetOfficialItemSprite(id); !ok {
+			t.Errorf("extended item %d has no official sprite", id)
+		}
+		if Textures[id] == nil {
+			t.Errorf("extended block %d has no registered block texture", id)
+		}
+	}
+	for _, id := range []int32{10060, 10061, 10062} {
+		if IsOpaqueCube(id) {
+			t.Errorf("poplar leaves %d must not occlude neighboring faces", id)
+		}
+		blocks := map[[3]int32]int32{{0, 0, 0}: id, {1, 0, 0}: id}
+		mesh := BuildSectionMesh(func(x, y, z int32) int32 { return blocks[[3]int32{x, y, z}] }, 0, 0, 0)
+		if len(mesh.Vertices) != 40 {
+			t.Errorf("adjacent leaf blocks %d should cull their shared face, got %d vertices", id, len(mesh.Vertices))
+		}
+	}
+	if !IsFoliage(10063) || IsOpaqueCube(10063) {
+		t.Fatal("poplar sapling must render as non-occluding crossed foliage")
+	}
+}
+
 func TestDrawCloudsAestheticsAndDepth(t *testing.T) {
 	fb := NewFramebuffer(160, 120)
 	fb.ClearSky()

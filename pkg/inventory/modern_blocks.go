@@ -25,6 +25,10 @@ var extendedBlockDefinitions = append([]ExtendedBlockDefinition{
 	{10009, "minecraft:poplar_planks", "poplar_planks", "poplar_planks", "poplar_planks", CreativeBlocks},
 	{10010, "minecraft:poplar_log", "poplar_log_top", "poplar_log_top", "poplar_log", CreativeBlocks},
 	{10011, "minecraft:stripped_poplar_log", "stripped_poplar_log_top", "stripped_poplar_log_top", "stripped_poplar_log", CreativeBlocks},
+	{10060, "minecraft:red_poplar_leaves", "red_poplar_leaves", "red_poplar_leaves", "red_poplar_leaves", CreativeNatural},
+	{10061, "minecraft:orange_poplar_leaves", "orange_poplar_leaves", "orange_poplar_leaves", "orange_poplar_leaves", CreativeNatural},
+	{10062, "minecraft:yellow_poplar_leaves", "yellow_poplar_leaves", "yellow_poplar_leaves", "yellow_poplar_leaves", CreativeNatural},
+	{10063, "minecraft:poplar_sapling", "poplar_sapling", "poplar_sapling", "poplar_sapling", CreativeNatural},
 }, coloredBlockDefinitions()...)
 
 func coloredBlockDefinitions() []ExtendedBlockDefinition {
@@ -76,17 +80,44 @@ func ExtendedBlockByID(runtimeID int32) (ExtendedBlockDefinition, bool) {
 	return definition, ok
 }
 
+func IsExtendedLeaves(runtimeID int32) bool {
+	return runtimeID >= 10060 && runtimeID <= 10062
+}
+
+func IsExtendedFoliage(runtimeID int32) bool {
+	return runtimeID == 10063
+}
+
+func ExtendedBlockItemTextureName(runtimeID int32) string {
+	switch runtimeID {
+	case 10060:
+		return "red_poplar_leaves"
+	case 10061:
+		return "orange_poplar_leaves"
+	case 10062:
+		return "yellow_poplar_leaves"
+	case 10063:
+		return "poplar_sapling"
+	default:
+		return ""
+	}
+}
+
 var extendedBlockDisplayNames = map[string]string{
-	"minecraft:cinnabar":            "朱砂块",
-	"minecraft:polished_cinnabar":   "磨制朱砂块",
-	"minecraft:chiseled_cinnabar":   "錾制朱砂块",
-	"minecraft:cinnabar_bricks":     "朱砂砖",
-	"minecraft:sulfur":              "硫磺块",
-	"minecraft:polished_sulfur":     "磨制硫磺块",
-	"minecraft:chiseled_sulfur":     "錾制硫磺块",
-	"minecraft:sulfur_bricks":       "硫磺砖",
-	"minecraft:potent_sulfur":       "强效硫磺块",
-	"minecraft:poplar_planks":       "杨木木板",
-	"minecraft:poplar_log":          "杨木原木",
-	"minecraft:stripped_poplar_log": "去皮杨木原木",
+	"minecraft:cinnabar":             "朱砂块",
+	"minecraft:polished_cinnabar":    "磨制朱砂块",
+	"minecraft:chiseled_cinnabar":    "錾制朱砂块",
+	"minecraft:cinnabar_bricks":      "朱砂砖",
+	"minecraft:sulfur":               "硫磺块",
+	"minecraft:polished_sulfur":      "磨制硫磺块",
+	"minecraft:chiseled_sulfur":      "錾制硫磺块",
+	"minecraft:sulfur_bricks":        "硫磺砖",
+	"minecraft:potent_sulfur":        "强效硫磺块",
+	"minecraft:poplar_planks":        "杨木木板",
+	"minecraft:poplar_log":           "杨木原木",
+	"minecraft:stripped_poplar_log":  "去皮杨木原木",
+	"minecraft:red_poplar_leaves":    "红色杨木树叶",
+	"minecraft:orange_poplar_leaves": "橙色杨木树叶",
+	"minecraft:yellow_poplar_leaves": "黄色杨木树叶",
+	"minecraft:poplar_sapling":       "杨木树苗",
 }

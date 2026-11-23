@@ -324,6 +324,9 @@ func GetOfficialItemSprite(itemID int32) ([16][16]uint32, bool) {
 
 // GetOfficialItemTextureName maps item IDs to official Mojang vanilla texture filenames.
 func GetOfficialItemTextureName(itemID int32) string {
+	if texture := inventory.ExtendedBlockItemTextureName(itemID); texture != "" {
+		return texture
+	}
 	switch itemID {
 	case 345:
 		return "compass_00"
