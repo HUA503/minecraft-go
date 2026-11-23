@@ -345,6 +345,7 @@ func (c *Client) StartSingleplayerWorld(worldDirName string, isNew bool, newSeed
 
 		spawnPos = findSafeSpawnPoint(c.genOverworld, c.engine)
 		c.player = c.engine.AddPlayer(c.username, c.uuid, spawnPos)
+		c.player.ClientDriven = true
 		c.player.GameMode = newGameMode
 		c.UnlockAdvancement("minecraft:story/root", "进入世界")
 		c.isCreative = (newGameMode == 1)
@@ -429,6 +430,7 @@ func (c *Client) StartSingleplayerWorld(worldDirName string, isNew bool, newSeed
 			posToSpawn = sim.Vec3{X: savedPlayer.X, Y: savedPlayer.Y, Z: savedPlayer.Z}
 		}
 		c.player = c.engine.AddPlayer(c.username, c.uuid, posToSpawn)
+		c.player.ClientDriven = true
 		c.player.GameMode = newGameMode
 		c.isCreative = (newGameMode == 1)
 		if c.isCreative {
@@ -960,6 +962,7 @@ func (c *Client) Connect() error {
 
 	spawnVec := sim.Vec3{X: 8.5, Y: 65.0, Z: 8.5}
 	c.player = c.engine.AddPlayer(c.username, c.uuid, spawnVec)
+	c.player.ClientDriven = true
 	c.camera.X = spawnVec.X
 	c.camera.Y = spawnVec.Y + 1.62
 	c.camera.Z = spawnVec.Z
