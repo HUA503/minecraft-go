@@ -7,6 +7,7 @@ import (
 	"log"
 	"math"
 	"runtime"
+	"runtime/debug"
 	"sync"
 	"syscall"
 	"unsafe"
@@ -182,7 +183,7 @@ var globalWnd *Window
 func wndProc(hwnd, msg, wparam, lparam uintptr) (result uintptr) {
 	defer func() {
 		if r := recover(); r != nil {
-			log.Printf("[Window] Recovered from panic in wndProc: %v", r)
+			log.Printf("[Window] Recovered from panic in wndProc: %v\n%s", r, debug.Stack())
 			result = 0
 		}
 	}()
