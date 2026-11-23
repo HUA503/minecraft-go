@@ -111,6 +111,7 @@ type Chunk struct {
 	Pos            ChunkPos
 	Sections       [NumSections]*Section
 	IsDirty        bool
+	Revision       uint64
 	ModifiedBlocks map[BlockPos]int32
 }
 
@@ -123,6 +124,46 @@ func NewChunk(pos ChunkPos) *Chunk {
 		c.Sections[i] = NewSection(i)
 	}
 	return c
+}
+
+// Clone creates a detached chunk snapshot suitable for serialization while
+// the live world continues to receive edits.
+func (c *Chunk) Clone() *Chunk {
+	if c == nil {
+		return nil
+	}
+	clone := &Chunk{
+		Pos:      c.Pos,
+		IsDirty:  c.IsDirty,
+		Revision: c.Revision,
+	}
+	if len(c.ModifiedBlocks) > 0 {
+		clone.ModifiedBlocks = make(map[BlockPos]int32, len(c.ModifiedBlocks))
+		for pos, state := range c.ModifiedBlocks {
+			clone.ModifiedBlocks[pos] = state
+		}
+	}
+	clonePalette := func(source *PalettedContainer) *PalettedContainer {
+		if source == nil {
+			return nil
+		}
+		return &PalettedContainer{
+			Capacity: source.Capacity,
+			Palette:  append([]int32(nil), source.Palette...),
+			Data:     append([]int32(nil), source.Data...),
+		}
+	}
+	for i, section := range c.Sections {
+		if section == nil {
+			continue
+		}
+		clone.Sections[i] = &Section{
+			YIndex:      section.YIndex,
+			BlockStates: clonePalette(section.BlockStates),
+			Biomes:      clonePalette(section.Biomes),
+		}
+	}
+	return clone
 }
 
 // GetBlock returns the block state ID at absolute world coordinates.
@@ -157,6 +198,7 @@ func (c *Chunk) SetBlock(x, y, z int32, state int32) {
 	}
 	c.Sections[secIdx].SetBlock(localX, localY, localZ, state)
 	c.IsDirty = true
+	c.Revision++
 	if c.ModifiedBlocks == nil {
 		c.ModifiedBlocks = make(map[BlockPos]int32)
 	}
@@ -182,6 +224,8 @@ func (c *Chunk) SetBiome(x, y, z int32, biomeID int32) {
 	for by := 0; by < 4; by++ {
 		sec.SetBiome(bx, by, bz, biomeID)
 	}
+	c.IsDirty = true
+	c.Revision++
 }
 
 // GetBiome returns the biome ID for the 4x4x4 block volume containing (x, y, z).

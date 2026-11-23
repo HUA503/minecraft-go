@@ -116,6 +116,8 @@ type Client struct {
 	meshJobsRunning     map[[3]int32]sectionMeshJob
 	meshJobsWake        chan struct{}
 	meshWorkerOnce      sync.Once
+	autosaveWG          sync.WaitGroup
+	autosaveRunning     atomic.Bool
 	streamJobsMu        sync.Mutex
 	streamJobsPending   map[chunkStreamKey]chunkStreamJob
 	streamJobsRunning   map[chunkStreamKey]chunkStreamJob
@@ -682,6 +684,8 @@ func (c *Client) RespawnLocalPlayer() {
 }
 
 func (c *Client) SaveAndQuitToTitle() {
+	// Do not close region files while a periodic save still uses them.
+	c.autosaveWG.Wait()
 	if c.conn != nil {
 		_ = c.conn.Close()
 		if c.networkDone != nil {
@@ -770,6 +774,42 @@ func (c *Client) SaveAndQuitToTitle() {
 	c.screenState = ScreenTitle
 	if c.wndRef != nil {
 		c.wndRef.SetMouseCaptured(false)
+	}
+}
+
+// snapshotLevelData copies main-thread-owned player state before a background
+// autosave starts. Chunk data is snapshotted separately by Engine.SaveAll.
+func (c *Client) snapshotLevelData() *world.LevelData {
+	if c.engine == nil || c.player == nil || c.camera == nil {
+		return nil
+	}
+	gm := 0
+	if c.isCreative {
+		gm = 1
+	}
+	seed := int64(1)
+	if c.genOverworld != nil {
+		seed = c.genOverworld.Seed
+	}
+	inventory := make([]world.SavedItemStack, 0, len(c.player.Inventory.Slots))
+	for slot, stack := range c.player.Inventory.Slots {
+		if stack.IsEmpty() {
+			continue
+		}
+		inventory = append(inventory, world.SavedItemStack{Slot: slot, ItemID: stack.ItemID, Count: stack.Count, Damage: stack.Damage})
+	}
+	ticks, dayTime := c.engine.GetWorldClock()
+	position := c.player.Position
+	return &world.LevelData{
+		Seed: seed, Time: ticks, DayTime: dayTime,
+		SpawnX: int32(position.X), SpawnY: int32(position.Y), SpawnZ: int32(position.Z),
+		LevelName: c.currentWorldName, GameMode: gm,
+		Player: &world.PlayerSaveData{
+			X: position.X, Y: position.Y, Z: position.Z,
+			Yaw: float32(c.camera.Yaw), Pitch: float32(c.camera.Pitch),
+			Health: c.player.Health, Hunger: c.player.Hunger, GameMode: gm,
+			Inventory: inventory, Advancements: c.advancementIDs(),
+		},
 	}
 }
 
@@ -5043,6 +5083,7 @@ func runGraphicalWindow(c *Client, w, h int) {
 	// High-FPS precision delta-time game loop
 	mouseSensitivity := 0.15
 	lastTime := time.Now()
+	lastAutosave := lastTime
 
 	for {
 		loopHeartbeat.Store(time.Now().UnixNano())
@@ -5088,6 +5129,27 @@ func runGraphicalWindow(c *Client, w, h int) {
 		}
 		lastTime = now
 		c.AdvanceSimulation(dt)
+		if c.isLocal && c.screenState == ScreenPlaying && c.engine != nil && c.saveMgr != nil &&
+			c.player != nil && c.player.Health > 0 && now.Sub(lastAutosave) >= time.Minute &&
+			c.autosaveRunning.CompareAndSwap(false, true) {
+			lastAutosave = now
+			engine, storage, level := c.engine, c.saveMgr, c.snapshotLevelData()
+			if level != nil {
+				c.autosaveWG.Add(1)
+				go func() {
+					defer c.autosaveWG.Done()
+					defer c.autosaveRunning.Store(false)
+					if err := engine.SaveAll(); err != nil {
+						log.Printf("[Client] Periodic chunk autosave failed: %v", err)
+					}
+					if err := storage.SaveLevel(level); err != nil {
+						log.Printf("[Client] Periodic level autosave failed: %v", err)
+					}
+				}()
+			} else {
+				c.autosaveRunning.Store(false)
+			}
+		}
 
 		// Update item equip animation progress
 		if c.equipProgress < 1.0 {

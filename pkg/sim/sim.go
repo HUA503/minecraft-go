@@ -1,6 +1,7 @@
 package sim
 
 import (
+	"fmt"
 	"log"
 	"math"
 	mrand "math/rand"
@@ -120,6 +121,7 @@ type WorldEvent struct {
 // Engine manages the authoritative 20 TPS game simulation.
 type Engine struct {
 	mu               sync.RWMutex
+	saveMu           sync.Mutex
 	mobMu            sync.Mutex
 	World            map[world.ChunkPos]*world.Chunk
 	DimensionWorlds  map[int]map[world.ChunkPos]*world.Chunk
@@ -480,32 +482,55 @@ func (e *Engine) SetStorage(s *world.SaveManager) error {
 
 // SaveAll flushes all dirty loaded chunks across all dimensions to storage.
 func (e *Engine) SaveAll() error {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-
-	e.DimensionWorlds[e.CurrentDimension] = e.World
-
-	var firstErr error
-	for dim, w := range e.DimensionWorlds {
+	e.saveMu.Lock()
+	defer e.saveMu.Unlock()
+	type pendingSave struct {
+		dimension int
+		position  world.ChunkPos
+		storage   *world.SaveManager
+		live      *world.Chunk
+		revision  uint64
+		snapshot  *world.Chunk
+	}
+	var pending []pendingSave
+	e.mu.RLock()
+	for dim, chunks := range e.DimensionWorlds {
 		storage := e.DimensionStorage[dim]
 		if storage == nil && dim == 0 {
 			storage = e.Storage
 		}
-		if storage != nil {
-			for _, chunk := range w {
-				if chunk != nil && chunk.IsDirty {
-					if err := storage.SaveChunk(chunk); err != nil && firstErr == nil {
-						firstErr = err
-					}
-				}
+		if storage == nil {
+			continue
+		}
+		for pos, chunk := range chunks {
+			if chunk != nil && chunk.IsDirty {
+				pending = append(pending, pendingSave{dimension: dim, position: pos, storage: storage, live: chunk, revision: chunk.Revision, snapshot: chunk.Clone()})
 			}
 		}
+	}
+	e.mu.RUnlock()
+	var firstErr error
+	for _, save := range pending {
+		if err := save.storage.SaveChunk(save.snapshot); err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		e.mu.Lock()
+		if save.dimension >= 0 && save.dimension < len(e.DimensionWorlds) &&
+			e.DimensionWorlds[save.dimension][save.position] == save.live && save.live.Revision == save.revision {
+			save.live.IsDirty = false
+		}
+		e.mu.Unlock()
 	}
 	return firstErr
 }
 
 // CloseStorage closes all dimension region files after SaveAll has completed.
 func (e *Engine) CloseStorage() error {
+	e.saveMu.Lock()
+	defer e.saveMu.Unlock()
 	e.mu.Lock()
 	storages := make([]*world.SaveManager, 0, len(e.DimensionStorage)+1)
 	seen := make(map[*world.SaveManager]struct{}, len(e.DimensionStorage)+1)
@@ -717,9 +742,11 @@ func (e *Engine) UnloadChunk(pos world.ChunkPos) error {
 }
 
 func (e *Engine) UnloadChunkInDimension(dim int, pos world.ChunkPos) error {
+	e.saveMu.Lock()
+	defer e.saveMu.Unlock()
 	e.mu.Lock()
-	defer e.mu.Unlock()
 	if dim < 0 || dim >= len(e.DimensionWorlds) {
+		e.mu.Unlock()
 		return nil
 	}
 	chunks := e.DimensionWorlds[dim]
@@ -730,14 +757,25 @@ func (e *Engine) UnloadChunkInDimension(dim int, pos world.ChunkPos) error {
 		}
 		if chunk != nil && chunk.IsDirty {
 			if storage == nil {
+				e.mu.Unlock()
 				return nil
 			}
-			if err := storage.SaveChunk(chunk); err != nil {
+			revision := chunk.Revision
+			snapshot := chunk.Clone()
+			e.mu.Unlock()
+			if err := storage.SaveChunk(snapshot); err != nil {
 				return err
 			}
+			e.mu.Lock()
+			if chunks[pos] != chunk || chunk.Revision != revision {
+				e.mu.Unlock()
+				return fmt.Errorf("chunk %v changed while being saved; keeping it loaded", pos)
+			}
+			chunk.IsDirty = false
 		}
 		delete(chunks, pos)
 	}
+	e.mu.Unlock()
 	return nil
 }
 
