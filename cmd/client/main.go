@@ -44,107 +44,108 @@ const (
 )
 
 type Client struct {
-	wndRef            *render.Window
-	screenState       ClientScreenState
-	saveMgr           *world.SaveManager
-	currentWorldDir   string
-	currentWorldName  string
-	availableWorlds   []render.WorldInfo
-	selectedWorldIdx  int
-	newWorldName      string
-	newWorldMode      int // 0: Survival, 1: Creative
-	newWorldSeedText  string
-	newWorldActiveBox int // 0: Name, 1: Seed
-	titleSpBtn        [4]int
-	titleMpBtn        [4]int
-	titleQuitBtn      [4]int
-	wsPlayBtn         [4]int
-	wsNewBtn          [4]int
-	wsBackBtn         [4]int
-	wsRects           [][4]int
-	nwCreateBtn       [4]int
-	nwCancelBtn       [4]int
-	nwModeBtn         [4]int
-	nwNameBox         [4]int
-	nwSeedBox         [4]int
-	cursorItem        inventory.ItemStack
-	craftGrid         [9]inventory.ItemStack
-	craftResult       inventory.ItemStack
+	wndRef              *render.Window
+	screenState         ClientScreenState
+	saveMgr             *world.SaveManager
+	currentWorldDir     string
+	currentWorldName    string
+	availableWorlds     []render.WorldInfo
+	selectedWorldIdx    int
+	newWorldName        string
+	newWorldMode        int // 0: Survival, 1: Creative
+	newWorldSeedText    string
+	newWorldActiveBox   int // 0: Name, 1: Seed
+	titleSpBtn          [4]int
+	titleMpBtn          [4]int
+	titleQuitBtn        [4]int
+	wsPlayBtn           [4]int
+	wsNewBtn            [4]int
+	wsBackBtn           [4]int
+	wsRects             [][4]int
+	nwCreateBtn         [4]int
+	nwCancelBtn         [4]int
+	nwModeBtn           [4]int
+	nwNameBox           [4]int
+	nwSeedBox           [4]int
+	cursorItem          inventory.ItemStack
+	craftGrid           [9]inventory.ItemStack
+	craftResult         inventory.ItemStack
 	isCraftingTableOpen bool
-	isFurnaceOpen     bool
-	currentFurnacePos world.BlockPos
-	serverAddr   string
-	username     string
-	uuid         [16]byte
-	conn         net.Conn
-	state        protocol.ConnectionState
-	framebuf     *render.Framebuffer
-	camera       *render.Camera
-	engine       *sim.Engine
-	player       *sim.PlayerEntity
-	craftingMgr  *inventory.CraftingManager
-	isLocal      bool
-	meshCache    map[[3]int32]*render.Mesh
-	meshMu       sync.RWMutex
-	remoteMu      sync.RWMutex
-	remotePlayers map[string]*RemotePlayer
-	lastRemotePos sim.Vec3
-	targetedPos  world.BlockPos
-	targetedFace world.BlockPos
-	hasTarget    bool
-	walkCycle    float64
-	isMoving     bool
-	isSprinting  bool
-	isSneaking   bool
-	wasSpaceDown bool
-	genOverworld     *gen.Generator
-	genNether        *gen.Generator
-	genEnd           *gen.Generator
-	currentDim       gen.Dimension
-	portalStandTime  float64
+	isFurnaceOpen       bool
+	currentFurnacePos   world.BlockPos
+	serverAddr          string
+	username            string
+	uuid                [16]byte
+	conn                net.Conn
+	state               protocol.ConnectionState
+	framebuf            *render.Framebuffer
+	camera              *render.Camera
+	engine              *sim.Engine
+	tickAccumulator     float64
+	player              *sim.PlayerEntity
+	craftingMgr         *inventory.CraftingManager
+	isLocal             bool
+	meshCache           map[[3]int32]*render.Mesh
+	meshMu              sync.RWMutex
+	remoteMu            sync.RWMutex
+	remotePlayers       map[string]*RemotePlayer
+	lastRemotePos       sim.Vec3
+	targetedPos         world.BlockPos
+	targetedFace        world.BlockPos
+	hasTarget           bool
+	walkCycle           float64
+	isMoving            bool
+	isSprinting         bool
+	isSneaking          bool
+	wasSpaceDown        bool
+	genOverworld        *gen.Generator
+	genNether           *gen.Generator
+	genEnd              *gen.Generator
+	currentDim          gen.Dimension
+	portalStandTime     float64
 	loadedChunks        map[world.ChunkPos]bool
 	lastChunkX          int32
 	lastChunkZ          int32
 	lastChunkStreamTime time.Time
 	// Authentic Minecraft Mining State
-	isMining         bool
-	breakProgress    float64 // 0.0 to 1.0
-	miningPos        world.BlockPos
-	hasMiningBlock   bool
-	swingProgress    float64 // 0.0 to 1.0
-	isSwinging       bool
-	lastHitSoundTime time.Time
-	placeCooldown    float64
-	particles        []render.Particle
-	showInventoryGUI bool
+	isMining            bool
+	breakProgress       float64 // 0.0 to 1.0
+	miningPos           world.BlockPos
+	hasMiningBlock      bool
+	swingProgress       float64 // 0.0 to 1.0
+	isSwinging          bool
+	lastHitSoundTime    time.Time
+	placeCooldown       float64
+	particles           []render.Particle
+	showInventoryGUI    bool
 	showAdvancementsGUI bool
-	showPauseMenu    bool
-	backBtnRect      [4]int
-	quitBtnRect      [4]int
-	isEating         bool
-	eatTimer         float64
-	lastMunchSound   time.Time
-	showDebugF3      bool
-	lastStepTime     time.Time
-	fpsCounter       int
-	currentFPS       int
-	fpsTimer         time.Time
-	lastFrameDuration float64
-	isChatOpen       bool
-	chatInput        string
-	chatMessages     []render.ChatMessage
-	advancements     map[string]bool
-	isCreative       bool
-	isFlying         bool
-	perspectiveMode  int // 0: 1st person, 1: 3rd person back, 2: 3rd person front
-	lastPlayerHealth float32
-	hurtFlashTimer   float64
-	currentEyeHeight float64
-	targetFov        float64
-	equipProgress    float64
-	lastSelectedSlot int
-	respawnBtnRect   [4]int
-	deathTitleBtnRect [4]int
+	showPauseMenu       bool
+	backBtnRect         [4]int
+	quitBtnRect         [4]int
+	isEating            bool
+	eatTimer            float64
+	lastMunchSound      time.Time
+	showDebugF3         bool
+	lastStepTime        time.Time
+	fpsCounter          int
+	currentFPS          int
+	fpsTimer            time.Time
+	lastFrameDuration   float64
+	isChatOpen          bool
+	chatInput           string
+	chatMessages        []render.ChatMessage
+	advancements        map[string]bool
+	isCreative          bool
+	isFlying            bool
+	perspectiveMode     int // 0: 1st person, 1: 3rd person back, 2: 3rd person front
+	lastPlayerHealth    float32
+	hurtFlashTimer      float64
+	currentEyeHeight    float64
+	targetFov           float64
+	equipProgress       float64
+	lastSelectedSlot    int
+	respawnBtnRect      [4]int
+	deathTitleBtnRect   [4]int
 }
 
 // findSafeSpawnPoint discovers an authentic, randomized safe surface spawn location in the procedural world.
@@ -472,7 +473,6 @@ func (c *Client) StartSingleplayerWorld(worldDirName string, isNew bool, newSeed
 		c.EnsureChunksAroundPlayer(c.player.Position.X, c.player.Position.Z, 3)
 	}
 
-	c.engine.StartTickLoop()
 	c.screenState = ScreenPlaying
 	if c.wndRef != nil {
 		c.wndRef.SetMouseCaptured(true)
@@ -550,14 +550,14 @@ func (c *Client) SaveAndQuitToTitle() {
 				LevelName: c.currentWorldName,
 				GameMode:  gm,
 				Player: &world.PlayerSaveData{
-					X:         saveX,
-					Y:         saveY,
-					Z:         saveZ,
-					Yaw:       float32(c.camera.Yaw),
-					Pitch:     float32(c.camera.Pitch),
-					Health:    saveHealth,
-					Hunger:    c.player.Hunger,
-					GameMode:  gm,
+					X:            saveX,
+					Y:            saveY,
+					Z:            saveZ,
+					Yaw:          float32(c.camera.Yaw),
+					Pitch:        float32(c.camera.Pitch),
+					Health:       saveHealth,
+					Hunger:       c.player.Hunger,
+					GameMode:     gm,
 					Inventory:    savedInv,
 					Advancements: c.advancementIDs(),
 				},
@@ -725,8 +725,8 @@ func (c *Client) EnsureChunksAroundPlayer(playerX, playerZ float64, radius int32
 
 	// Pass 1: Progressively generate missing chunks in radius+1 (up to 2 chunks per frame to eliminate main-thread stutter)
 	generatedCount := 0
-	for dx := -radius - 1; dx <= radius + 1; dx++ {
-		for dz := -radius - 1; dz <= radius + 1; dz++ {
+	for dx := -radius - 1; dx <= radius+1; dx++ {
+		for dz := -radius - 1; dz <= radius+1; dz++ {
 			cp := world.ChunkPos{X: pcx + dx, Z: pcz + dz}
 			c.meshMu.Lock()
 			alreadyLoaded := c.loadedChunks[cp]
@@ -980,8 +980,6 @@ func (c *Client) Connect() error {
 	c.player.Inventory.Slots[7] = inventory.ItemStack{ItemID: inventory.ItemCookedPorkchop, Count: 16}
 	c.player.Inventory.Slots[8] = inventory.ItemStack{ItemID: inventory.ItemApple, Count: 16}
 	c.player.Inventory.SelectedHotbar = 1
-
-	c.engine.StartTickLoop()
 
 	// Launch background network receive loop
 	go c.networkReceiveLoop()
@@ -1671,6 +1669,20 @@ func (c *Client) publishPlayerSnapshot() {
 		mode = 1
 	}
 	c.engine.UpdateClientPlayerSnapshot(c.player.ID, c.player.Position, mode)
+}
+
+// AdvanceSimulation runs client-owned world simulation on the render thread.
+// Keeping entity ticks and rendering on one thread avoids races on mutable world state.
+func (c *Client) AdvanceSimulation(dt float64) {
+	if c.engine == nil || c.screenState != ScreenPlaying || dt <= 0 {
+		return
+	}
+	c.tickAccumulator += dt
+	const tickDuration = 0.05
+	for c.tickAccumulator >= tickDuration {
+		c.engine.Tick()
+		c.tickAccumulator -= tickDuration
+	}
 }
 
 func (c *Client) advancementLines() []string {
@@ -4330,9 +4342,9 @@ func runGraphicalWindow(c *Client, w, h int) {
 							if craftedItemID == inventory.ItemStonePickaxe || craftedItemID == inventory.ItemStoneAxe || craftedItemID == inventory.ItemStoneShovel || craftedItemID == inventory.ItemStoneSword {
 								c.UnlockAdvancement("minecraft:story/upgrade_tools", "装配升级")
 							}
-			if craftedItemID == inventory.ItemIronPickaxe {
-				c.UnlockAdvancement("minecraft:story/iron_tools", "不再是木镐")
-			}
+							if craftedItemID == inventory.ItemIronPickaxe {
+								c.UnlockAdvancement("minecraft:story/iron_tools", "不再是木镐")
+							}
 							sound.PlayHardwareFeedback("minecraft:item.craft")
 							gridSize := 4
 							if c.isCraftingTableOpen {
@@ -4536,6 +4548,7 @@ func runGraphicalWindow(c *Client, w, h int) {
 			dt = 0.05
 		}
 		lastTime = now
+		c.AdvanceSimulation(dt)
 
 		// Update item equip animation progress
 		if c.equipProgress < 1.0 {
@@ -4712,6 +4725,7 @@ func runInteractiveLoop(c *Client) {
 		if input == "" {
 			continue
 		}
+		c.AdvanceSimulation(0.05)
 
 		parts := strings.Fields(input)
 		cmd := strings.ToLower(parts[0])
