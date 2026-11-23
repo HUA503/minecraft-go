@@ -1,6 +1,7 @@
 package inventory
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -22,8 +23,32 @@ func TestCreativeCatalogHasUniqueUsableItems(t *testing.T) {
 			}
 		}
 	}
+	for _, definition := range ExtendedBlockDefinitions() {
+		if !IsPlaceableBlock(definition.RuntimeID) {
+			t.Errorf("extended block %s is not placeable", definition.Name)
+		}
+	}
 	if got := CreativeCatalog(CreativeFood); len(got) == 0 {
 		t.Fatal("food tab is empty")
+	}
+}
+
+func TestExtendedBlockRegistryIsNamespacedAndExposesColorSets(t *testing.T) {
+	definitions := ExtendedBlockDefinitions()
+	if len(definitions) < 60 {
+		t.Fatalf("extended block registry has %d entries, want recent blocks plus 48 colored blocks", len(definitions))
+	}
+	seenIDs := make(map[int32]bool, len(definitions))
+	seenNames := make(map[string]bool, len(definitions))
+	for _, definition := range definitions {
+		if definition.RuntimeID < 10000 || definition.Name == "" || !strings.HasPrefix(definition.Name, "minecraft:") {
+			t.Errorf("invalid extended block identity: %+v", definition)
+		}
+		if seenIDs[definition.RuntimeID] || seenNames[definition.Name] {
+			t.Errorf("duplicate extended block identity: %+v", definition)
+		}
+		seenIDs[definition.RuntimeID] = true
+		seenNames[definition.Name] = true
 	}
 }
 
@@ -268,4 +293,3 @@ func TestSlotLeftAndRightClickLogic(t *testing.T) {
 		t.Fatalf("right click stack 1 failed: cursor=%d, slot=%d", cursor.Count, slotEmpty.Count)
 	}
 }
-

@@ -29,9 +29,13 @@ type CreativeItem struct {
 // stable, vanilla-like order. The catalog is intentionally limited to items
 // with a corresponding local block, item behavior, or sprite implementation.
 func CreativeCatalog(category CreativeCategory) []CreativeItem {
-	items := creativeCatalog
+	items := make([]CreativeItem, 0, len(creativeCatalog)+len(extendedBlockDefinitions))
+	items = append(items, creativeCatalog...)
+	for _, definition := range extendedBlockDefinitions {
+		items = append(items, CreativeItem{ID: definition.RuntimeID, Name: extendedBlockDisplayNames[definition.Name], Category: definition.Category})
+	}
 	if category == CreativeAll {
-		return append([]CreativeItem(nil), items...)
+		return items
 	}
 	filtered := make([]CreativeItem, 0, len(items))
 	for _, item := range items {

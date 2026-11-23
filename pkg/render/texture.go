@@ -1,5 +1,7 @@
 package render
 
+import "github.com/HUA503/minecraft-go/pkg/inventory"
+
 // BlockTexture is a 16x16 RGBA pixel buffer.
 type BlockTexture [16][16]uint32
 
@@ -965,6 +967,9 @@ func initOfficialBlockTextures() {
 	loadSingle(7, "bedrock")
 	loadBlock(24, "sandstone_top", "sandstone_bottom", "sandstone")
 	loadSingle(25, "note_block")
+	for _, block := range inventory.ExtendedBlockDefinitions() {
+		loadBlock(block.RuntimeID, block.TextureTop, block.TextureBottom, block.TextureSide)
+	}
 	loadSingle(35, "white_wool")
 	loadSingle(43, "stone")
 	loadSingle(12, "sand")

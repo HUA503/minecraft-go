@@ -653,6 +653,11 @@ func TestOfficialItemAndBlockTextures(t *testing.T) {
 			t.Errorf("creative full-block entry %d has no registered block texture", id)
 		}
 	}
+	for _, block := range inventory.ExtendedBlockDefinitions() {
+		if Textures[block.RuntimeID] == nil {
+			t.Errorf("extended creative block %s has no registered block texture", block.Name)
+		}
+	}
 
 	// 1. Verify authentic official item textures load
 	itemsToCheck := []struct {
