@@ -111,6 +111,8 @@ type Client struct {
 	state               protocol.ConnectionState
 	framebuf            *render.Framebuffer
 	renderPanicCount    int
+	quitSaving          atomic.Bool
+	quitSaveDone        chan struct{}
 	camera              *render.Camera
 	engine              *sim.Engine
 	tickAccumulator     float64
@@ -853,9 +855,35 @@ func (c *Client) SaveAndQuitToTitle() {
 	c.isCraftingTableOpen = false
 	c.isFurnaceOpen = false
 	c.screenState = ScreenTitle
-	if c.wndRef != nil {
-		c.wndRef.SetMouseCaptured(false)
+}
+
+// beginSaveAndQuitToTitle keeps the native message loop responsive while the
+// current world is flushed to disk. The main loop stops touching world state
+// until quitSaving is cleared after SaveAndQuitToTitle finishes.
+func (c *Client) beginSaveAndQuitToTitle(wnd *render.Window) {
+	if !c.quitSaving.CompareAndSwap(false, true) {
+		return
 	}
+	if c.engine != nil {
+		c.engine.SetPaused(true)
+	}
+	if wnd != nil {
+		wnd.SetMouseCaptured(false)
+	}
+	done := make(chan struct{})
+	c.quitSaveDone = done
+	go func() {
+		defer close(done)
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				msg := fmt.Sprintf("CLIENT SAVE-AND-QUIT PANIC: %v\n\nStack:\n%s", recovered, debug.Stack())
+				log.Print(msg)
+				writeCrashLog(msg)
+			}
+		}()
+		c.SaveAndQuitToTitle()
+		c.quitSaving.Store(false)
+	}()
 }
 
 // snapshotLevelData copies main-thread-owned player state before a background
@@ -4732,6 +4760,9 @@ func runGraphicalWindow(c *Client, w, h int) {
 	watchdogDone := make(chan struct{})
 	defer close(watchdogDone)
 	defer func() {
+		if c.quitSaveDone != nil {
+			<-c.quitSaveDone
+		}
 		c.wndRef = nil
 		c.SaveAndQuitToTitle()
 	}()
@@ -4778,6 +4809,9 @@ func runGraphicalWindow(c *Client, w, h int) {
 
 	// Single key-press actions
 	wnd.OnKeyClick = func(vkCode int) {
+		if c.quitSaving.Load() {
+			return
+		}
 		// Global hotkeys (Fullscreen F11 and Alt+Enter work on any screen)
 		if vkCode == 0x7A || (vkCode == 0x0D && wnd.IsKeyDown(0x12)) {
 			wnd.ToggleFullscreen()
@@ -4876,7 +4910,7 @@ func runGraphicalWindow(c *Client, w, h int) {
 			}
 		case 0x51: // Q: Quit immediately if in pause menu, or throw/drop held item in game
 			if c.showPauseMenu {
-				c.SaveAndQuitToTitle()
+				c.beginSaveAndQuitToTitle(wnd)
 			} else if !c.showInventoryGUI && !c.isFurnaceOpen && !c.isChatOpen {
 				c.DropHeldItem(wnd.IsKeyDown(0x11)) // Ctrl+Q drops full stack
 			}
@@ -4890,6 +4924,9 @@ func runGraphicalWindow(c *Client, w, h int) {
 
 	// Mouse wheel hotbar switching
 	wnd.OnMouseWheel = func(delta int) {
+		if c.quitSaving.Load() {
+			return
+		}
 		if c.screenState != ScreenPlaying || c.showPauseMenu || c.showInventoryGUI || c.showAdvancementsGUI || c.isFurnaceOpen || c.isChatOpen || c.player == nil || c.player.Inventory == nil {
 			return
 		}
@@ -4902,6 +4939,9 @@ func runGraphicalWindow(c *Client, w, h int) {
 
 	// Character input
 	wnd.OnCharInput = func(ch rune) {
+		if c.quitSaving.Load() {
+			return
+		}
 		if c.screenState == ScreenNewWorld {
 			if ch == '\r' || ch == '\n' { // Enter: create world
 				dirName := fmt.Sprintf("world_%d", time.Now().Unix())
@@ -4977,6 +5017,9 @@ func runGraphicalWindow(c *Client, w, h int) {
 
 	// Mouse button clicks
 	wnd.OnMouseClick = func(btn int) {
+		if c.quitSaving.Load() {
+			return
+		}
 		mx, my := wnd.GetCursorClientPos(c.framebuf.Width, c.framebuf.Height)
 
 		if c.screenState == ScreenTitle {
@@ -5085,8 +5128,7 @@ func runGraphicalWindow(c *Client, w, h int) {
 				}
 				d := c.deathTitleBtnRect
 				if mx >= d[0] && mx <= d[0]+d[2] && my >= d[1] && my <= d[1]+d[3] {
-					c.SaveAndQuitToTitle()
-					wnd.SetMouseCaptured(false)
+					c.beginSaveAndQuitToTitle(wnd)
 					return
 				}
 			}
@@ -5106,8 +5148,7 @@ func runGraphicalWindow(c *Client, w, h int) {
 				}
 				q := c.quitBtnRect
 				if mx >= q[0] && mx <= q[0]+q[2] && my >= q[1] && my <= q[1]+q[3] {
-					c.SaveAndQuitToTitle()
-					wnd.SetMouseCaptured(false)
+					c.beginSaveAndQuitToTitle(wnd)
 					return
 				}
 			}
@@ -5310,6 +5351,15 @@ func runGraphicalWindow(c *Client, w, h int) {
 		loopHeartbeat.Store(time.Now().UnixNano())
 		if !wnd.PollEvents() {
 			break
+		}
+		if c.quitSaving.Load() {
+			c.framebuf.Clear(0xFF171717)
+			text := "正在保存世界，请稍候..."
+			textWidth := render.MeasureText5x7(text, 1)
+			c.framebuf.DrawText5x7((c.framebuf.Width-textWidth)/2, c.framebuf.Height/2, text, 0xFFFFFFFF, 1)
+			wnd.Present(c.framebuf)
+			time.Sleep(16 * time.Millisecond)
+			continue
 		}
 		c.pollSavedWorldScan()
 		// Detect window resize (Fullscreen toggle or maximize) and clamp internal software rasterizer resolution
