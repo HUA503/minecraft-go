@@ -33,7 +33,7 @@ type PlayerEntity struct {
 	ExpProgress  float32 // Progress to next level: 0.0 to 1.0
 	ExpTotal     int     // Total experience points collected in current level
 	FallDistance float32
-	HurtTimer    int     // Damage immunity cooldown (10 ticks / 0.5s in Minecraft Java Edition)
+	HurtTimer    int // Damage immunity cooldown (10 ticks / 0.5s in Minecraft Java Edition)
 	IsAlive      bool
 	ClientDriven bool
 	GameMode     int // 0: Survival, 1: Creative, 2: Adventure, 3: Spectator
@@ -70,9 +70,9 @@ func (p *PlayerEntity) ExpBarCap() int {
 
 // EndCrystal represents an active healing crystal atop an obsidian tower.
 type EndCrystal struct {
-	ID        int32
-	Position  Vec3
-	IsAlive   bool
+	ID         int32
+	Position   Vec3
+	IsAlive    bool
 	BeamTarget Vec3
 }
 
@@ -469,6 +469,38 @@ func (e *Engine) SaveAll() error {
 					}
 				}
 			}
+		}
+	}
+	return firstErr
+}
+
+// CloseStorage closes all dimension region files after SaveAll has completed.
+func (e *Engine) CloseStorage() error {
+	e.mu.Lock()
+	storages := make([]*world.SaveManager, 0, len(e.DimensionStorage)+1)
+	seen := make(map[*world.SaveManager]struct{}, len(e.DimensionStorage)+1)
+	for i, storage := range e.DimensionStorage {
+		if storage == nil {
+			continue
+		}
+		if _, ok := seen[storage]; !ok {
+			seen[storage] = struct{}{}
+			storages = append(storages, storage)
+		}
+		e.DimensionStorage[i] = nil
+	}
+	if e.Storage != nil {
+		if _, ok := seen[e.Storage]; !ok {
+			storages = append(storages, e.Storage)
+		}
+		e.Storage = nil
+	}
+	e.mu.Unlock()
+
+	var firstErr error
+	for _, storage := range storages {
+		if err := storage.Close(); err != nil && firstErr == nil {
+			firstErr = err
 		}
 	}
 	return firstErr
@@ -1057,7 +1089,7 @@ func (e *Engine) Tick() {
 		if !p.IsAlive || p.OnGround || p.ClientDriven {
 			continue
 		}
-		p.Velocity.Y -= 0.08               // Minecraft standard gravity per tick
+		p.Velocity.Y -= 0.08                // Minecraft standard gravity per tick
 		p.Velocity = p.Velocity.Scale(0.98) // Air resistance
 		delta := Vec3{X: p.Velocity.X, Y: p.Velocity.Y, Z: p.Velocity.Z}
 		resPos, ground, hitCeiling := ResolveMovementCollision(p.Position, delta, isSolid)
@@ -1596,8 +1628,8 @@ func (e *Engine) SwitchDimension(dim int) {
 
 	select {
 	case e.Events <- WorldEvent{
-		Type:     "dimension_change",
-		BlockID:  int32(dim),
+		Type:    "dimension_change",
+		BlockID: int32(dim),
 	}:
 	default:
 	}

@@ -152,10 +152,8 @@ func (s *Server) Stop() {
 	if err := s.simEngine.SaveAll(); err != nil {
 		log.Printf("[Server] Error in SaveAll: %v", err)
 	}
-	if s.saveManager != nil {
-		if err := s.saveManager.Close(); err != nil {
-			log.Printf("[Server] Error closing SaveManager: %v", err)
-		}
+	if err := s.simEngine.CloseStorage(); err != nil {
+		log.Printf("[Server] Error closing world storage: %v", err)
 	}
 	log.Printf("[Server] Server stopped successfully.")
 

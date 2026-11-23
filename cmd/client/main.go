@@ -572,10 +572,10 @@ func (c *Client) SaveAndQuitToTitle() {
 			if err := c.saveMgr.SaveLevel(lvl); err != nil {
 				log.Printf("[Client] Failed to save level data while leaving the world: %v", err)
 			}
-			if err := c.saveMgr.Close(); err != nil {
-				log.Printf("[Client] Failed to close world save files: %v", err)
-			}
 			c.saveMgr = nil
+		}
+		if err := c.engine.CloseStorage(); err != nil {
+			log.Printf("[Client] Failed to close world save files: %v", err)
 		}
 
 		c.engine = nil
