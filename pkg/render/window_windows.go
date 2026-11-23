@@ -213,7 +213,9 @@ func wndProc(hwnd, msg, wparam, lparam uintptr) (result uintptr) {
 				globalWnd.Width = cw
 				globalWnd.Height = ch
 				globalWnd.mu.Unlock()
-				globalWnd.recenterMouse()
+				if globalWnd.MouseCaptured {
+					globalWnd.recenterMouse()
+				}
 			}
 		}
 		return 0
@@ -379,6 +381,11 @@ func (w *Window) SetMouseCaptured(capture bool) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
+	// ShowCursor maintains a counter, so duplicate focus notifications must not
+	// repeatedly change the process-wide cursor visibility state.
+	if w.MouseCaptured == capture {
+		return
+	}
 	w.MouseCaptured = capture
 	if capture {
 		procShowCursor.Call(0) // Hide cursor
@@ -637,3 +644,4 @@ func (w *Window) Close() {
 		procPostQuitMessage.Call(0)
 	})
 }
+
