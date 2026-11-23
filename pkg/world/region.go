@@ -85,8 +85,19 @@ func (r *Region) ReadChunkData(chunkX, chunkZ int32) (*nbt.CompoundTag, error) {
 	if offset == 0 && sectorCount == 0 {
 		return nil, errors.New("chunk not generated in region")
 	}
+	if offset < 2 || sectorCount == 0 {
+		return nil, fmt.Errorf("corrupt chunk location: offset %d, sector count %d", offset, sectorCount)
+	}
+	info, err := r.file.Stat()
+	if err != nil {
+		return nil, err
+	}
 
 	byteOffset := offset * SectorSize
+	allocatedBytes := int64(sectorCount * SectorSize)
+	if byteOffset+allocatedBytes > info.Size() {
+		return nil, fmt.Errorf("corrupt chunk location: sectors [%d, %d) exceed region size %d", offset, offset+int64(sectorCount), info.Size())
+	}
 	var length uint32
 	if err := binary.Read(io.NewSectionReader(r.file, byteOffset, 4), binary.BigEndian, &length); err != nil {
 		return nil, err
@@ -100,7 +111,7 @@ func (r *Region) ReadChunkData(chunkX, chunkZ int32) (*nbt.CompoundTag, error) {
 	if length <= 1 {
 		return nil, errors.New("corrupt chunk length")
 	}
-	if length > uint32(sectorCount*SectorSize) {
+	if length > uint32(sectorCount*SectorSize-4) {
 		return nil, fmt.Errorf("corrupt chunk length %d exceeds allocated sectors %d", length, sectorCount)
 	}
 
@@ -152,6 +163,9 @@ func (r *Region) WriteChunkData(chunkX, chunkZ int32, chunkNBT *nbt.CompoundTag)
 	totalPayloadLen := uint32(len(compressed) + 1) // +1 for compression type
 	requiredBytes := 4 + totalPayloadLen
 	sectorsNeeded := int((requiredBytes + SectorSize - 1) / SectorSize)
+	if sectorsNeeded > 255 {
+		return fmt.Errorf("chunk requires %d sectors; maximum encodable allocation is 255", sectorsNeeded)
+	}
 
 	idx := chunkIndex(chunkX, chunkZ)
 	locBuf := make([]byte, 4)
@@ -160,20 +174,22 @@ func (r *Region) WriteChunkData(chunkX, chunkZ int32, chunkNBT *nbt.CompoundTag)
 		existingOffset = (int(locBuf[0]) << 16) | (int(locBuf[1]) << 8) | int(locBuf[2])
 		existingSectors = int(locBuf[3])
 	}
+	info, err := r.file.Stat()
+	if err != nil {
+		return err
+	}
+	existingRangeValid := existingOffset >= 2 && existingSectors >= sectorsNeeded &&
+		int64(existingOffset+existingSectors)*SectorSize <= info.Size()
 
 	var sectorOffset int
 	var allocSectors int
-	if existingOffset >= 2 && existingSectors >= sectorsNeeded {
+	if existingRangeValid {
 		// Overwrite in-place without expanding file!
 		sectorOffset = existingOffset
 		allocSectors = existingSectors
 	} else {
 		// Allocate at end of file
-		stat, err := r.file.Stat()
-		if err != nil {
-			return err
-		}
-		fileSize := stat.Size()
+		fileSize := info.Size()
 		if fileSize < 8192 {
 			fileSize = 8192
 		}
@@ -182,6 +198,9 @@ func (r *Region) WriteChunkData(chunkX, chunkZ int32, chunkNBT *nbt.CompoundTag)
 			sectorOffset = 2
 		}
 		allocSectors = sectorsNeeded
+	}
+	if sectorOffset > 0xFFFFFF {
+		return fmt.Errorf("region file sector offset %d exceeds 24-bit location header", sectorOffset)
 	}
 
 	// Write payload
@@ -200,6 +219,9 @@ func (r *Region) WriteChunkData(chunkX, chunkZ int32, chunkNBT *nbt.CompoundTag)
 	}
 
 	if _, err := r.file.WriteAt(payload.Bytes(), writeOffset); err != nil {
+		return err
+	}
+	if err := r.file.Sync(); err != nil {
 		return err
 	}
 
@@ -221,6 +243,5 @@ func (r *Region) WriteChunkData(chunkX, chunkZ int32, chunkNBT *nbt.CompoundTag)
 	if _, err := r.file.WriteAt(tsHeader, int64(4096+idx*4)); err != nil {
 		return err
 	}
-
-	return nil
+	return r.file.Sync()
 }
