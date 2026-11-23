@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/HUA503/minecraft-go/pkg/inventory"
@@ -4093,6 +4094,36 @@ func runGraphicalWindow(c *Client, w, h int) {
 	defer wnd.Close()
 	c.wndRef = wnd
 	defer c.SaveAndQuitToTitle()
+	watchdogDone := make(chan struct{})
+	defer close(watchdogDone)
+	var loopHeartbeat atomic.Int64
+	loopHeartbeat.Store(time.Now().UnixNano())
+	var hangReported atomic.Bool
+	go func() {
+		ticker := time.NewTicker(3 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-watchdogDone:
+				return
+			case <-ticker.C:
+				lastProgress := time.Unix(0, loopHeartbeat.Load())
+				stalledFor := time.Since(lastProgress)
+				if stalledFor < 8*time.Second {
+					hangReported.Store(false)
+					continue
+				}
+				if !hangReported.CompareAndSwap(false, true) {
+					continue
+				}
+				stacks := make([]byte, 1<<20)
+				n := runtime.Stack(stacks, true)
+				msg := fmt.Sprintf("CLIENT UI STALL: no main-loop progress for %s\n\nGoroutine stacks:\n%s", stalledFor.Round(time.Second), stacks[:n])
+				log.Print(msg)
+				writeCrashLog(msg)
+			}
+		}
+	}()
 
 	if c.screenState == ScreenTitle {
 		wnd.SetMouseCaptured(false)
@@ -4629,7 +4660,11 @@ func runGraphicalWindow(c *Client, w, h int) {
 	mouseSensitivity := 0.15
 	lastTime := time.Now()
 
-	for wnd.PollEvents() {
+	for {
+		loopHeartbeat.Store(time.Now().UnixNano())
+		if !wnd.PollEvents() {
+			break
+		}
 		// Detect window resize (Fullscreen toggle or maximize) and clamp internal software rasterizer resolution
 		// Internal CPU rasterizer target is optimized to max 960x540 (or 800x600 for 4:3), preserving exact window aspect ratio.
 		// Windows GDI's StretchDIBits hardware-upscales seamlessly to full 1080p/2K/4K display with zero CPU overhead.
