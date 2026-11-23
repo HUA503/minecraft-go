@@ -142,3 +142,9 @@
 
 每批改动先解决可复现的问题，执行构建与静态检查，再推送到 `main`。未运行的验证、未复现的故障和仍缺失的玩法必须继续标为未完成。
 
+## 2026-11-23 额外修复与验证
+
+- GUI 使用隔离临时目录真实启动，新建世界后持续运行约一分钟并正常关窗；检查到 `level.dat` 和 MCA 区域文件已写入。`%APPDATA%\minecraft-go\crash.log` 没有新增记录。此次没有复现用户报告的闪退，不能视为长时间稳定性证明。
+- 独立服务端的模拟 Tick goroutine 此前 panic 时只向控制台输出，然后悄悄退出，服务端还会继续接收连接。现在 Tick 循环 panic 会把全 goroutine 堆栈追加到 `%APPDATA%\minecraft-go\crash.log`（其他平台使用系统用户配置目录），服务端观察到 Tick 循环意外退出后会停服并走存档收尾。
+- `go test ./pkg/sim ./cmd/server`、`go vet ./pkg/sim ./cmd/server`、客户端与服务端 Windows 构建及 `git diff --check` 通过。仍未在真实窗口复现崩溃；专用服务器 panic 自动停服路径尚未通过注入故障的端到端运行验证。
+

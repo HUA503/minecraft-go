@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"log"
 	"math"
-	"runtime/debug"
+	"os"
+	"path/filepath"
+	"runtime"
 	"sync"
 	"time"
 
@@ -1569,7 +1571,11 @@ func (e *Engine) StartTickLoop() {
 		defer close(e.tickDone)
 		defer func() {
 			if r := recover(); r != nil {
-				log.Printf("[Simulation] Tick loop panicked: %v\n%s", r, debug.Stack())
+				stacks := make([]byte, 1<<20)
+				n := runtime.Stack(stacks, true)
+				message := fmt.Sprintf("SIMULATION TICK LOOP PANIC: %v\n\nGoroutine stacks:\n%s", r, stacks[:n])
+				log.Printf("[Simulation] %s", message)
+				appendSimulationCrashLog(message)
 			}
 		}()
 		for {
@@ -1582,6 +1588,43 @@ func (e *Engine) StartTickLoop() {
 		}
 	}()
 	e.loopMu.Unlock()
+}
+
+// TickLoopDone closes when the background simulation loop exits, whether it
+// was stopped normally or terminated after a panic. Servers can observe this
+// to avoid continuing to accept clients with a dead simulation.
+func (e *Engine) TickLoopDone() <-chan struct{} {
+	return e.tickDone
+}
+
+var simulationCrashLogMu sync.Mutex
+
+func appendSimulationCrashLog(message string) {
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		log.Printf("[Simulation] Cannot locate user config directory for crash log: %v", err)
+		return
+	}
+	logDir := filepath.Join(configDir, "minecraft-go")
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		log.Printf("[Simulation] Cannot create crash log directory %q: %v", logDir, err)
+		return
+	}
+	path := filepath.Join(logDir, "crash.log")
+	entry := fmt.Sprintf("\n===== %s =====\n%s\n", time.Now().Format(time.RFC3339Nano), message)
+	simulationCrashLogMu.Lock()
+	defer simulationCrashLogMu.Unlock()
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		log.Printf("[Simulation] Cannot open crash log %q: %v", path, err)
+		return
+	}
+	if _, err := file.WriteString(entry); err != nil {
+		log.Printf("[Simulation] Cannot append crash log %q: %v", path, err)
+	}
+	if err := file.Close(); err != nil {
+		log.Printf("[Simulation] Cannot close crash log %q: %v", path, err)
+	}
 }
 
 func (e *Engine) Stop() {

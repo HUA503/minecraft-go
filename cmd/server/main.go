@@ -124,6 +124,16 @@ func (s *Server) Start() error {
 
 	s.simEngine.StartTickLoop()
 	go s.broadcastLoop()
+	go func() {
+		<-s.simEngine.TickLoopDone()
+		s.mu.Lock()
+		running := s.running
+		s.mu.Unlock()
+		if running {
+			log.Printf("[Server] Simulation tick loop exited unexpectedly; stopping server and saving world")
+			s.Stop()
+		}
+	}()
 
 	for {
 		s.mu.Lock()
@@ -606,3 +616,4 @@ func main() {
 		log.Fatalf("[Server] Fatal error: %v", err)
 	}
 }
+
