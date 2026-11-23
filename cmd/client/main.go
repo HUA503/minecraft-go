@@ -4781,7 +4781,7 @@ func runGraphicalWindow(c *Client, w, h int) {
 		if c.screenState == ScreenTitle {
 			if vkCode == 0x1B || vkCode == 0x51 { // Esc or Q: quit
 				wnd.Close()
-				os.Exit(0)
+				return
 			}
 			return
 		}
@@ -4995,7 +4995,7 @@ func runGraphicalWindow(c *Client, w, h int) {
 				// Quit button
 				if mx >= c.titleQuitBtn[0] && mx <= c.titleQuitBtn[0]+c.titleQuitBtn[2] && my >= c.titleQuitBtn[1] && my <= c.titleQuitBtn[1]+c.titleQuitBtn[3] {
 					wnd.Close()
-					os.Exit(0)
+					return
 				}
 			}
 			return
