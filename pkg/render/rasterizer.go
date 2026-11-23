@@ -17,6 +17,24 @@ type Framebuffer struct {
 	HorizonFogColor uint32    // Current celestial horizon color for distance fog
 }
 
+func validScreenPoint(p ScreenPoint) bool {
+	return !math.IsNaN(float64(p.X)) && !math.IsInf(float64(p.X), 0) &&
+		!math.IsNaN(float64(p.Y)) && !math.IsInf(float64(p.Y), 0) &&
+		math.Abs(float64(p.X)) <= 1e7 && math.Abs(float64(p.Y)) <= 1e7 &&
+		!math.IsNaN(float64(p.Depth)) && !math.IsInf(float64(p.Depth), 0) && p.Depth > 0
+}
+
+func validScreenVertex(v ScreenVertex) bool {
+	return !math.IsNaN(float64(v.X)) && !math.IsInf(float64(v.X), 0) &&
+		!math.IsNaN(float64(v.Y)) && !math.IsInf(float64(v.Y), 0) &&
+		math.Abs(float64(v.X)) <= 1e7 && math.Abs(float64(v.Y)) <= 1e7 &&
+		!math.IsNaN(float64(v.Depth)) && !math.IsInf(float64(v.Depth), 0) && v.Depth > 0 &&
+		!math.IsNaN(float64(v.InvZ)) && !math.IsInf(float64(v.InvZ), 0) && v.InvZ > 0 &&
+		!math.IsNaN(float64(v.UOverZ)) && !math.IsInf(float64(v.UOverZ), 0) &&
+		!math.IsNaN(float64(v.VOverZ)) && !math.IsInf(float64(v.VOverZ), 0) &&
+		!math.IsNaN(float64(v.LightMult)) && !math.IsInf(float64(v.LightMult), 0) && v.LightMult >= 0 && v.LightMult <= 4
+}
+
 func NewFramebuffer(w, h int) *Framebuffer {
 	if w <= 0 || h <= 0 {
 		w, h = 800, 600
@@ -552,6 +570,10 @@ func NewScreenVertex(p ScreenPoint, u, v float32, blockID int32, faceIndex int, 
 
 // DrawTriangle draws a flat-shaded triangle into the framebuffer with depth test.
 func (fb *Framebuffer) DrawTriangle(p0, p1, p2 ScreenPoint, col uint32) {
+	if fb == nil || fb.Width <= 0 || fb.Height <= 0 || !validScreenPoint(p0) || !validScreenPoint(p1) || !validScreenPoint(p2) {
+		return
+	}
+
 	minX := int(math.Floor(math.Min(float64(p0.X), math.Min(float64(p1.X), float64(p2.X)))))
 	maxX := int(math.Ceil(math.Max(float64(p0.X), math.Max(float64(p1.X), float64(p2.X)))))
 	minY := int(math.Floor(math.Min(float64(p0.Y), math.Min(float64(p1.Y), float64(p2.Y)))))
@@ -602,6 +624,10 @@ func (fb *Framebuffer) DrawTriangle(p0, p1, p2 ScreenPoint, col uint32) {
 // DrawTexturedTriangle renders a perspective depth-tested triangle textured by a RawImage with normalized UV coordinates [0.0, 1.0].
 // If tint is non-zero, it blends or overrides the color (e.g. hurt red flash 0xFFFF3333).
 func (fb *Framebuffer) DrawTexturedTriangle(p0, p1, p2 ScreenPoint, u0, v0, u1, v1, u2, v2 float32, img *RawImage, tint uint32) {
+	if fb == nil || fb.Width <= 0 || fb.Height <= 0 || !validScreenPoint(p0) || !validScreenPoint(p1) || !validScreenPoint(p2) {
+		return
+	}
+
 	if img == nil || img.Width == 0 || img.Height == 0 {
 		fb.DrawTriangle(p0, p1, p2, tint)
 		return
@@ -683,6 +709,10 @@ func (fb *Framebuffer) DrawTexturedTriangle(p0, p1, p2 ScreenPoint, u0, v0, u1, 
 
 // DrawVoxelTrianglePerspective performs mathematically exact perspective-correct texture mapping & distance fog.
 func (fb *Framebuffer) DrawVoxelTrianglePerspective(v0, v1, v2 ScreenVertex) {
+	if fb == nil || fb.Width <= 0 || fb.Height <= 0 || !validScreenVertex(v0) || !validScreenVertex(v1) || !validScreenVertex(v2) {
+		return
+	}
+
 	fMinX := v0.X
 	if v1.X < fMinX {
 		fMinX = v1.X
