@@ -67,14 +67,46 @@ func (c *Camera) ToViewSpace(wx, wy, wz float64) (float64, float64, float64) {
 	return rx, ry, vz
 }
 
+// SphereInFrustum reports whether a world-space sphere may intersect the camera
+// view frustum. The sphere is a conservative bound: false means it is fully
+// outside, while true may include some false positives near the frustum edges.
+func (c *Camera) SphereInFrustum(wx, wy, wz, radius float64, screenW, screenH int, near float64) bool {
+	if c == nil || screenW <= 0 || screenH <= 0 || radius < 0 || near < 0 ||
+		math.IsNaN(wx) || math.IsNaN(wy) || math.IsNaN(wz) || math.IsNaN(radius) || math.IsNaN(near) ||
+		math.IsInf(wx, 0) || math.IsInf(wy, 0) || math.IsInf(wz, 0) || math.IsInf(radius, 0) || math.IsInf(near, 0) ||
+		math.IsNaN(c.Fov) || math.IsInf(c.Fov, 0) || c.Fov <= 0 || c.Fov >= 180 {
+		return true
+	}
+
+	x, y, z := c.ToViewSpace(wx, wy, wz)
+	if math.IsNaN(x) || math.IsNaN(y) || math.IsNaN(z) || math.IsInf(x, 0) || math.IsInf(y, 0) || math.IsInf(z, 0) {
+		return true
+	}
+	if z+radius < near {
+		return false
+	}
+
+	tanHalfY := math.Tan(c.Fov * math.Pi / 360.0)
+	tanHalfX := tanHalfY * float64(screenW) / float64(screenH)
+	invLenX := 1.0 / math.Hypot(1, tanHalfX)
+	invLenY := 1.0 / math.Hypot(1, tanHalfY)
+	if (x+z*tanHalfX)*invLenX < -radius || (z*tanHalfX-x)*invLenX < -radius {
+		return false
+	}
+	if (z*tanHalfY+y)*invLenY < -radius || (z*tanHalfY-y)*invLenY < -radius {
+		return false
+	}
+	return true
+}
+
 // ProjectViewToScreen transforms view-space (vx, vy, vz) to 2D screen coordinates.
 func (c *Camera) ProjectViewToScreen(vx, vy, vz float64, screenW, screenH int) ScreenPoint {
 	fovRad := c.Fov * math.Pi / 180.0
 	aspect := float64(screenW) / float64(screenH)
 	f := 1.0 / math.Tan(fovRad/2.0)
 
-	screenX := (vx * f / (aspect * vz)) * float64(screenW/2) + float64(screenW/2)
-	screenY := -(vy * f / vz) * float64(screenH/2) + float64(screenH/2)
+	screenX := (vx*f/(aspect*vz))*float64(screenW/2) + float64(screenW/2)
+	screenY := -(vy*f/vz)*float64(screenH/2) + float64(screenH/2)
 
 	return ScreenPoint{
 		X:     float32(screenX),
