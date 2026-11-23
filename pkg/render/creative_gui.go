@@ -20,7 +20,7 @@ func (fb *Framebuffer) DrawCreativeInventoryGUI(inv *inventory.PlayerInventory, 
 		return
 	}
 	scale := CalculateGUIScaleFromDimensions(fb.Width, fb.Height)
-	panelW, panelH := 200*scale, 246*scale
+	panelW, panelH := 200*scale, 234*scale
 	px, py := fb.Width/2-panelW/2, fb.Height/2-panelH/2
 	for i, c := range fb.Color {
 		r, g, b := (c>>16)&0xFF, (c>>8)&0xFF, c&0xFF
@@ -78,7 +78,7 @@ func (fb *Framebuffer) DrawCreativeInventoryGUI(inv *inventory.PlayerInventory, 
 	for i := 0; i < creativePerPage && start+i < len(items); i++ {
 		row, col := i/creativeColumns, i%creativeColumns
 		sx := px + (7+col*18)*scale
-		sy := py + (31+row*20)*scale
+		sy := py + (27+row*18)*scale
 		drawOfficialCreativeSlot(fb, sx, sy, scale)
 		fb.DrawItemIconScaled(sx+scale, sy+scale, items[start+i].ID, scale)
 		if mouseX >= sx && mouseX < sx+18*scale && mouseY >= sy && mouseY < sy+18*scale {
@@ -87,7 +87,7 @@ func (fb *Framebuffer) DrawCreativeInventoryGUI(inv *inventory.PlayerInventory, 
 		}
 	}
 	drawCreativeTooltip(fb, hoveredName, mouseX, mouseY, scale)
-	trackX, trackY, trackH := px+174*scale, py+31*scale, 98*scale
+	trackX, trackY, trackH := px+174*scale, py+27*scale, 90*scale
 	fb.DrawRect(trackX+4*scale, trackY, 4*scale, trackH, 0xFF777777)
 	thumbY := trackY
 	if maxScroll > 0 {
@@ -99,7 +99,7 @@ func (fb *Framebuffer) DrawCreativeInventoryGUI(inv *inventory.PlayerInventory, 
 		fb.DrawRect(trackX, thumbY, 12*scale, 15*scale, 0xFFAAAAAA)
 	}
 
-	searchX, searchY := px+7*scale, py+135*scale
+	searchX, searchY := px+7*scale, py+120*scale
 	fb.DrawRect(searchX, searchY, 186*scale, 16*scale, 0xFF555555)
 	fb.DrawRect(searchX+scale, searchY+scale, 184*scale, 14*scale, 0xFFFFFFFF)
 	searchLabel := "Search Items..."
@@ -108,14 +108,14 @@ func (fb *Framebuffer) DrawCreativeInventoryGUI(inv *inventory.PlayerInventory, 
 	}
 	fb.DrawText5x7(searchX+3*scale, searchY+5*scale, searchLabel, 0xFF404040, scale)
 
-	invX, invY := px+7*scale, py+160*scale
+	invX, invY := px+7*scale, py+144*scale
 	for row := 0; row < 3; row++ {
 		for col := 0; col < 9; col++ {
 			drawCreativePlayerSlot(fb, inv, 9+row*9+col, invX+col*18*scale, invY+row*18*scale, scale, mouseX, mouseY)
 		}
 	}
 	for col := 0; col < 9; col++ {
-		drawCreativePlayerSlot(fb, inv, col, invX+col*18*scale, py+220*scale, scale, mouseX, mouseY)
+		drawCreativePlayerSlot(fb, inv, col, invX+col*18*scale, py+208*scale, scale, mouseX, mouseY)
 	}
 	for i := range creativeTabIcons {
 		x, y := px+(2+i*18)*scale, py+3*scale
@@ -182,8 +182,8 @@ func drawCreativeTooltip(fb *Framebuffer, label string, mouseX, mouseY, scale in
 // page button, or player inventory slot.
 func HitTestCreativeInventory(w, h int, category inventory.CreativeCategory, query string, page, mouseX, mouseY int) GUISlotHit {
 	scale := CalculateGUIScaleFromDimensions(w, h)
-	px, py := w/2-200*scale/2, h/2-246*scale/2
-	if mouseX >= px+7*scale && mouseX < px+193*scale && mouseY >= py+135*scale && mouseY < py+151*scale {
+	px, py := w/2-200*scale/2, h/2-234*scale/2
+	if mouseX >= px+7*scale && mouseX < px+193*scale && mouseY >= py+120*scale && mouseY < py+136*scale {
 		return GUISlotHit{Type: SlotCreativeSearch}
 	}
 	for i := range creativeTabIcons {
@@ -192,7 +192,7 @@ func HitTestCreativeInventory(w, h int, category inventory.CreativeCategory, que
 			return GUISlotHit{Type: SlotCreativeTab, Index: i}
 		}
 	}
-	trackX, trackY, trackH := px+174*scale, py+31*scale, 98*scale
+	trackX, trackY, trackH := px+174*scale, py+27*scale, 90*scale
 	if mouseX >= trackX && mouseX < trackX+12*scale && mouseY >= trackY && mouseY < trackY+trackH {
 		return GUISlotHit{Type: SlotCreativeScroll, Index: (mouseY - trackY) * 100 / max(1, trackH-1)}
 	}
@@ -207,12 +207,12 @@ func HitTestCreativeInventory(w, h int, category inventory.CreativeCategory, que
 	start := page * creativeColumns
 	for i := 0; i < creativePerPage; i++ {
 		row, col := i/creativeColumns, i%creativeColumns
-		sx, sy := px+(7+col*18)*scale, py+(31+row*20)*scale
+		sx, sy := px+(7+col*18)*scale, py+(27+row*18)*scale
 		if mouseX >= sx && mouseX < sx+18*scale && mouseY >= sy && mouseY < sy+18*scale && start+i < len(items) {
 			return GUISlotHit{Type: SlotCreativeItem, Index: start + i}
 		}
 	}
-	invX, invY := px+7*scale, py+160*scale
+	invX, invY := px+7*scale, py+144*scale
 	for row := 0; row < 3; row++ {
 		for col := 0; col < 9; col++ {
 			sx, sy := invX+col*18*scale, invY+row*18*scale
@@ -222,7 +222,7 @@ func HitTestCreativeInventory(w, h int, category inventory.CreativeCategory, que
 		}
 	}
 	for col := 0; col < 9; col++ {
-		sx, sy := invX+col*18*scale, py+220*scale
+		sx, sy := invX+col*18*scale, py+208*scale
 		if mouseX >= sx && mouseX < sx+18*scale && mouseY >= sy && mouseY < sy+18*scale {
 			return GUISlotHit{Type: SlotInventory, Index: col}
 		}

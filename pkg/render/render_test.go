@@ -648,6 +648,12 @@ func TestTransparentBlockClassificationAndPortalFaceCulling(t *testing.T) {
 }
 
 func TestOfficialItemAndBlockTextures(t *testing.T) {
+	for _, id := range []int32{6, 24, 25, 35, 43, 79, 80, 82, 84, 91, 98, 112, 123, 124, 129, 133, 138, 152, 155, 159, 165, 168, 169, 170, 172, 173, 174, 179} {
+		if Textures[id] == nil {
+			t.Errorf("creative full-block entry %d has no registered block texture", id)
+		}
+	}
+
 	// 1. Verify authentic official item textures load
 	itemsToCheck := []struct {
 		id   int32
@@ -867,4 +873,3 @@ func TestCrossedQuadsFoliageUprightOrientation(t *testing.T) {
 		}
 	}
 }
-

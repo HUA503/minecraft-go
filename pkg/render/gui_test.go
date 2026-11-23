@@ -114,8 +114,8 @@ func TestCreativeInventoryCatalogAndHitTesting(t *testing.T) {
 
 	w, h := 400, 300
 	scale := CalculateGUIScaleFromDimensions(w, h)
-	px, py := w/2-200*scale/2, h/2-246*scale/2
-	hitItem := HitTestCreativeInventory(w, h, inventory.CreativeAll, "", 0, px+8*scale, py+32*scale)
+	px, py := w/2-200*scale/2, h/2-234*scale/2
+	hitItem := HitTestCreativeInventory(w, h, inventory.CreativeAll, "", 0, px+8*scale, py+28*scale)
 	if hitItem.Type != SlotCreativeItem || hitItem.Index != 0 {
 		t.Fatalf("first creative item slot hit = %+v", hitItem)
 	}
@@ -123,15 +123,15 @@ func TestCreativeInventoryCatalogAndHitTesting(t *testing.T) {
 	if hitTools.Type != SlotCreativeTab || hitTools.Index != int(inventory.CreativeTools) {
 		t.Fatalf("tools tab hit = %+v", hitTools)
 	}
-	hitSearch := HitTestCreativeInventory(w, h, inventory.CreativeAll, "", 0, px+60*scale, py+137*scale)
+	hitSearch := HitTestCreativeInventory(w, h, inventory.CreativeAll, "", 0, px+60*scale, py+122*scale)
 	if hitSearch.Type != SlotCreativeSearch {
 		t.Fatalf("creative search field hit = %+v", hitSearch)
 	}
-	hitLaterItem := HitTestCreativeInventory(w, h, inventory.CreativeAll, "", 1, px+8*scale, py+32*scale)
+	hitLaterItem := HitTestCreativeInventory(w, h, inventory.CreativeAll, "", 1, px+8*scale, py+28*scale)
 	if hitLaterItem.Type != SlotCreativeItem || hitLaterItem.Index != 9 {
 		t.Fatalf("creative second-page item hit = %+v", hitLaterItem)
 	}
-	hitScroll := HitTestCreativeInventory(w, h, inventory.CreativeAll, "", 0, px+178*scale, py+80*scale)
+	hitScroll := HitTestCreativeInventory(w, h, inventory.CreativeAll, "", 0, px+178*scale, py+72*scale)
 	if hitScroll.Type != SlotCreativeScroll || hitScroll.Index < 40 || hitScroll.Index > 60 {
 		t.Fatalf("creative scrollbar hit = %+v", hitScroll)
 	}
@@ -147,6 +147,17 @@ func TestCreativeInventoryCatalogAndHitTesting(t *testing.T) {
 	if nonZero < 1000 {
 		t.Fatalf("creative inventory rendered too few pixels: %d", nonZero)
 	}
+}
+
+func TestCreativeInventoryFitsMinimumGUIResolution(t *testing.T) {
+	w, h := 320, 240
+	scale := CalculateGUIScaleFromDimensions(w, h)
+	panelH := 234 * scale
+	if panelH > h {
+		t.Fatalf("creative inventory height %d exceeds framebuffer height %d", panelH, h)
+	}
+	fb := NewFramebuffer(w, h)
+	fb.DrawCreativeInventoryGUI(inventory.NewPlayerInventory(), inventory.ItemStack{}, inventory.CreativeAll, "", 0, -1, -1)
 }
 
 func TestCreativeInventoryUsesEmbeddedVanillaGUITextures(t *testing.T) {

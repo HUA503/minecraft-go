@@ -964,6 +964,7 @@ func initOfficialBlockTextures() {
 	loadSingle(6, "oak_sapling")
 	loadSingle(7, "bedrock")
 	loadBlock(24, "sandstone_top", "sandstone_bottom", "sandstone")
+	loadSingle(25, "note_block")
 	loadSingle(35, "white_wool")
 	loadSingle(43, "stone")
 	loadSingle(12, "sand")
@@ -990,6 +991,18 @@ func initOfficialBlockTextures() {
 	loadSingle(82, "clay")
 	loadSingle(83, "sugar_cane")
 	loadBlock(86, "pumpkin_top", "pumpkin_top", "pumpkin_side")
+	loadBlock(84, "jukebox_top", "jukebox_top", "jukebox_side")
+	loadSingle(91, "jack_o_lantern")
+	loadSingle(123, "redstone_lamp_on")
+	loadSingle(124, "redstone_lamp")
+	loadSingle(129, "emerald_ore")
+	loadSingle(133, "emerald_block")
+	loadSingle(138, "beacon")
+	loadSingle(152, "redstone_block")
+	loadSingle(165, "slime_block")
+	loadSingle(168, "prismarine")
+	loadSingle(169, "sea_lantern")
+	loadBlock(170, "hay_block_top", "hay_block_top", "hay_block_side")
 	loadSingle(87, "netherrack")
 	loadSingle(88, "soul_sand")
 	loadSingle(89, "glowstone")
@@ -1066,4 +1079,3 @@ func ApplyLighting(col uint32, mult float32) uint32 {
 
 	return (a << 24) | (uint32(r) << 16) | (uint32(g) << 8) | uint32(b)
 }
-
