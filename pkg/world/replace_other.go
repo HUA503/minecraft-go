@@ -1,4 +1,4 @@
-//go:build !windows
+//go:build !windows && !unix
 
 package world
 
@@ -7,3 +7,4 @@ import "os"
 func replaceFile(src, dst string) error {
 	return os.Rename(src, dst)
 }
+
