@@ -893,6 +893,12 @@ func (c *Client) SaveAndQuitToTitle() error {
 
 		c.engine = nil
 		c.player = nil
+	} else if c.saveMgr != nil {
+		if err := c.saveMgr.Close(); err != nil {
+			log.Printf("[Client] Failed to close partially initialized save manager: %v", err)
+			saveErrors = append(saveErrors, fmt.Errorf("close partial save manager: %w", err))
+		}
+		c.saveMgr = nil
 	}
 
 	c.resetMeshCache(true)
