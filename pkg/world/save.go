@@ -1,6 +1,7 @@
 package world
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -69,10 +70,14 @@ func NewDimensionSaveManager(worldDir string, dim int) (*SaveManager, error) {
 	default:
 		regionDir = filepath.Join(worldDir, "region")
 	}
+	nearestExistingDir, err := nearestExistingDirectory(regionDir)
+	if err != nil {
+		return nil, err
+	}
 	if err := os.MkdirAll(regionDir, 0755); err != nil {
 		return nil, err
 	}
-	if err := syncDirectoryTree(regionDir, worldDir); err != nil {
+	if err := syncDirectoryTree(regionDir, nearestExistingDir); err != nil {
 		return nil, fmt.Errorf("sync dimension region directories: %w", err)
 	}
 	return &SaveManager{
@@ -80,6 +85,25 @@ func NewDimensionSaveManager(worldDir string, dim int) (*SaveManager, error) {
 		regionDir: regionDir,
 		regions:   make(map[string]*Region),
 	}, nil
+}
+
+func nearestExistingDirectory(path string) (string, error) {
+	for current := filepath.Clean(path); ; current = filepath.Dir(current) {
+		info, err := os.Stat(current)
+		if err == nil {
+			if !info.IsDir() {
+				return "", fmt.Errorf("%q exists but is not a directory", current)
+			}
+			return current, nil
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			return "", err
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			return "", err
+		}
+	}
 }
 
 // GetDimensionStorage returns a SaveManager targeting the specified dimension.
