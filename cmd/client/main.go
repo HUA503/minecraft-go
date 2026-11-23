@@ -649,9 +649,11 @@ func (c *Client) SwitchDimension(dim gen.Dimension) {
 	var newPos sim.Vec3
 	switch dim {
 	case gen.DimensionNether:
+		c.UnlockAdvancement("minecraft:nether/root", "进入下界")
 		newPos = sim.Vec3{X: 0.5, Y: 66.0, Z: 0.5}
 		c.AddChatMessage("[Dimension] Entered the Nether. Beware the lava seas!")
 	case gen.DimensionEnd:
+		c.UnlockAdvancement("minecraft:story/enter_the_end", "进入末地")
 		newPos = sim.Vec3{X: 0.5, Y: 62.0, Z: 0.5}
 		c.AddChatMessage("[Dimension] Entered The End. Slay the Ender Dragon to open the exit portal!")
 	default:
@@ -1840,6 +1842,9 @@ func (c *Client) ExecuteCommand(input string) {
 			if c.engine != nil && c.engine.GetEnderDragon() != nil {
 				c.engine.DamageEnderDragon(200.0)
 				c.AddChatMessage("[Kill] Slew Ender Dragon!")
+				if dragon := c.engine.GetEnderDragon(); dragon != nil && !dragon.IsAlive {
+					c.UnlockAdvancement("minecraft:end/kill_dragon", "解放末地")
+				}
 			}
 			return
 		}
@@ -1874,6 +1879,9 @@ func (c *Client) MineTargetedBlock() (int32, bool) {
 	drop, ok := c.engine.BreakBlockWithTool(c.player.ID, targetPos, heldToolID)
 	if ok && blockID == 1 {
 		c.UnlockAdvancement("minecraft:story/mine_stone", "石器时代")
+	}
+	if ok && (blockID == 17 || blockID == 162) {
+		c.UnlockAdvancement("minecraft:story/mine_wood", "获取木头")
 	}
 	c.spawnBlockDebris(targetPos, blockID, 20)
 	sound.PlayHardwareFeedback(sound.GetBlockBreakSound(blockID))
@@ -1948,6 +1956,9 @@ func (c *Client) PlaceBlockInFront() bool {
 
 	ok := c.engine.PlaceBlock(c.player.ID, targetPos, selected.ItemID)
 	if ok {
+		if selected.ItemID == 58 {
+			c.UnlockAdvancement("minecraft-go:story/place_crafting_table", "搭建工作台")
+		}
 		sound.PlayHardwareFeedback(sound.GetBlockPlaceSound(selected.ItemID))
 		c.RebuildAffectedMeshes(targetPos)
 		c.isSwinging = true
