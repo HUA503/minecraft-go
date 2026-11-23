@@ -1099,7 +1099,7 @@ func (c *Client) EnsureChunksAroundPlayer(playerX, playerZ float64, radius int32
 	engine := c.engine
 	dimension := engine.GetDimension()
 
-	// Pass 0: Prune distant meshes and chunks beyond (radius + 2) to maintain strictly bounded memory (< 40MB)
+	// Pass 0: Prune distant meshes and chunks beyond the active streaming radius.
 	c.meshMu.Lock()
 	for key := range c.meshCache {
 		diffX := key[0] - pcx
