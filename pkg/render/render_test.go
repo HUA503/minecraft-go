@@ -169,6 +169,23 @@ func TestCameraSphereInFrustumConservativeOnInvalidInputs(t *testing.T) {
 	}
 }
 
+func TestCameraSphereInFrustumTracksYawAndPitch(t *testing.T) {
+	cam := NewCamera(0, 0, 0)
+	cam.Yaw = 90
+	if !cam.SphereInFrustum(10, 0, 0, 1, 640, 480, 0.1) {
+		t.Fatal("sphere along a 90-degree yaw direction should be visible")
+	}
+	if cam.SphereInFrustum(0, 0, 10, 1, 640, 480, 0.1) {
+		t.Fatal("sphere behind a 90-degree yaw direction should be culled")
+	}
+
+	cam.Yaw = 0
+	cam.Pitch = 30
+	if !cam.SphereInFrustum(0, 5, 8.660254037844386, 1, 640, 480, 0.1) {
+		t.Fatal("sphere along a 30-degree pitch direction should be visible")
+	}
+}
+
 func TestHUDDrawing(t *testing.T) {
 	fb := NewFramebuffer(640, 480)
 	fb.Clear(0xFF000000)
