@@ -73,94 +73,98 @@ const (
 )
 
 type Client struct {
-	wndRef              *render.Window
-	screenState         ClientScreenState
-	saveMgr             *world.SaveManager
-	currentWorldDir     string
-	currentWorldName    string
-	availableWorlds     []render.WorldInfo
-	worldScanResult     chan []render.WorldInfo
-	worldScanPending    bool
-	selectedWorldIdx    int
-	newWorldName        string
-	newWorldMode        int // 0: Survival, 1: Creative
-	newWorldSeedText    string
-	newWorldActiveBox   int // 0: Name, 1: Seed
-	titleSpBtn          [4]int
-	titleMpBtn          [4]int
-	titleQuitBtn        [4]int
-	wsPlayBtn           [4]int
-	wsNewBtn            [4]int
-	wsBackBtn           [4]int
-	wsRects             [][4]int
-	nwCreateBtn         [4]int
-	nwCancelBtn         [4]int
-	nwModeBtn           [4]int
-	nwNameBox           [4]int
-	nwSeedBox           [4]int
-	cursorItem          inventory.ItemStack
-	craftGrid           [9]inventory.ItemStack
-	craftResult         inventory.ItemStack
-	isCraftingTableOpen bool
-	isFurnaceOpen       bool
-	currentFurnacePos   world.BlockPos
-	serverAddr          string
-	username            string
-	uuid                [16]byte
-	conn                net.Conn
-	networkDone         chan struct{}
-	state               protocol.ConnectionState
-	framebuf            *render.Framebuffer
-	renderPanicCount    int
-	quitSaving          atomic.Bool
-	quitSaveFailed      atomic.Bool
-	quitSaveDone        chan struct{}
-	camera              *render.Camera
-	engine              *sim.Engine
-	tickAccumulator     float64
-	player              *sim.PlayerEntity
-	craftingMgr         *inventory.CraftingManager
-	isLocal             bool
-	meshCache           map[[3]int32]*render.Mesh
-	meshGeneration      uint64
-	meshRevisions       map[[3]int32]uint64
-	meshMu              sync.RWMutex
-	meshJobsMu          sync.Mutex
-	meshJobsPending     map[[3]int32]sectionMeshJob
-	meshJobsRunning     map[[3]int32]sectionMeshJob
-	meshJobsWake        chan struct{}
-	meshWorkerOnce      sync.Once
-	autosaveWG          sync.WaitGroup
-	autosaveRunning     atomic.Bool
-	streamJobsMu        sync.Mutex
-	streamJobsPending   map[chunkStreamKey]chunkStreamJob
-	streamJobsRunning   map[chunkStreamKey]chunkStreamJob
-	streamJobsFailed    map[chunkStreamKey]chunkStreamFailure
-	streamJobsPrunedAt  time.Time
-	streamJobsWake      chan struct{}
-	streamJobsIdle      chan struct{}
-	streamJobsActive    int
-	streamWorkerOnce    sync.Once
-	remoteMu            sync.RWMutex
-	remotePlayers       map[string]*RemotePlayer
-	lastRemotePos       sim.Vec3
-	targetedPos         world.BlockPos
-	targetedFace        world.BlockPos
-	hasTarget           bool
-	walkCycle           float64
-	isMoving            bool
-	isSprinting         bool
-	isSneaking          bool
-	wasSpaceDown        bool
-	genOverworld        *gen.Generator
-	genNether           *gen.Generator
-	genEnd              *gen.Generator
-	currentDim          gen.Dimension
-	portalStandTime     float64
-	loadedChunks        map[world.ChunkPos]bool
-	lastChunkX          int32
-	lastChunkZ          int32
-	lastChunkStreamTime time.Time
+	wndRef                   *render.Window
+	screenState              ClientScreenState
+	saveMgr                  *world.SaveManager
+	currentWorldDir          string
+	currentWorldName         string
+	availableWorlds          []render.WorldInfo
+	worldScanResult          chan []render.WorldInfo
+	worldScanPending         bool
+	selectedWorldIdx         int
+	newWorldName             string
+	newWorldMode             int // 0: Survival, 1: Creative
+	newWorldSeedText         string
+	newWorldActiveBox        int // 0: Name, 1: Seed
+	titleSpBtn               [4]int
+	titleMpBtn               [4]int
+	titleQuitBtn             [4]int
+	wsPlayBtn                [4]int
+	wsNewBtn                 [4]int
+	wsBackBtn                [4]int
+	wsRects                  [][4]int
+	nwCreateBtn              [4]int
+	nwCancelBtn              [4]int
+	nwModeBtn                [4]int
+	nwNameBox                [4]int
+	nwSeedBox                [4]int
+	cursorItem               inventory.ItemStack
+	craftGrid                [9]inventory.ItemStack
+	craftResult              inventory.ItemStack
+	isCraftingTableOpen      bool
+	isFurnaceOpen            bool
+	currentFurnacePos        world.BlockPos
+	serverAddr               string
+	username                 string
+	uuid                     [16]byte
+	conn                     net.Conn
+	networkDone              chan struct{}
+	state                    protocol.ConnectionState
+	framebuf                 *render.Framebuffer
+	renderPanicCount         int
+	quitSaving               atomic.Bool
+	quitSaveFailed           atomic.Bool
+	quitSaveDone             chan struct{}
+	worldStarting            atomic.Bool
+	worldStartFailed         atomic.Bool
+	worldStartCapturePending atomic.Bool
+	worldStartDone           chan struct{}
+	camera                   *render.Camera
+	engine                   *sim.Engine
+	tickAccumulator          float64
+	player                   *sim.PlayerEntity
+	craftingMgr              *inventory.CraftingManager
+	isLocal                  bool
+	meshCache                map[[3]int32]*render.Mesh
+	meshGeneration           uint64
+	meshRevisions            map[[3]int32]uint64
+	meshMu                   sync.RWMutex
+	meshJobsMu               sync.Mutex
+	meshJobsPending          map[[3]int32]sectionMeshJob
+	meshJobsRunning          map[[3]int32]sectionMeshJob
+	meshJobsWake             chan struct{}
+	meshWorkerOnce           sync.Once
+	autosaveWG               sync.WaitGroup
+	autosaveRunning          atomic.Bool
+	streamJobsMu             sync.Mutex
+	streamJobsPending        map[chunkStreamKey]chunkStreamJob
+	streamJobsRunning        map[chunkStreamKey]chunkStreamJob
+	streamJobsFailed         map[chunkStreamKey]chunkStreamFailure
+	streamJobsPrunedAt       time.Time
+	streamJobsWake           chan struct{}
+	streamJobsIdle           chan struct{}
+	streamJobsActive         int
+	streamWorkerOnce         sync.Once
+	remoteMu                 sync.RWMutex
+	remotePlayers            map[string]*RemotePlayer
+	lastRemotePos            sim.Vec3
+	targetedPos              world.BlockPos
+	targetedFace             world.BlockPos
+	hasTarget                bool
+	walkCycle                float64
+	isMoving                 bool
+	isSprinting              bool
+	isSneaking               bool
+	wasSpaceDown             bool
+	genOverworld             *gen.Generator
+	genNether                *gen.Generator
+	genEnd                   *gen.Generator
+	currentDim               gen.Dimension
+	portalStandTime          float64
+	loadedChunks             map[world.ChunkPos]bool
+	lastChunkX               int32
+	lastChunkZ               int32
+	lastChunkStreamTime      time.Time
 	// Authentic Minecraft Mining State
 	isMining            bool
 	breakProgress       float64 // 0.0 to 1.0
@@ -735,9 +739,46 @@ func (c *Client) StartSingleplayerWorld(worldDirName string, isNew bool, newSeed
 	c.EnsureChunksAroundPlayer(c.player.Position.X, c.player.Position.Z, 3)
 
 	c.screenState = ScreenPlaying
-	if c.wndRef != nil {
-		c.wndRef.SetMouseCaptured(true)
+}
+
+func (c *Client) beginSingleplayerWorldStart(worldDirName string, isNew bool, newSeed int64, newLevelName string, newGameMode int) {
+	if c.quitSaving.Load() || !c.worldStarting.CompareAndSwap(false, true) {
+		return
 	}
+	c.worldStartFailed.Store(false)
+	c.worldStartCapturePending.Store(false)
+	done := make(chan struct{})
+	c.worldStartDone = done
+	go func() {
+		defer close(done)
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				msg := fmt.Sprintf("CLIENT WORLD START PANIC: %v\n\nStack:\n%s", recovered, debug.Stack())
+				log.Print(msg)
+				writeCrashLog(msg)
+				c.worldStartFailed.Store(true)
+				func() {
+					defer func() {
+						if cleanupPanic := recover(); cleanupPanic != nil {
+							log.Printf("[Client] Cleanup after world-start panic also failed: %v", cleanupPanic)
+						}
+					}()
+					if c.engine != nil {
+						if err := c.SaveAndQuitToTitle(); err != nil {
+							log.Printf("[Client] Cleanup after world-start panic had save errors: %v", err)
+						}
+					}
+				}()
+			}
+			c.worldStarting.Store(false)
+		}()
+		c.StartSingleplayerWorld(worldDirName, isNew, newSeed, newLevelName, newGameMode)
+		if c.screenState == ScreenPlaying {
+			c.worldStartCapturePending.Store(true)
+		} else {
+			c.worldStartFailed.Store(true)
+		}
+	}()
 }
 
 // RespawnLocalPlayer resurrects the local player at a safe spawn location, resets vital stats, and reloads surrounding chunks.
@@ -4779,6 +4820,9 @@ func runGraphicalWindow(c *Client, w, h int) {
 	watchdogDone := make(chan struct{})
 	defer close(watchdogDone)
 	defer func() {
+		if c.worldStartDone != nil {
+			<-c.worldStartDone
+		}
 		if c.quitSaveDone != nil {
 			<-c.quitSaveDone
 		}
@@ -4828,7 +4872,7 @@ func runGraphicalWindow(c *Client, w, h int) {
 
 	// Single key-press actions
 	wnd.OnKeyClick = func(vkCode int) {
-		if c.quitSaving.Load() {
+		if c.quitSaving.Load() || c.worldStarting.Load() {
 			return
 		}
 		// Global hotkeys (Fullscreen F11 and Alt+Enter work on any screen)
@@ -4943,7 +4987,7 @@ func runGraphicalWindow(c *Client, w, h int) {
 
 	// Mouse wheel hotbar switching
 	wnd.OnMouseWheel = func(delta int) {
-		if c.quitSaving.Load() {
+		if c.quitSaving.Load() || c.worldStarting.Load() {
 			return
 		}
 		if c.screenState != ScreenPlaying || c.showPauseMenu || c.showInventoryGUI || c.showAdvancementsGUI || c.isFurnaceOpen || c.isChatOpen || c.player == nil || c.player.Inventory == nil {
@@ -4958,7 +5002,7 @@ func runGraphicalWindow(c *Client, w, h int) {
 
 	// Character input
 	wnd.OnCharInput = func(ch rune) {
-		if c.quitSaving.Load() {
+		if c.quitSaving.Load() || c.worldStarting.Load() {
 			return
 		}
 		if c.screenState == ScreenNewWorld {
@@ -4970,7 +5014,7 @@ func runGraphicalWindow(c *Client, w, h int) {
 						seed = sVal
 					}
 				}
-				c.StartSingleplayerWorld(dirName, true, seed, c.newWorldName, c.newWorldMode)
+				c.beginSingleplayerWorldStart(dirName, true, seed, c.newWorldName, c.newWorldMode)
 				return
 			}
 			if ch == 27 { // Escape: cancel
@@ -5036,7 +5080,7 @@ func runGraphicalWindow(c *Client, w, h int) {
 
 	// Mouse button clicks
 	wnd.OnMouseClick = func(btn int) {
-		if c.quitSaving.Load() {
+		if c.quitSaving.Load() || c.worldStarting.Load() {
 			return
 		}
 		mx, my := wnd.GetCursorClientPos(c.framebuf.Width, c.framebuf.Height)
@@ -5080,7 +5124,7 @@ func runGraphicalWindow(c *Client, w, h int) {
 				if mx >= c.wsPlayBtn[0] && mx <= c.wsPlayBtn[0]+c.wsPlayBtn[2] && my >= c.wsPlayBtn[1] && my <= c.wsPlayBtn[1]+c.wsPlayBtn[3] {
 					if c.selectedWorldIdx >= 0 && c.selectedWorldIdx < len(c.availableWorlds) {
 						target := c.availableWorlds[c.selectedWorldIdx]
-						c.StartSingleplayerWorld(target.DirName, false, 0, target.LevelName, target.GameMode)
+						c.beginSingleplayerWorldStart(target.DirName, false, 0, target.LevelName, target.GameMode)
 					}
 					return
 				}
@@ -5122,7 +5166,7 @@ func runGraphicalWindow(c *Client, w, h int) {
 							seed = sVal
 						}
 					}
-					c.StartSingleplayerWorld(dirName, true, seed, c.newWorldName, c.newWorldMode)
+					c.beginSingleplayerWorldStart(dirName, true, seed, c.newWorldName, c.newWorldMode)
 					return
 				}
 				if mx >= c.nwCancelBtn[0] && mx <= c.nwCancelBtn[0]+c.nwCancelBtn[2] && my >= c.nwCancelBtn[1] && my <= c.nwCancelBtn[1]+c.nwCancelBtn[3] {
@@ -5371,6 +5415,15 @@ func runGraphicalWindow(c *Client, w, h int) {
 		if !wnd.PollEvents() {
 			break
 		}
+		if c.worldStarting.Load() {
+			c.framebuf.Clear(0xFF171717)
+			text := "正在加载世界，请稍候..."
+			textWidth := render.MeasureText5x7(text, 1)
+			c.framebuf.DrawText5x7((c.framebuf.Width-textWidth)/2, c.framebuf.Height/2, text, 0xFFFFFFFF, 1)
+			wnd.Present(c.framebuf)
+			time.Sleep(16 * time.Millisecond)
+			continue
+		}
 		if c.quitSaving.Load() {
 			c.framebuf.Clear(0xFF171717)
 			text := "正在保存世界，请稍候..."
@@ -5382,6 +5435,9 @@ func runGraphicalWindow(c *Client, w, h int) {
 			wnd.Present(c.framebuf)
 			time.Sleep(16 * time.Millisecond)
 			continue
+		}
+		if c.worldStartCapturePending.Swap(false) {
+			wnd.SetMouseCaptured(true)
 		}
 		c.pollSavedWorldScan()
 		// Detect window resize (Fullscreen toggle or maximize) and clamp internal software rasterizer resolution
@@ -5462,8 +5518,11 @@ func runGraphicalWindow(c *Client, w, h int) {
 			time.Sleep(16 * time.Millisecond)
 			mx, my := wnd.GetCursorClientPos(c.framebuf.Width, c.framebuf.Height)
 			c.titleSpBtn, c.titleMpBtn, c.titleQuitBtn = c.framebuf.DrawTitleScreen(mx, my)
-			if c.quitSaveFailed.Load() {
-				msg := "存档保存失败，详情见 crash.log"
+			if c.quitSaveFailed.Load() || c.worldStartFailed.Load() {
+				msg := "操作失败，请查看 crash.log"
+				if c.quitSaveFailed.Load() {
+					msg = "存档保存失败，详情见 crash.log"
+				}
 				textWidth := render.MeasureText5x7(msg, 1)
 				c.framebuf.DrawText5x7((c.framebuf.Width-textWidth)/2, c.framebuf.Height-18, msg, 0xFFFF7777, 1)
 			}
@@ -5475,6 +5534,11 @@ func runGraphicalWindow(c *Client, w, h int) {
 			time.Sleep(16 * time.Millisecond)
 			mx, my := wnd.GetCursorClientPos(c.framebuf.Width, c.framebuf.Height)
 			c.wsPlayBtn, c.wsNewBtn, c.wsBackBtn, c.wsRects = c.framebuf.DrawWorldSelectScreenWithLoading(c.availableWorlds, c.selectedWorldIdx, c.worldScanPending, mx, my)
+			if c.worldStartFailed.Load() {
+				msg := "世界加载失败，请检查日志"
+				textWidth := render.MeasureText5x7(msg, 1)
+				c.framebuf.DrawText5x7((c.framebuf.Width-textWidth)/2, c.framebuf.Height-18, msg, 0xFFFF7777, 1)
+			}
 			wnd.Present(c.framebuf)
 			continue
 		}
@@ -5483,6 +5547,11 @@ func runGraphicalWindow(c *Client, w, h int) {
 			time.Sleep(16 * time.Millisecond)
 			mx, my := wnd.GetCursorClientPos(c.framebuf.Width, c.framebuf.Height)
 			c.nwCreateBtn, c.nwCancelBtn, c.nwModeBtn, c.nwNameBox, c.nwSeedBox = c.framebuf.DrawNewWorldScreen(c.newWorldName, c.newWorldMode, c.newWorldSeedText, c.newWorldActiveBox, mx, my)
+			if c.worldStartFailed.Load() {
+				msg := "世界创建失败，请检查日志"
+				textWidth := render.MeasureText5x7(msg, 1)
+				c.framebuf.DrawText5x7((c.framebuf.Width-textWidth)/2, c.framebuf.Height-18, msg, 0xFFFF7777, 1)
+			}
 			wnd.Present(c.framebuf)
 			continue
 		}
