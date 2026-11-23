@@ -109,10 +109,12 @@ type Client struct {
 	meshMu              sync.RWMutex
 	meshJobsMu          sync.Mutex
 	meshJobsPending     map[[3]int32]sectionMeshJob
+	meshJobsRunning     map[[3]int32]sectionMeshJob
 	meshJobsWake        chan struct{}
 	meshWorkerOnce      sync.Once
 	streamJobsMu        sync.Mutex
 	streamJobsPending   map[world.ChunkPos]chunkStreamJob
+	streamJobsRunning   map[world.ChunkPos]chunkStreamJob
 	streamJobsWake      chan struct{}
 	streamJobsIdle      chan struct{}
 	streamJobsActive    int
@@ -761,8 +763,10 @@ func NewClient(serverAddr, username string, isSingleplayer bool, width, height i
 		meshCache:         make(map[[3]int32]*render.Mesh),
 		meshRevisions:     make(map[[3]int32]uint64),
 		meshJobsPending:   make(map[[3]int32]sectionMeshJob),
+		meshJobsRunning:   make(map[[3]int32]sectionMeshJob),
 		meshJobsWake:      make(chan struct{}, 1),
 		streamJobsPending: make(map[world.ChunkPos]chunkStreamJob),
+		streamJobsRunning: make(map[world.ChunkPos]chunkStreamJob),
 		streamJobsWake:    make(chan struct{}, 1),
 		streamJobsIdle:    make(chan struct{}, 1),
 		loadedChunks:      make(map[world.ChunkPos]bool),
@@ -844,18 +848,35 @@ func (c *Client) SwitchDimension(dim gen.Dimension) {
 	c.EnsureChunksAroundPlayer(newPos.X, newPos.Z, 3)
 }
 
-func (c *Client) chunkStreamPending(pos world.ChunkPos) bool {
+func (c *Client) chunkStreamPending(pos world.ChunkPos, generation uint64) bool {
 	c.streamJobsMu.Lock()
 	defer c.streamJobsMu.Unlock()
-	_, exists := c.streamJobsPending[pos]
-	return exists
+	if job, exists := c.streamJobsPending[pos]; exists && job.generation == generation {
+		return true
+	}
+	job, exists := c.streamJobsRunning[pos]
+	return exists && job.generation == generation
 }
 
 func (c *Client) enqueueChunkStreamJobs(jobs []chunkStreamJob) {
 	if len(jobs) == 0 {
 		return
 	}
-	c.streamWorkerOnce.Do(func() { go c.chunkStreamLoop() })
+	c.streamWorkerOnce.Do(func() {
+		if c.streamJobsPending == nil {
+			c.streamJobsPending = make(map[world.ChunkPos]chunkStreamJob)
+		}
+		if c.streamJobsRunning == nil {
+			c.streamJobsRunning = make(map[world.ChunkPos]chunkStreamJob)
+		}
+		if c.streamJobsWake == nil {
+			c.streamJobsWake = make(chan struct{}, 1)
+		}
+		if c.streamJobsIdle == nil {
+			c.streamJobsIdle = make(chan struct{}, 1)
+		}
+		go c.chunkStreamLoop()
+	})
 	c.streamJobsMu.Lock()
 	loadCount := 0
 	for _, pending := range c.streamJobsPending {
@@ -893,6 +914,7 @@ func (c *Client) chunkStreamLoop() {
 			batch := make([]chunkStreamJob, 0, len(c.streamJobsPending))
 			for pos, job := range c.streamJobsPending {
 				batch = append(batch, job)
+				c.streamJobsRunning[pos] = job
 				delete(c.streamJobsPending, pos)
 			}
 			c.streamJobsActive += len(batch)
@@ -913,6 +935,9 @@ func (c *Client) chunkStreamLoop() {
 				c.processChunkStreamJob(job)
 				c.streamJobsMu.Lock()
 				c.streamJobsActive--
+				if running, exists := c.streamJobsRunning[job.pos]; exists && running.generation == job.generation && running.unload == job.unload {
+					delete(c.streamJobsRunning, job.pos)
+				}
 				if c.streamJobsActive == 0 && len(c.streamJobsPending) == 0 {
 					select {
 					case c.streamJobsIdle <- struct{}{}:
@@ -1014,7 +1039,10 @@ func (c *Client) meshGenerationIs(generation uint64) bool {
 func (c *Client) meshJobPending(key [3]int32, generation, revision uint64) bool {
 	c.meshJobsMu.Lock()
 	defer c.meshJobsMu.Unlock()
-	job, exists := c.meshJobsPending[key]
+	if job, exists := c.meshJobsPending[key]; exists && job.generation == generation && job.revision == revision {
+		return true
+	}
+	job, exists := c.meshJobsRunning[key]
 	return exists && job.generation == generation && job.revision == revision
 }
 
@@ -1077,7 +1105,7 @@ func (c *Client) EnsureChunksAroundPlayer(playerX, playerZ float64, radius int32
 			alreadyLoaded := c.loadedChunks[cp]
 			c.meshMu.Unlock()
 			if !alreadyLoaded {
-				if c.chunkStreamPending(cp) {
+				if c.chunkStreamPending(cp, generation) {
 					continue
 				}
 				streamJobs = append(streamJobs, chunkStreamJob{pos: cp, generation: generation, dimension: dimension, engine: engine, generator: generator})
@@ -1199,6 +1227,9 @@ func (c *Client) enqueueMeshJobs(jobs []sectionMeshJob) {
 		if c.meshJobsPending == nil {
 			c.meshJobsPending = make(map[[3]int32]sectionMeshJob)
 		}
+		if c.meshJobsRunning == nil {
+			c.meshJobsRunning = make(map[[3]int32]sectionMeshJob)
+		}
 		if c.meshJobsWake == nil {
 			c.meshJobsWake = make(chan struct{}, 1)
 		}
@@ -1225,6 +1256,7 @@ func (c *Client) meshUpdateLoop() {
 			batch := make([]sectionMeshJob, 0, len(c.meshJobsPending))
 			for key, job := range c.meshJobsPending {
 				batch = append(batch, job)
+				c.meshJobsRunning[key] = job
 				delete(c.meshJobsPending, key)
 			}
 			c.meshJobsMu.Unlock()
@@ -1241,22 +1273,35 @@ func (c *Client) meshUpdateLoop() {
 				return batch[i].key[0] < batch[j].key[0]
 			})
 			for _, job := range batch {
-				c.meshMu.RLock()
-				current := c.meshGeneration == job.generation && c.meshRevisions[job.key] == job.revision
-				c.meshMu.RUnlock()
-				if !current || job.engine == nil {
-					continue
-				}
-				key := job.key
-				mesh := buildSectionMeshSafely(job.engine, key)
-				c.meshMu.Lock()
-				if c.meshGeneration == job.generation && c.meshRevisions[key] == job.revision {
-					c.meshCache[key] = mesh
-				}
-				c.meshMu.Unlock()
+				c.processMeshJob(job)
 			}
 		}
 	}
+}
+
+func (c *Client) processMeshJob(job sectionMeshJob) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			log.Printf("[Client] mesh worker failed for section %v: %v\n%s", job.key, recovered, debug.Stack())
+		}
+		c.meshJobsMu.Lock()
+		if running, exists := c.meshJobsRunning[job.key]; exists && running.generation == job.generation && running.revision == job.revision {
+			delete(c.meshJobsRunning, job.key)
+		}
+		c.meshJobsMu.Unlock()
+	}()
+	c.meshMu.RLock()
+	current := c.meshGeneration == job.generation && c.meshRevisions[job.key] == job.revision
+	c.meshMu.RUnlock()
+	if !current || job.engine == nil {
+		return
+	}
+	mesh := buildSectionMeshSafely(job.engine, job.key)
+	c.meshMu.Lock()
+	if c.meshGeneration == job.generation && c.meshRevisions[job.key] == job.revision {
+		c.meshCache[job.key] = mesh
+	}
+	c.meshMu.Unlock()
 }
 
 func affectedMeshSections(pos world.BlockPos) [][3]int32 {
