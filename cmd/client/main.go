@@ -50,6 +50,11 @@ type chunkStreamJob struct {
 	unload     bool
 }
 
+type chunkStreamKey struct {
+	dimension int
+	pos       world.ChunkPos
+}
+
 type ClientScreenState int
 
 const (
@@ -112,8 +117,8 @@ type Client struct {
 	meshJobsWake        chan struct{}
 	meshWorkerOnce      sync.Once
 	streamJobsMu        sync.Mutex
-	streamJobsPending   map[world.ChunkPos]chunkStreamJob
-	streamJobsRunning   map[world.ChunkPos]chunkStreamJob
+	streamJobsPending   map[chunkStreamKey]chunkStreamJob
+	streamJobsRunning   map[chunkStreamKey]chunkStreamJob
 	streamJobsWake      chan struct{}
 	streamJobsIdle      chan struct{}
 	streamJobsActive    int
@@ -775,8 +780,8 @@ func NewClient(serverAddr, username string, isSingleplayer bool, width, height i
 		meshJobsPending:   make(map[[3]int32]sectionMeshJob),
 		meshJobsRunning:   make(map[[3]int32]sectionMeshJob),
 		meshJobsWake:      make(chan struct{}, 1),
-		streamJobsPending: make(map[world.ChunkPos]chunkStreamJob),
-		streamJobsRunning: make(map[world.ChunkPos]chunkStreamJob),
+		streamJobsPending: make(map[chunkStreamKey]chunkStreamJob),
+		streamJobsRunning: make(map[chunkStreamKey]chunkStreamJob),
 		streamJobsWake:    make(chan struct{}, 1),
 		streamJobsIdle:    make(chan struct{}, 1),
 		loadedChunks:      make(map[world.ChunkPos]bool),
@@ -817,17 +822,19 @@ func (c *Client) SwitchDimension(dim gen.Dimension) {
 	if c.engine == nil || c.currentDim == dim {
 		return
 	}
-	// Flush and release streamed chunks from the dimension being left so repeated
-	// portal travel does not retain every visited dimension's active chunk set.
-	for cp := range c.loadedChunks {
-		if err := c.engine.UnloadChunk(cp); err != nil {
-			log.Printf("[Client] Failed to save dimension %d chunk %v while switching: %v", c.currentDim, cp, err)
-		}
-	}
+	oldDimension := int(c.currentDim)
+	engine := c.engine
+	oldChunks := c.resetMeshCacheAndTakeChunks()
 	c.currentDim = dim
-	c.engine.SwitchDimension(int(dim))
-
-	c.resetMeshCache(true)
+	engine.SwitchDimension(int(dim))
+	c.meshMu.RLock()
+	streamGeneration := c.meshGeneration
+	c.meshMu.RUnlock()
+	unloadJobs := make([]chunkStreamJob, 0, len(oldChunks))
+	for _, cp := range oldChunks {
+		unloadJobs = append(unloadJobs, chunkStreamJob{pos: cp, generation: streamGeneration, dimension: oldDimension, engine: engine, unload: true})
+	}
+	c.enqueueChunkStreamJobs(unloadJobs)
 
 	var newPos sim.Vec3
 	switch dim {
@@ -858,13 +865,28 @@ func (c *Client) SwitchDimension(dim gen.Dimension) {
 	c.EnsureChunksAroundPlayer(newPos.X, newPos.Z, 3)
 }
 
-func (c *Client) chunkStreamPending(pos world.ChunkPos, generation uint64) bool {
+func (c *Client) resetMeshCacheAndTakeChunks() []world.ChunkPos {
+	c.meshMu.Lock()
+	defer c.meshMu.Unlock()
+	chunks := make([]world.ChunkPos, 0, len(c.loadedChunks))
+	for pos := range c.loadedChunks {
+		chunks = append(chunks, pos)
+	}
+	c.meshGeneration++
+	c.meshCache = make(map[[3]int32]*render.Mesh)
+	c.meshRevisions = make(map[[3]int32]uint64)
+	c.loadedChunks = make(map[world.ChunkPos]bool)
+	return chunks
+}
+
+func (c *Client) chunkStreamPending(pos world.ChunkPos, dimension int, generation uint64) bool {
 	c.streamJobsMu.Lock()
 	defer c.streamJobsMu.Unlock()
-	if job, exists := c.streamJobsPending[pos]; exists && job.generation == generation {
+	key := chunkStreamKey{dimension: dimension, pos: pos}
+	if job, exists := c.streamJobsPending[key]; exists && job.generation == generation {
 		return true
 	}
-	job, exists := c.streamJobsRunning[pos]
+	job, exists := c.streamJobsRunning[key]
 	return exists && job.generation == generation
 }
 
@@ -874,10 +896,10 @@ func (c *Client) enqueueChunkStreamJobs(jobs []chunkStreamJob) {
 	}
 	c.streamWorkerOnce.Do(func() {
 		if c.streamJobsPending == nil {
-			c.streamJobsPending = make(map[world.ChunkPos]chunkStreamJob)
+			c.streamJobsPending = make(map[chunkStreamKey]chunkStreamJob)
 		}
 		if c.streamJobsRunning == nil {
-			c.streamJobsRunning = make(map[world.ChunkPos]chunkStreamJob)
+			c.streamJobsRunning = make(map[chunkStreamKey]chunkStreamJob)
 		}
 		if c.streamJobsWake == nil {
 			c.streamJobsWake = make(chan struct{}, 1)
@@ -895,7 +917,8 @@ func (c *Client) enqueueChunkStreamJobs(jobs []chunkStreamJob) {
 		}
 	}
 	for _, job := range jobs {
-		if existing, ok := c.streamJobsPending[job.pos]; !ok && !job.unload {
+		key := chunkStreamKey{dimension: job.dimension, pos: job.pos}
+		if existing, ok := c.streamJobsPending[key]; !ok && !job.unload {
 			if loadCount >= 24 {
 				continue
 			}
@@ -908,7 +931,7 @@ func (c *Client) enqueueChunkStreamJobs(jobs []chunkStreamJob) {
 		} else if ok && !existing.unload && job.unload {
 			loadCount--
 		}
-		c.streamJobsPending[job.pos] = job
+		c.streamJobsPending[key] = job
 	}
 	c.streamJobsMu.Unlock()
 	select {
@@ -922,10 +945,10 @@ func (c *Client) chunkStreamLoop() {
 		for {
 			c.streamJobsMu.Lock()
 			batch := make([]chunkStreamJob, 0, len(c.streamJobsPending))
-			for pos, job := range c.streamJobsPending {
+			for key, job := range c.streamJobsPending {
 				batch = append(batch, job)
-				c.streamJobsRunning[pos] = job
-				delete(c.streamJobsPending, pos)
+				c.streamJobsRunning[key] = job
+				delete(c.streamJobsPending, key)
 			}
 			c.streamJobsActive += len(batch)
 			c.streamJobsMu.Unlock()
@@ -945,8 +968,9 @@ func (c *Client) chunkStreamLoop() {
 				c.processChunkStreamJob(job)
 				c.streamJobsMu.Lock()
 				c.streamJobsActive--
-				if running, exists := c.streamJobsRunning[job.pos]; exists && running.generation == job.generation && running.unload == job.unload {
-					delete(c.streamJobsRunning, job.pos)
+				key := chunkStreamKey{dimension: job.dimension, pos: job.pos}
+				if running, exists := c.streamJobsRunning[key]; exists && running.generation == job.generation && running.unload == job.unload {
+					delete(c.streamJobsRunning, key)
 				}
 				if c.streamJobsActive == 0 && len(c.streamJobsPending) == 0 {
 					select {
@@ -966,7 +990,7 @@ func (c *Client) processChunkStreamJob(job chunkStreamJob) {
 			log.Printf("[Client] chunk stream job failed for %v (dimension %d): %v\n%s", job.pos, job.dimension, recovered, debug.Stack())
 		}
 	}()
-	if job.engine == nil || !c.meshGenerationIs(job.generation) {
+	if job.engine == nil || (!job.unload && !c.meshGenerationIs(job.generation)) {
 		return
 	}
 	if job.unload {
@@ -975,7 +999,7 @@ func (c *Client) processChunkStreamJob(job chunkStreamJob) {
 			return
 		}
 		c.meshMu.Lock()
-		if c.meshGeneration == job.generation {
+		if c.meshGeneration == job.generation && job.engine.GetDimension() == job.dimension {
 			delete(c.loadedChunks, job.pos)
 			for sy := int32(world.MinSectionY); sy <= world.MaxSectionY; sy++ {
 				delete(c.meshCache, [3]int32{job.pos.X, sy, job.pos.Z})
@@ -1115,7 +1139,7 @@ func (c *Client) EnsureChunksAroundPlayer(playerX, playerZ float64, radius int32
 			alreadyLoaded := c.loadedChunks[cp]
 			c.meshMu.Unlock()
 			if !alreadyLoaded {
-				if c.chunkStreamPending(cp, generation) {
+				if c.chunkStreamPending(cp, dimension, generation) {
 					continue
 				}
 				streamJobs = append(streamJobs, chunkStreamJob{pos: cp, generation: generation, dimension: dimension, engine: engine, generator: generator})
