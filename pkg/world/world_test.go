@@ -251,6 +251,49 @@ func TestRegionRollbackPreservesChunkAfterLocationSyncFailure(t *testing.T) {
 	}
 }
 
+func TestSaveChunkKeepsDirtyFlagWhenRegionCommitFails(t *testing.T) {
+	sm, err := NewSaveManager(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sm.Close()
+
+	cp := ChunkPos{X: 1, Z: 1}
+	chunk := NewChunk(cp)
+	chunk.SetBlock(17, 64, 17, 1)
+	if err := sm.SaveChunk(chunk); err != nil {
+		t.Fatalf("initial SaveChunk: %v", err)
+	}
+	if chunk.IsDirty {
+		t.Fatal("successful save left chunk dirty")
+	}
+	chunk.SetBlock(17, 64, 17, 2)
+	if !chunk.IsDirty {
+		t.Fatal("block change did not mark chunk dirty")
+	}
+
+	region := sm.regions["r.0.0.mca"]
+	region.file = &injectedRegionFile{
+		regionFile:          region.file,
+		shortWriteOffset:    int64(chunkIndex(cp.X, cp.Z) * 4),
+		shortWriteRemaining: 1,
+	}
+	if err := sm.SaveChunk(chunk); err == nil {
+		t.Fatal("expected region commit failure")
+	}
+	if !chunk.IsDirty {
+		t.Fatal("failed save cleared chunk dirty flag")
+	}
+
+	saved, err := sm.LoadChunk(cp)
+	if err != nil {
+		t.Fatalf("load previously committed chunk after failed update: %v", err)
+	}
+	if got := saved.GetBlock(17, 64, 17); got != 1 {
+		t.Fatalf("failed update changed persisted block to %d, want old value 1", got)
+	}
+}
+
 func TestRegionInPlaceOverwriteNoBloat(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "region_bloat_test")
 	if err != nil {
