@@ -5524,7 +5524,7 @@ func runGraphicalWindow(c *Client, w, h int) {
 					msg = "存档保存失败，详情见 crash.log"
 				}
 				textWidth := render.MeasureText5x7(msg, 1)
-				c.framebuf.DrawText5x7((c.framebuf.Width-textWidth)/2, c.framebuf.Height-18, msg, 0xFFFF7777, 1)
+				c.framebuf.DrawText5x7((c.framebuf.Width-textWidth)/2, c.framebuf.Height-60, msg, 0xFFFF7777, 1)
 			}
 			wnd.Present(c.framebuf)
 			continue
@@ -5537,7 +5537,7 @@ func runGraphicalWindow(c *Client, w, h int) {
 			if c.worldStartFailed.Load() {
 				msg := "世界加载失败，请检查日志"
 				textWidth := render.MeasureText5x7(msg, 1)
-				c.framebuf.DrawText5x7((c.framebuf.Width-textWidth)/2, c.framebuf.Height-18, msg, 0xFFFF7777, 1)
+				c.framebuf.DrawText5x7((c.framebuf.Width-textWidth)/2, c.framebuf.Height-60, msg, 0xFFFF7777, 1)
 			}
 			wnd.Present(c.framebuf)
 			continue
