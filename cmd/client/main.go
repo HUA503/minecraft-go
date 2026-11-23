@@ -163,6 +163,20 @@ type Client struct {
 	deathTitleBtnRect   [4]int
 }
 
+func buildSectionMeshSafely(engine *sim.Engine, key [3]int32) (mesh *render.Mesh) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			log.Printf("[Client] section mesh build failed for section %v: %v\n%s", key, recovered, debug.Stack())
+			// Keep a failed section empty so one malformed chunk cannot crash or
+			// repeatedly stall the render loop while the rest of the world loads.
+			mesh = &render.Mesh{}
+		}
+	}()
+	return render.BuildSectionMesh(func(x, y, z int32) int32 {
+		return engine.GetBlock(x, y, z)
+	}, key[0]*16, key[1]*16, key[2]*16)
+}
+
 // findSafeSpawnPoint discovers an authentic, randomized safe surface spawn location in the procedural world.
 // Evaluates terrain elevation across random coordinates within the spawn region, ensuring the player
 // is placed firmly on a solid walkable surface (grass, dirt, sand, stone) strictly above sea level (>= 62),
@@ -889,10 +903,6 @@ func (c *Client) EnsureChunksAroundPlayer(playerX, playerZ float64, radius int32
 		}
 	}
 
-	getBlock := func(x, y, z int32) int32 {
-		return engine.GetBlock(x, y, z)
-	}
-
 	// Pass 2: Progressive section meshing (build at most 2 sections per frame)
 	// Prioritize sections closest to player camera (covering Y=-64 up to Y=256)
 	camSY := int32(math.Floor(c.camera.Y / 16.0))
@@ -930,7 +940,7 @@ func (c *Client) EnsureChunksAroundPlayer(playerX, playerZ float64, radius int32
 	for i := 0; i < maxBuild; i++ {
 		job := unmeshed[i]
 		key := job.key
-		mesh := render.BuildSectionMesh(getBlock, key[0]*16, key[1]*16, key[2]*16)
+		mesh := buildSectionMeshSafely(engine, key)
 		c.meshMu.Lock()
 		if c.meshGeneration == job.generation && c.meshRevisions[key] == job.revision && c.meshCache[key] == nil {
 			c.meshCache[key] = mesh
@@ -1052,9 +1062,7 @@ func (c *Client) meshUpdateLoop() {
 					continue
 				}
 				key := job.key
-				mesh := render.BuildSectionMesh(func(x, y, z int32) int32 {
-					return job.engine.GetBlock(x, y, z)
-				}, key[0]*16, key[1]*16, key[2]*16)
+				mesh := buildSectionMeshSafely(job.engine, key)
 				c.meshMu.Lock()
 				if c.meshGeneration == job.generation && c.meshRevisions[key] == job.revision {
 					c.meshCache[key] = mesh

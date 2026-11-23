@@ -26,14 +26,14 @@ func NewPalettedContainer(capacity int, defaultValue int32) *PalettedContainer {
 }
 
 func (pc *PalettedContainer) Get(index int) int32 {
-	if index < 0 || index >= pc.Capacity {
+	if pc == nil || index < 0 || index >= pc.Capacity || index >= len(pc.Data) {
 		return 0
 	}
 	return pc.Data[index]
 }
 
 func (pc *PalettedContainer) Set(index int, value int32) {
-	if index < 0 || index >= pc.Capacity {
+	if pc == nil || index < 0 || index >= pc.Capacity || index >= len(pc.Data) {
 		return
 	}
 	pc.Data[index] = value

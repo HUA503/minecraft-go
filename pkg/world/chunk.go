@@ -73,11 +73,20 @@ func NewSection(yIndex int) *Section {
 }
 
 func (s *Section) GetBlock(localX, localY, localZ int) int32 {
+	if s == nil || s.BlockStates == nil {
+		return 0
+	}
 	idx := (localY << 8) | (localZ << 4) | localX
 	return s.BlockStates.Get(idx)
 }
 
 func (s *Section) SetBlock(localX, localY, localZ int, state int32) {
+	if s == nil {
+		return
+	}
+	if s.BlockStates == nil {
+		s.BlockStates = NewPalettedContainer(4096, 0)
+	}
 	idx := (localY << 8) | (localZ << 4) | localX
 	s.BlockStates.Set(idx, state)
 }
@@ -118,7 +127,7 @@ func NewChunk(pos ChunkPos) *Chunk {
 
 // GetBlock returns the block state ID at absolute world coordinates.
 func (c *Chunk) GetBlock(x, y, z int32) int32 {
-	if y < MinWorldY || y > MaxWorldY {
+	if c == nil || !ValidBlockCoordinates(x, y, z) {
 		return 0 // Air
 	}
 	secIdx := int(math.Floor(float64(y)/16.0)) - MinSectionY
@@ -133,7 +142,7 @@ func (c *Chunk) GetBlock(x, y, z int32) int32 {
 
 // SetBlock sets the block state ID at absolute world coordinates.
 func (c *Chunk) SetBlock(x, y, z int32, state int32) {
-	if !ValidBlockCoordinates(x, y, z) {
+	if c == nil || !ValidBlockCoordinates(x, y, z) || state < 0 {
 		return
 	}
 	secIdx := int(math.Floor(float64(y)/16.0)) - MinSectionY
@@ -143,6 +152,9 @@ func (c *Chunk) SetBlock(x, y, z int32, state int32) {
 	localX := int(x & 15)
 	localY := int(y & 15)
 	localZ := int(z & 15)
+	if c.Sections[secIdx] == nil {
+		c.Sections[secIdx] = NewSection(secIdx)
+	}
 	c.Sections[secIdx].SetBlock(localX, localY, localZ, state)
 	c.IsDirty = true
 	if c.ModifiedBlocks == nil {
@@ -207,6 +219,10 @@ func (c *Chunk) ToNBT() *nbt.CompoundTag {
 
 	for i := 0; i < NumSections; i++ {
 		sec := c.Sections[i]
+		if sec == nil {
+			sec = NewSection(i)
+			c.Sections[i] = sec
+		}
 		secTag := nbt.NewCompound()
 		secY := int32(i + MinSectionY) // -4 to 19
 		secTag.Put("Y", &nbt.ByteTag{Value: int8(secY)})
