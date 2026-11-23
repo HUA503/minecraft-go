@@ -109,6 +109,12 @@ type Client struct {
 	uuid                     [16]byte
 	conn                     net.Conn
 	networkDone              chan struct{}
+	networkSendQueue         chan protocol.Packet
+	networkSendDone          chan struct{}
+	networkSendStop          chan struct{}
+	networkSendStopOnce      sync.Once
+	networkDisconnected      atomic.Bool
+	lastNetworkPositionSend  time.Time
 	state                    protocol.ConnectionState
 	framebuf                 *render.Framebuffer
 	renderPanicCount         int
@@ -813,9 +819,12 @@ func (c *Client) SaveAndQuitToTitle() error {
 	// Do not close region files while a periodic save still uses them.
 	c.autosaveWG.Wait()
 	if c.conn != nil {
-		_ = c.conn.Close()
+		c.stopNetworkSender()
 		if c.networkDone != nil {
 			<-c.networkDone
+		}
+		if c.networkSendDone != nil {
+			<-c.networkSendDone
 		}
 	}
 	if c.engine != nil {
@@ -1705,6 +1714,10 @@ func (c *Client) Connect() error {
 	if err != nil {
 		return fmt.Errorf("failed to connect to %s: %w", c.serverAddr, err)
 	}
+	if err := c.conn.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		_ = c.conn.Close()
+		return fmt.Errorf("set login deadline: %w", err)
+	}
 	log.Printf("[Client] Connected to server at %s", c.serverAddr)
 
 	hs := &protocol.HandshakePacket{
@@ -1733,6 +1746,10 @@ func (c *Client) Connect() error {
 	var succ protocol.LoginSuccessPacket
 	if err := succ.Decode(raw.Reader()); err != nil {
 		return err
+	}
+	if err := c.conn.SetDeadline(time.Time{}); err != nil {
+		_ = c.conn.Close()
+		return fmt.Errorf("clear login deadline: %w", err)
 	}
 	c.state = protocol.StatePlay
 	log.Printf("[Client] Logged in successfully as %s", succ.Username)
@@ -1776,6 +1793,10 @@ func (c *Client) Connect() error {
 
 	// Launch background network receive loop
 	c.networkDone = make(chan struct{})
+	c.networkSendQueue = make(chan protocol.Packet, 256)
+	c.networkSendDone = make(chan struct{})
+	c.networkSendStop = make(chan struct{})
+	go c.networkSendLoop()
 	go c.networkReceiveLoop()
 
 	return nil
@@ -1792,6 +1813,8 @@ func (c *Client) networkReceiveLoop() {
 			msg := fmt.Sprintf("FATAL NETWORK RECEIVE PANIC: %v\n\nStack:\n%s\n", r, string(stack))
 			log.Println(msg)
 			writeCrashLog(msg)
+			c.networkDisconnected.Store(true)
+			c.stopNetworkSender()
 		}
 	}()
 	for {
@@ -1801,6 +1824,10 @@ func (c *Client) networkReceiveLoop() {
 		raw, err := protocol.ReadRawPacket(c.conn)
 		if err != nil {
 			log.Printf("[Client] Network connection closed: %v", err)
+			if !c.quitSaving.Load() {
+				c.networkDisconnected.Store(true)
+			}
+			c.stopNetworkSender()
 			return
 		}
 
@@ -1818,16 +1845,14 @@ func (c *Client) networkReceiveLoop() {
 			var pos protocol.PlayerPositionPacket
 			if err := pos.Decode(raw.Reader()); err != nil {
 				log.Printf("[Client] Invalid remote player position packet: %v", err)
-				if c.conn != nil {
-					_ = c.conn.Close()
-				}
+				c.networkDisconnected.Store(true)
+				c.stopNetworkSender()
 				return
 			}
 			if !validRemotePlayerPosition(pos) {
 				log.Printf("[Client] Closing connection after invalid remote player position: %+v", pos)
-				if c.conn != nil {
-					_ = c.conn.Close()
-				}
+				c.networkDisconnected.Store(true)
+				c.stopNetworkSender()
 				return
 			}
 			c.remoteMu.Lock()
@@ -1841,10 +1866,85 @@ func (c *Client) networkReceiveLoop() {
 		case 0x26: // KeepAlivePacket
 			var ka protocol.KeepAlivePacket
 			if err := ka.Decode(raw.Reader()); err == nil {
-				_ = protocol.SendPacket(c.conn, &ka)
+				_ = c.sendPacket(&ka)
 			}
 		}
 	}
+}
+
+// sendPacket queues gameplay traffic so a slow or stalled server cannot block
+// the graphical thread while it writes to the socket.
+func (c *Client) sendPacket(pkt protocol.Packet) error {
+	if c.networkSendQueue == nil || c.networkSendStop == nil {
+		return net.ErrClosed
+	}
+	select {
+	case <-c.networkSendStop:
+		return net.ErrClosed
+	default:
+	}
+	select {
+	case <-c.networkSendStop:
+		return net.ErrClosed
+	case c.networkSendQueue <- pkt:
+		return nil
+	default:
+		err := fmt.Errorf("client outbound packet queue is full")
+		log.Printf("[Client] Disconnecting after outbound queue overflow")
+		c.networkDisconnected.Store(true)
+		c.stopNetworkSender()
+		return err
+	}
+}
+
+func (c *Client) networkSendLoop() {
+	defer close(c.networkSendDone)
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			msg := fmt.Sprintf("FATAL NETWORK SEND PANIC: %v\n\nStack:\n%s", recovered, debug.Stack())
+			log.Print(msg)
+			writeCrashLog(msg)
+			c.networkDisconnected.Store(true)
+			c.stopNetworkSender()
+		}
+	}()
+	for {
+		select {
+		case <-c.networkSendStop:
+			return
+		case pkt := <-c.networkSendQueue:
+			if err := c.conn.SetWriteDeadline(time.Now().Add(5 * time.Second)); err != nil {
+				log.Printf("[Client] Failed to set network write deadline: %v", err)
+				c.networkDisconnected.Store(true)
+				c.stopNetworkSender()
+				return
+			}
+			if err := protocol.SendPacket(c.conn, pkt); err != nil {
+				log.Printf("[Client] Network packet write failed: %v", err)
+				writeCrashLog(fmt.Sprintf("NETWORK SEND FAILED: %v", err))
+				c.networkDisconnected.Store(true)
+				c.stopNetworkSender()
+				return
+			}
+			if err := c.conn.SetWriteDeadline(time.Time{}); err != nil {
+				log.Printf("[Client] Failed to clear network write deadline: %v", err)
+				c.networkDisconnected.Store(true)
+				c.stopNetworkSender()
+				return
+			}
+		}
+	}
+}
+
+func (c *Client) stopNetworkSender() {
+	c.networkSendStopOnce.Do(func() {
+		if c.networkSendStop != nil {
+			close(c.networkSendStop)
+		}
+		if c.conn != nil {
+			_ = c.conn.Close()
+		}
+	})
 }
 
 // checkWaterState examines the player's bounding volume to determine if they are in water,
@@ -2226,7 +2326,10 @@ func (c *Client) PhysicsStep(fwdInput, strafeInput float64, jumpRequested bool, 
 			Pitch:    float32(c.camera.Pitch),
 			OnGround: c.player.OnGround,
 		}
-		_ = protocol.SendPacket(c.conn, posPkt)
+		if nowTime.Sub(c.lastNetworkPositionSend) >= 50*time.Millisecond {
+			c.lastNetworkPositionSend = nowTime
+			_ = c.sendPacket(posPkt)
+		}
 	}
 }
 
@@ -2754,7 +2857,7 @@ func (c *Client) MineTargetedBlock() (int32, bool) {
 	sound.PlayHardwareFeedback(sound.GetBlockBreakSound(blockID))
 	c.RebuildAffectedMeshes(targetPos)
 	if ok && c.conn != nil {
-		_ = protocol.SendPacket(c.conn, &protocol.BlockUpdatePacket{
+		_ = c.sendPacket(&protocol.BlockUpdatePacket{
 			X:       targetPos.X,
 			Y:       targetPos.Y,
 			Z:       targetPos.Z,
@@ -2831,7 +2934,7 @@ func (c *Client) PlaceBlockInFront() bool {
 		c.isSwinging = true
 		c.swingProgress = 0.0
 		if c.conn != nil {
-			_ = protocol.SendPacket(c.conn, &protocol.BlockUpdatePacket{
+			_ = c.sendPacket(&protocol.BlockUpdatePacket{
 				X:       targetPos.X,
 				Y:       targetPos.Y,
 				Z:       targetPos.Z,
@@ -2941,6 +3044,11 @@ func (c *Client) renderFrameSafely() bool {
 		}
 	}()
 	c.RenderFrame()
+	if c.networkDisconnected.Load() {
+		msg := "服务器连接已断开"
+		textWidth := render.MeasureText5x7(msg, 2)
+		c.framebuf.DrawText5x7((c.framebuf.Width-textWidth)/2, 10, msg, 0xFFFF7777, 2)
+	}
 	c.renderPanicCount = 0
 	return true
 }
@@ -5529,9 +5637,11 @@ func runGraphicalWindow(c *Client, w, h int) {
 			time.Sleep(16 * time.Millisecond)
 			mx, my := wnd.GetCursorClientPos(c.framebuf.Width, c.framebuf.Height)
 			c.titleSpBtn, c.titleMpBtn, c.titleQuitBtn = c.framebuf.DrawTitleScreen(mx, my)
-			if c.quitSaveFailed.Load() || c.worldStartFailed.Load() {
+			if c.quitSaveFailed.Load() || c.worldStartFailed.Load() || c.networkDisconnected.Load() {
 				msg := "操作失败，请查看 crash.log"
-				if c.quitSaveFailed.Load() {
+				if c.networkDisconnected.Load() {
+					msg = "服务器连接已断开"
+				} else if c.quitSaveFailed.Load() {
 					msg = "存档保存失败，详情见 crash.log"
 				}
 				textWidth := render.MeasureText5x7(msg, 1)
@@ -5788,7 +5898,7 @@ func runInteractiveLoop(c *Client) {
 					c.camera.Z = gz
 				}
 				if c.conn != nil {
-					_ = protocol.SendPacket(c.conn, &protocol.PlayerPositionPacket{
+					_ = c.sendPacket(&protocol.PlayerPositionPacket{
 						X:        gx,
 						Y:        gy,
 						Z:        gz,
@@ -5829,7 +5939,7 @@ func runInteractiveLoop(c *Client) {
 					c.RebuildAffectedMeshes(world.BlockPos{X: int32(bx), Y: int32(by), Z: int32(bz)})
 				}
 				if applied && c.conn != nil {
-					_ = protocol.SendPacket(c.conn, &protocol.BlockUpdatePacket{
+					_ = c.sendPacket(&protocol.BlockUpdatePacket{
 						X:       int32(bx),
 						Y:       int32(by),
 						Z:       int32(bz),
@@ -5852,7 +5962,7 @@ func runInteractiveLoop(c *Client) {
 					c.RebuildAffectedMeshes(world.BlockPos{X: int32(bx), Y: int32(by), Z: int32(bz)})
 				}
 				if applied && c.conn != nil {
-					_ = protocol.SendPacket(c.conn, &protocol.BlockUpdatePacket{
+					_ = c.sendPacket(&protocol.BlockUpdatePacket{
 						X:       int32(bx),
 						Y:       int32(by),
 						Z:       int32(bz),
@@ -5937,3 +6047,4 @@ func runInteractiveLoop(c *Client) {
 		}
 	}
 }
+
