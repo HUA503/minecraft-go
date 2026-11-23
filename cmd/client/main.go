@@ -132,6 +132,7 @@ type Client struct {
 	isChatOpen       bool
 	chatInput        string
 	chatMessages     []render.ChatMessage
+	advancements     map[string]bool
 	isCreative       bool
 	isFlying         bool
 	perspectiveMode  int // 0: 1st person, 1: 3rd person back, 2: 3rd person front
@@ -321,6 +322,7 @@ func (c *Client) StartSingleplayerWorld(worldDirName string, isNew bool, newSeed
 	}
 
 	c.engine = sim.NewEngine()
+	c.advancements = make(map[string]bool)
 	if sm != nil {
 		c.engine.SetStorage(sm)
 	}
@@ -343,6 +345,7 @@ func (c *Client) StartSingleplayerWorld(worldDirName string, isNew bool, newSeed
 		spawnPos = findSafeSpawnPoint(c.genOverworld, c.engine)
 		c.player = c.engine.AddPlayer(c.username, c.uuid, spawnPos)
 		c.player.GameMode = newGameMode
+		c.UnlockAdvancement("minecraft:story/root", "进入世界")
 		c.isCreative = (newGameMode == 1)
 		if c.isCreative {
 			c.isFlying = true
@@ -432,6 +435,9 @@ func (c *Client) StartSingleplayerWorld(worldDirName string, isNew bool, newSeed
 		}
 
 		if savedPlayer != nil {
+			for _, id := range savedPlayer.Advancements {
+				c.advancements[id] = true
+			}
 			c.player.Health = savedPlayer.Health
 			c.player.Hunger = savedPlayer.Hunger
 			c.camera.Yaw = float64(savedPlayer.Yaw)
@@ -446,6 +452,7 @@ func (c *Client) StartSingleplayerWorld(worldDirName string, isNew bool, newSeed
 				}
 			}
 		}
+		c.UnlockAdvancement("minecraft:story/root", "进入世界")
 	}
 
 	c.camera.X = c.player.Position.X
@@ -546,7 +553,8 @@ func (c *Client) SaveAndQuitToTitle() {
 					Health:    saveHealth,
 					Hunger:    c.player.Hunger,
 					GameMode:  gm,
-					Inventory: savedInv,
+					Inventory:    savedInv,
+					Advancements: c.advancementIDs(),
 				},
 			}
 			if err := c.saveMgr.SaveLevel(lvl); err != nil {
@@ -1625,6 +1633,26 @@ func (c *Client) AddChatMessage(text string) {
 	}
 }
 
+func (c *Client) UnlockAdvancement(id, title string) {
+	if c.advancements == nil {
+		c.advancements = make(map[string]bool)
+	}
+	if c.advancements[id] {
+		return
+	}
+	c.advancements[id] = true
+	c.AddChatMessage("[进度已达成] " + title)
+}
+
+func (c *Client) advancementIDs() []string {
+	ids := make([]string, 0, len(c.advancements))
+	for id := range c.advancements {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids
+}
+
 // ExecuteCommand parses and executes in-game commands or sends player chat.
 func (c *Client) ExecuteCommand(input string) {
 	input = strings.TrimSpace(input)
@@ -1844,6 +1872,9 @@ func (c *Client) MineTargetedBlock() (int32, bool) {
 	targetPos := c.targetedPos
 	blockID := c.engine.GetBlock(targetPos.X, targetPos.Y, targetPos.Z)
 	drop, ok := c.engine.BreakBlockWithTool(c.player.ID, targetPos, heldToolID)
+	if ok && blockID == 1 {
+		c.UnlockAdvancement("minecraft:story/mine_stone", "石器时代")
+	}
 	c.spawnBlockDebris(targetPos, blockID, 20)
 	sound.PlayHardwareFeedback(sound.GetBlockBreakSound(blockID))
 	c.RebuildAffectedMeshes(targetPos)

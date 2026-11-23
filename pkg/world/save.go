@@ -25,7 +25,8 @@ type PlayerSaveData struct {
 	Health     float32
 	Hunger     int
 	GameMode   int // 0: Survival, 1: Creative
-	Inventory  []SavedItemStack
+	Inventory    []SavedItemStack
+	Advancements []string
 }
 
 // LevelData holds top-level world metadata.
@@ -192,6 +193,13 @@ func (sm *SaveManager) SaveLevel(data *LevelData) error {
 			}
 		}
 		pTag.Put("Inventory", invList)
+		advancements := &nbt.ListTag{ElementType: nbt.TagString}
+		for _, id := range data.Player.Advancements {
+			if id != "" {
+				advancements.Elements = append(advancements.Elements, &nbt.StringTag{Value: id})
+			}
+		}
+		pTag.Put("Advancements", advancements)
 		dataTag.Put("Player", pTag)
 	}
 
@@ -300,6 +308,13 @@ func (sm *SaveManager) LoadLevel() (*LevelData, error) {
 						Count:  cnt,
 						Damage: dmg,
 					})
+				}
+			}
+		}
+		if advancements, ok := pTag.Get("Advancements").(*nbt.ListTag); ok {
+			for _, raw := range advancements.Elements {
+				if id, ok := raw.(*nbt.StringTag); ok && id.Value != "" {
+					pd.Advancements = append(pd.Advancements, id.Value)
 				}
 			}
 		}
