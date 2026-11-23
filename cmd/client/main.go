@@ -1272,18 +1272,7 @@ func (c *Client) processChunkStreamJob(job chunkStreamJob) {
 		c.meshMu.Lock()
 		if c.meshGeneration == job.generation && job.engine.GetDimension() == job.dimension {
 			delete(c.loadedChunks, job.pos)
-			if c.meshRevisions == nil {
-				c.meshRevisions = make(map[[3]int32]uint64)
-			}
-			for sy := int32(world.MinSectionY); sy <= world.MaxSectionY; sy++ {
-				key := [3]int32{job.pos.X, sy, job.pos.Z}
-				c.meshRevisions[key]++
-				delete(c.meshCache, key)
-				for _, neighbor := range [][3]int32{{job.pos.X - 1, sy, job.pos.Z}, {job.pos.X + 1, sy, job.pos.Z}, {job.pos.X, sy, job.pos.Z - 1}, {job.pos.X, sy, job.pos.Z + 1}} {
-					c.meshRevisions[neighbor]++
-					delete(c.meshCache, neighbor)
-				}
-			}
+			c.invalidateChunkMeshNeighborhoodLocked(job.pos)
 		}
 		c.meshMu.Unlock()
 		c.pruneMeshRevisions()
@@ -1336,15 +1325,7 @@ func (c *Client) processChunkStreamJob(job chunkStreamJob) {
 			c.loadedChunks = make(map[world.ChunkPos]bool)
 		}
 		c.loadedChunks[job.pos] = true
-		for sy := int32(world.MinSectionY); sy <= world.MaxSectionY; sy++ {
-			key := [3]int32{job.pos.X, sy, job.pos.Z}
-			c.meshRevisions[key]++
-			delete(c.meshCache, key)
-			for _, neighbor := range [][3]int32{{job.pos.X - 1, sy, job.pos.Z}, {job.pos.X + 1, sy, job.pos.Z}, {job.pos.X, sy, job.pos.Z - 1}, {job.pos.X, sy, job.pos.Z + 1}} {
-				c.meshRevisions[neighbor]++
-				delete(c.meshCache, neighbor)
-			}
-		}
+		c.invalidateChunkMeshNeighborhoodLocked(job.pos)
 	}
 	c.meshMu.Unlock()
 }
@@ -1741,28 +1722,57 @@ func (c *Client) pruneMeshRevisions() {
 	}
 }
 
+// invalidateChunkMeshNeighborhoodLocked invalidates the loaded chunk column and
+// all eight horizontal neighbors. Ambient occlusion samples diagonal blocks,
+// so a cardinal-only invalidation leaves stale corner shading at chunk seams.
+// The caller must hold meshMu.
+func (c *Client) invalidateChunkMeshNeighborhoodLocked(pos world.ChunkPos) {
+	if c.meshRevisions == nil {
+		c.meshRevisions = make(map[[3]int32]uint64)
+	}
+	for dz := int32(-1); dz <= 1; dz++ {
+		for dx := int32(-1); dx <= 1; dx++ {
+			for sy := int32(world.MinSectionY); sy <= world.MaxSectionY; sy++ {
+				key := [3]int32{pos.X + dx, sy, pos.Z + dz}
+				c.meshRevisions[key]++
+				delete(c.meshCache, key)
+			}
+		}
+	}
+}
+
 func affectedMeshSections(pos world.BlockPos) [][3]int32 {
 	secX := int32(math.Floor(float64(pos.X) / 16.0))
 	secY := int32(math.Floor(float64(pos.Y) / 16.0))
 	secZ := int32(math.Floor(float64(pos.Z) / 16.0))
-	keys := [][3]int32{{secX, secY, secZ}}
 	remX := ((pos.X % 16) + 16) % 16
 	remY := ((pos.Y % 16) + 16) % 16
 	remZ := ((pos.Z % 16) + 16) % 16
+	xSections := []int32{secX}
+	ySections := []int32{secY}
+	zSections := []int32{secZ}
 	if remX == 0 {
-		keys = append(keys, [3]int32{secX - 1, secY, secZ})
+		xSections = append(xSections, secX-1)
 	} else if remX == 15 {
-		keys = append(keys, [3]int32{secX + 1, secY, secZ})
+		xSections = append(xSections, secX+1)
 	}
 	if remY == 0 {
-		keys = append(keys, [3]int32{secX, secY - 1, secZ})
+		ySections = append(ySections, secY-1)
 	} else if remY == 15 {
-		keys = append(keys, [3]int32{secX, secY + 1, secZ})
+		ySections = append(ySections, secY+1)
 	}
 	if remZ == 0 {
-		keys = append(keys, [3]int32{secX, secY, secZ - 1})
+		zSections = append(zSections, secZ-1)
 	} else if remZ == 15 {
-		keys = append(keys, [3]int32{secX, secY, secZ + 1})
+		zSections = append(zSections, secZ+1)
+	}
+	keys := make([][3]int32, 0, len(xSections)*len(ySections)*len(zSections))
+	for _, x := range xSections {
+		for _, y := range ySections {
+			for _, z := range zSections {
+				keys = append(keys, [3]int32{x, y, z})
+			}
+		}
 	}
 	return keys
 }
@@ -6137,3 +6147,4 @@ func runInteractiveLoop(c *Client) {
 		}
 	}
 }
+
