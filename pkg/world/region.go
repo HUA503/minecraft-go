@@ -195,44 +195,22 @@ func (r *Region) WriteChunkData(chunkX, chunkZ int32, chunkNBT *nbt.CompoundTag)
 	}
 
 	idx := chunkIndex(chunkX, chunkZ)
-	locBuf := make([]byte, 4)
-	var existingOffset, existingSectors int
-	if _, err := r.file.ReadAt(locBuf, int64(idx*4)); err == nil {
-		existingOffset = (int(locBuf[0]) << 16) | (int(locBuf[1]) << 8) | int(locBuf[2])
-		existingSectors = int(locBuf[3])
-	}
 	info, err := r.file.Stat()
 	if err != nil {
 		return err
 	}
-	existingRangeValid := existingOffset >= 2 && existingSectors >= sectorsNeeded &&
-		int64(existingOffset+existingSectors)*SectorSize <= info.Size()
-	if existingRangeValid {
-		overlap, err := r.chunkRangeOverlaps(idx, existingOffset, existingSectors)
-		if err != nil {
-			return err
-		}
-		existingRangeValid = !overlap
+	// Use copy-on-write: keep the currently indexed sectors intact until the
+	// complete replacement payload has reached disk and the location header is
+	// switched. This lets the old chunk survive a failed or interrupted save.
+	fileSize := info.Size()
+	if fileSize < 8192 {
+		fileSize = 8192
 	}
-
-	var sectorOffset int
-	var allocSectors int
-	if existingRangeValid {
-		// Overwrite in-place without expanding file!
-		sectorOffset = existingOffset
-		allocSectors = existingSectors
-	} else {
-		// Allocate at end of file
-		fileSize := info.Size()
-		if fileSize < 8192 {
-			fileSize = 8192
-		}
-		sectorOffset = int((fileSize + SectorSize - 1) / SectorSize)
-		if sectorOffset < 2 {
-			sectorOffset = 2
-		}
-		allocSectors = sectorsNeeded
+	sectorOffset := int((fileSize + SectorSize - 1) / SectorSize)
+	if sectorOffset < 2 {
+		sectorOffset = 2
 	}
+	allocSectors := sectorsNeeded
 	if sectorOffset > 0xFFFFFF {
 		return fmt.Errorf("region file sector offset %d exceeds 24-bit location header", sectorOffset)
 	}
