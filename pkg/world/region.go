@@ -31,8 +31,16 @@ var ErrChunkNotFound = errors.New("chunk not generated in region")
 
 // Region represents an Anvil MCA region file reader and writer.
 type Region struct {
-	file *os.File
+	file regionFile
 	mu   sync.Mutex
+}
+
+type regionFile interface {
+	io.ReaderAt
+	io.WriterAt
+	Stat() (os.FileInfo, error)
+	Sync() error
+	Close() error
 }
 
 func OpenRegion(path string) (*Region, error) {
@@ -101,7 +109,7 @@ func (r *Region) chunkRangeOverlaps(index, offset, sectors int) (bool, error) {
 	return false, nil
 }
 
-func writeAtFull(file *os.File, data []byte, offset int64) error {
+func writeAtFull(file io.WriterAt, data []byte, offset int64) error {
 	n, err := file.WriteAt(data, offset)
 	if err != nil {
 		return err
