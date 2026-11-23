@@ -450,6 +450,15 @@ func (c *Client) StartSingleplayerWorld(worldDirName string, isNew bool, newSeed
 		if sm != nil {
 			if err := sm.SaveLevel(lvlData); err != nil {
 				log.Printf("[Client] Failed to save initial level data: %v", err)
+				if closeErr := c.engine.CloseStorage(); closeErr != nil {
+					log.Printf("[Client] Failed to close storage after initial save failure: %v", closeErr)
+				}
+				c.saveMgr = nil
+				c.engine = nil
+				c.player = nil
+				c.currentWorldDir = ""
+				c.currentWorldName = ""
+				return
 			}
 		}
 
