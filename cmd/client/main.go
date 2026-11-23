@@ -1,5 +1,5 @@
-Warning: truncated output (original token count: 48767)
-Total output lines: 6069
+Warning: truncated output (original token count: 49072)
+Total output lines: 6099
 
 package main
 
@@ -42,6 +42,7 @@ type sectionMeshJob struct {
 	key        [3]int32
 	generation uint64
 	revision   uint64
+	priority   int64
 	engine     *sim.Engine
 }
 
@@ -49,6 +50,7 @@ type chunkStreamJob struct {
 	pos        world.ChunkPos
 	generation uint64
 	dimension  int
+	priority   int64
 	engine     *sim.Engine
 	generator  *gen.Generator
 	unload     bool
@@ -1216,6 +1218,9 @@ func (c *Client) chunkStreamLoop() {
 				if batch[i].unload != batch[j].unload {
 					return !batch[i].unload
 				}
+				if batch[i].priority != batch[j].priority {
+					return batch[i].priority < batch[j].priority
+				}
 				if batch[i].pos.X != batch[j].pos.X {
 					return batch[i].pos.X < batch[j].pos.X
 				}
@@ -1440,23 +1445,16 @@ func (c *Client) EnsureChunksAroundPlayer(playerX, playerZ float64, radius int32
 	// Pass 1: Queue at most two missing chunks per call; disk reads, generation,
 	// and save-on-unload all run away from the window/event thread.
 	queuedCount := 0
-	for dx := -radius - 1; dx <= radius+1; dx++ {
-		for dz := -radius - 1; dz <= radius+1; dz++ {
-			cp := world.ChunkPos{X: pcx + dx, Z: pcz + dz}
-			c.meshMu.Lock()
-			alreadyLoaded := c.loadedChunks[cp]
-			c.meshMu.Unlock()
-			if !alreadyLoaded {
-				if c.chunkStreamPending(cp, dimension, generation) {
-					continue
-				}
-				streamJobs = append(streamJobs, chunkStreamJob{pos: cp, generation: generation, dimension: dimension, engine: engine, generator: generator})
-				queuedCount++
-				if queuedCount >= 2 {
-					break
-				}
-			}
+	for _, cp := range nearbyChunkPositions(pcx, pcz, radius+1) {
+		c.meshMu.Lock()
+		alreadyLoaded := c.loadedChunks[cp]
+		c.meshMu.Unlock()
+		if alreadyLoaded || c.chunkStreamPending(cp, dimension, generation) {
+			continue
 		}
+		dx, dz := int64(cp.X-pcx), int64(cp.Z-pcz)
+		streamJobs = append(streamJobs, chunkStreamJob{pos: cp, generation: generation, dimension: dimension, priority: dx*dx + dz*dz, engine: engine, generator: generator})
+		queuedCount++
 		if queuedCount >= 2 {
 			break
 		}
@@ -1470,29 +1468,31 @@ func (c *Client) EnsureChunksAroundPlayer(playerX, playerZ float64, radius int32
 	unmeshed := make([]sectionMeshJob, 0, 2)
 	orderedSY := sectionBuildOrder(camSY)
 
-scanMeshes:
-	for dx := -radius; dx <= radius; dx++ {
-		for dz := -radius; dz <= radius; dz++ {
-			cp := world.ChunkPos{X: pcx + dx, Z: pcz + dz}
-			for _, sy := range orderedSY {
-				key := [3]int32{cp.X, sy, cp.Z}
-				if c.meshCache[key] == nil {
-					job := sectionMeshJob{
-						key:        key,
-						generation: c.meshGeneration,
-						revision:   c.meshRevisions[key],
-						engine:     engine,
-					}
-					if !c.meshJobPending(key, job.generation, job.revision) {
-						unmeshed = append(unmeshed, job)
-						if len(unmeshed) == cap(unmeshed) {
-							break scanMeshes
-						}
-					}
+	for _, cp := range nearbyChunkPositions(pcx, pcz, radius) {
+		dx, dz := int64(cp.X-pcx), int64(cp.Z-pcz)
+		horizontalPriority := (dx*dx + dz*dz) * int64(world.NumSections+1)
+		for verticalPriority, sy := range orderedSY {
+			key := [3]int32{cp.X, sy, cp.Z}
+			if c.meshCache[key] != nil {
+				continue
+			}
+			job := sectionMeshJob{
+				key:        key,
+				generation: c.meshGeneration,
+				revision:   c.meshRevisions[key],
+				priority:   horizontalPriority + int64(verticalPriority),
+				engine:     engine,
+			}
+			if !c.meshJobPending(key, job.generation, job.revision) {
+				unmeshed = append(unmeshed, job)
+				if len(unmeshed) == cap(unmeshed) {
+					goto meshesSelected
 				}
 			}
 		}
 	}
+
+meshesSelected:
 	c.meshMu.RUnlock()
 
 	if len(unmeshed) == 0 {
@@ -1500,6 +1500,33 @@ scanMeshes:
 	}
 
 	c.enqueueMeshJobs(unmeshed)
+}
+
+// nearbyChunkPositions returns a deterministic nearest-first square around the
+// player so nearby terrain is available before distant chunks in the same batch.
+func nearbyChunkPositions(centerX, centerZ, radius int32) []world.ChunkPos {
+	if radius < 0 {
+		return nil
+	}
+	positions := make([]world.ChunkPos, 0, (2*int(radius)+1)*(2*int(radius)+1))
+	for dx := -radius; dx <= radius; dx++ {
+		for dz := -radius; dz <= radius; dz++ {
+			positions = append(positions, world.ChunkPos{X: centerX + dx, Z: centerZ + dz})
+		}
+	}
+	sort.Slice(positions, func(i, j int) bool {
+		dxi, dzi := int64(positions[i].X-centerX), int64(positions[i].Z-centerZ)
+		dxj, dzj := int64(positions[j].X-centerX), int64(positions[j].Z-centerZ)
+		di, dj := dxi*dxi+dzi*dzi, dxj*dxj+dzj*dzj
+		if di != dj {
+			return di < dj
+		}
+		if positions[i].X != positions[j].X {
+			return positions[i].X < positions[j].X
+		}
+		return positions[i].Z < positions[j].Z
+	})
+	return positions
 }
 
 func sectionBuildOrder(cameraSectionY int32) []int32 {
@@ -1606,6 +1633,9 @@ func (c *Client) meshUpdateLoop() {
 				break
 			}
 			sort.Slice(batch, func(i, j int) bool {
+				if batch[i].priority != batch[j].priority {
+					return batch[i].priority < batch[j].priority
+				}
 				if batch[i].key[1] != batch[j].key[1] {
 					return batch[i].key[1] < batch[j].key[1]
 				}
@@ -1933,46 +1963,7 @@ func (c *Client) networkSendLoop() {
 	for {
 		select {
 		case <-c.networkSendStop:
-			return
-		case pkt := <-c.networkSendQueue:
-			if err := c.conn.SetWriteDeadline(time.Now().Add(5 * time.Second)); err != nil {
-				log.Printf("[Client] Failed to set network write deadline: %v", err)
-				c.networkDisconnected.Store(true)
-				c.stopNetworkSender()
-				return
-			}
-			if err := protocol.SendPacket(c.conn, pkt); err != nil {
-				log.Printf("[Client] Network packet write failed: %v", err)
-				writeCrashLog(fmt.Sprintf("NETWORK SEND FAILED: %v", err))
-				c.networkDisconnected.Store(true)
-				c.stopNetworkSender()
-				return
-			}
-			if err := c.conn.SetWriteDeadline(time.Time{}); err != nil {
-				log.Printf("[Client] Failed to clear network write deadline: %v", err)
-				c.networkDisconnected.Store(true)
-				c.stopNetworkSender()
-				return
-			}
-		}
-	}
-}
-
-func (c *Client) stopNetworkSender() {
-	c.networkSendStopOnce.Do(func() {
-		if c.networkSendStop != nil {
-			close(c.networkSendStop)
-		}
-		if c.conn != nil {
-			_ = c.conn.Close()
-		}
-	})
-}
-
-// checkWaterState examines the player's bounding volume to determine if they are in water,
-// and whether they are positioned near the water surface.
-func (c *Client) checkWaterState() (inWater bool, atSurface bool) {
-	if c.player == nil || c.engine == nil…18767 tokens truncated…3]]
+			retur…19072 tokens truncated…3]]
 
 		uv := faceUVs[fIdx]
 		if tex != nil && (uv.U1 > uv.U0 && uv.V1 > uv.V0) {
