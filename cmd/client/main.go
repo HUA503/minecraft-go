@@ -978,8 +978,8 @@ func (c *Client) InvalidateBlockMesh(pos world.BlockPos) {
 	}
 }
 
-// RebuildAffectedMeshes synchronously remeshes the section containing pos and any boundary neighbor sections.
-// Guarantees zero frame delay, no flickering, and no disappearing void holes when placing or breaking blocks.
+// RebuildAffectedMeshes remeshes the section containing pos and boundary neighbors,
+// then publishes the completed set in one short cache-lock section.
 func (c *Client) RebuildAffectedMeshes(pos world.BlockPos) {
 	if c.engine == nil {
 		return
@@ -992,29 +992,33 @@ func (c *Client) RebuildAffectedMeshes(pos world.BlockPos) {
 		return c.engine.GetBlock(x, y, z)
 	}
 
-	m0 := render.BuildSectionMesh(getBlock, secX*16, secY*16, secZ*16)
-
-	c.meshMu.Lock()
-	c.meshCache[[3]int32{secX, secY, secZ}] = m0
+	updates := map[[3]int32]*render.Mesh{
+		{secX, secY, secZ}: render.BuildSectionMesh(getBlock, secX*16, secY*16, secZ*16),
+	}
 
 	remX := ((pos.X % 16) + 16) % 16
 	remY := ((pos.Y % 16) + 16) % 16
 	remZ := ((pos.Z % 16) + 16) % 16
 
 	if remX == 0 {
-		c.meshCache[[3]int32{secX - 1, secY, secZ}] = render.BuildSectionMesh(getBlock, (secX-1)*16, secY*16, secZ*16)
+		updates[[3]int32{secX - 1, secY, secZ}] = render.BuildSectionMesh(getBlock, (secX-1)*16, secY*16, secZ*16)
 	} else if remX == 15 {
-		c.meshCache[[3]int32{secX + 1, secY, secZ}] = render.BuildSectionMesh(getBlock, (secX+1)*16, secY*16, secZ*16)
+		updates[[3]int32{secX + 1, secY, secZ}] = render.BuildSectionMesh(getBlock, (secX+1)*16, secY*16, secZ*16)
 	}
 	if remY == 0 {
-		c.meshCache[[3]int32{secX, secY - 1, secZ}] = render.BuildSectionMesh(getBlock, secX*16, (secY-1)*16, secZ*16)
+		updates[[3]int32{secX, secY - 1, secZ}] = render.BuildSectionMesh(getBlock, secX*16, (secY-1)*16, secZ*16)
 	} else if remY == 15 {
-		c.meshCache[[3]int32{secX, secY + 1, secZ}] = render.BuildSectionMesh(getBlock, secX*16, (secY+1)*16, secZ*16)
+		updates[[3]int32{secX, secY + 1, secZ}] = render.BuildSectionMesh(getBlock, secX*16, (secY+1)*16, secZ*16)
 	}
 	if remZ == 0 {
-		c.meshCache[[3]int32{secX, secY, secZ - 1}] = render.BuildSectionMesh(getBlock, secX*16, secY*16, (secZ-1)*16)
+		updates[[3]int32{secX, secY, secZ - 1}] = render.BuildSectionMesh(getBlock, secX*16, secY*16, (secZ-1)*16)
 	} else if remZ == 15 {
-		c.meshCache[[3]int32{secX, secY, secZ + 1}] = render.BuildSectionMesh(getBlock, secX*16, secY*16, (secZ+1)*16)
+		updates[[3]int32{secX, secY, secZ + 1}] = render.BuildSectionMesh(getBlock, secX*16, secY*16, (secZ+1)*16)
+	}
+
+	c.meshMu.Lock()
+	for key, mesh := range updates {
+		c.meshCache[key] = mesh
 	}
 	c.meshMu.Unlock()
 }
