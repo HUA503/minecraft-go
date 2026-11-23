@@ -62,6 +62,8 @@ func IsOpaqueCube(blockID int32) bool {
 		return false
 	case 20: // Glass (transparent)
 		return false
+	case 90: // Nether portal (translucent)
+		return false
 	case 31, 32: // Tall grass, Dead bush
 		return false
 	case 37, 38: // Dandelion, Poppy
@@ -74,6 +76,17 @@ func IsOpaqueCube(blockID int32) bool {
 		return false
 	default:
 		return true
+	}
+}
+
+// IsTranslucentBlock identifies blocks that must be sorted and blended after
+// opaque terrain. Cutout textures such as leaves stay in the opaque pass.
+func IsTranslucentBlock(blockID int32) bool {
+	switch blockID {
+	case 8, 9, 20, 90: // Water, still water, glass, nether portal
+		return true
+	default:
+		return false
 	}
 }
 
@@ -124,7 +137,7 @@ func BuildSectionMesh(getBlock func(x, y, z int32) int32, originX, originY, orig
 					// Internal face culling between transparent/translucent blocks (both water blocks 8 and 9 cull mutually)
 					isWaterA := (blockID == 8 || blockID == 9)
 					isWaterB := (neighborID == 8 || neighborID == 9)
-					if (isWaterA && isWaterB) || (blockID == neighborID && (blockID == 18 || blockID == 20)) {
+					if (isWaterA && isWaterB) || (blockID == neighborID && (blockID == 18 || blockID == 20 || blockID == 90)) {
 						continue
 					}
 					addFaceQuad(mesh, originX+x, originY+y, originZ+z, face, blockID, getBlock)
@@ -398,3 +411,4 @@ func addLadderQuad(mesh *Mesh, x, y, z int32, getBlock func(x, y, z int32) int32
 		base+3, base+2, base,
 	)
 }
+

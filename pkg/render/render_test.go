@@ -583,28 +583,67 @@ func TestWaterInternalFaceCullingAndDepthStability(t *testing.T) {
 	}
 	stoneCol := fb.Color[idx]
 
-	// Step 2: Draw translucent water surface at depth 12.0
+	// Step 2: Blend the nearer water surface over the opaque scene without
+	// replacing the opaque depth buffer.
 	wv0 := NewScreenVertex(ScreenPoint{X: 10, Y: 10, Depth: 12.0}, 0, 0, 8, 2, 1.0)
 	wv1 := NewScreenVertex(ScreenPoint{X: 50, Y: 10, Depth: 12.0}, 1, 0, 8, 2, 1.0)
 	wv2 := NewScreenVertex(ScreenPoint{X: 10, Y: 50, Depth: 12.0}, 0, 1, 8, 2, 1.0)
-	fb.DrawVoxelTrianglePerspective(wv0, wv1, wv2)
+	fb.DrawTranslucentVoxelTrianglePerspective(wv0, wv1, wv2)
 
-	if math.Abs(float64(fb.Depth[idx]-12.0)) > 1e-3 {
-		t.Fatalf("expected water depth 12.0 to be written to depth buffer, got %f", fb.Depth[idx])
+	if math.Abs(float64(fb.Depth[idx]-15.0)) > 1e-3 {
+		t.Fatalf("transparent water changed opaque depth from 15.0 to %f", fb.Depth[idx])
 	}
 	waterBlendedCol := fb.Color[idx]
 	if waterBlendedCol == stoneCol {
 		t.Fatalf("water did not blend with stone background")
 	}
 
-	// Step 3: Draw a quad behind water at depth 16.0: MUST be culled and NOT overwrite water
+	// A second transparent layer in front must still blend, while one behind
+	// the opaque floor must fail the depth test.
+	nearV0 := NewScreenVertex(ScreenPoint{X: 10, Y: 10, Depth: 11.0}, 0, 0, 8, 2, 1.0)
+	nearV1 := NewScreenVertex(ScreenPoint{X: 50, Y: 10, Depth: 11.0}, 1, 0, 8, 2, 1.0)
+	nearV2 := NewScreenVertex(ScreenPoint{X: 10, Y: 50, Depth: 11.0}, 0, 1, 8, 2, 1.0)
+	fb.DrawTranslucentVoxelTrianglePerspective(nearV0, nearV1, nearV2)
+	if fb.Color[idx] == waterBlendedCol {
+		t.Fatal("near transparent layer was not blended over the far layer")
+	}
+	if math.Abs(float64(fb.Depth[idx]-15.0)) > 1e-3 {
+		t.Fatalf("transparent layers changed opaque depth to %f", fb.Depth[idx])
+	}
+	waterBlendedCol = fb.Color[idx]
+
+	// Step 3: A transparent quad behind opaque stone at depth 16.0 must be culled.
 	bv0 := NewScreenVertex(ScreenPoint{X: 10, Y: 10, Depth: 16.0}, 0, 0, 3, 2, 1.0)
 	bv1 := NewScreenVertex(ScreenPoint{X: 50, Y: 10, Depth: 16.0}, 1, 0, 3, 2, 1.0)
 	bv2 := NewScreenVertex(ScreenPoint{X: 10, Y: 50, Depth: 16.0}, 0, 1, 3, 2, 1.0)
-	fb.DrawVoxelTrianglePerspective(bv0, bv1, bv2)
+	fb.DrawTranslucentVoxelTrianglePerspective(bv0, bv1, bv2)
 
 	if fb.Color[idx] != waterBlendedCol {
 		t.Fatalf("geometry behind water at depth 16.0 improperly overwrote water! Got color %X, expected %X", fb.Color[idx], waterBlendedCol)
+	}
+}
+
+func TestTransparentBlockClassificationAndPortalFaceCulling(t *testing.T) {
+	for _, id := range []int32{8, 9, 20, 90} {
+		if !IsTranslucentBlock(id) {
+			t.Errorf("block %d should use the transparent render pass", id)
+		}
+	}
+	for _, id := range []int32{1, 18, 58} {
+		if IsTranslucentBlock(id) {
+			t.Errorf("block %d should not use the transparent render pass", id)
+		}
+	}
+	if IsOpaqueCube(90) {
+		t.Fatal("nether portal must not occlude neighboring opaque geometry")
+	}
+
+	blocks := map[[3]int32]int32{{0, 0, 0}: 90, {1, 0, 0}: 90}
+	mesh := BuildSectionMesh(func(x, y, z int32) int32 {
+		return blocks[[3]int32{x, y, z}]
+	}, 0, 0, 0)
+	if len(mesh.Vertices) != 40 {
+		t.Fatalf("two adjacent portal blocks should cull their shared face, got %d vertices", len(mesh.Vertices))
 	}
 }
 

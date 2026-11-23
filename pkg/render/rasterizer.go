@@ -740,6 +740,17 @@ func (fb *Framebuffer) DrawTexturedTriangle(p0, p1, p2 ScreenPoint, u0, v0, u1, 
 
 // DrawVoxelTrianglePerspective performs mathematically exact perspective-correct texture mapping & distance fog.
 func (fb *Framebuffer) DrawVoxelTrianglePerspective(v0, v1, v2 ScreenVertex) {
+	fb.drawVoxelTrianglePerspective(v0, v1, v2, true)
+}
+
+// DrawTranslucentVoxelTrianglePerspective depth-tests and blends a transparent
+// triangle without writing its depth. Callers must draw these triangles from
+// far to near after the opaque pass.
+func (fb *Framebuffer) DrawTranslucentVoxelTrianglePerspective(v0, v1, v2 ScreenVertex) {
+	fb.drawVoxelTrianglePerspective(v0, v1, v2, false)
+}
+
+func (fb *Framebuffer) drawVoxelTrianglePerspective(v0, v1, v2 ScreenVertex, writeDepth bool) {
 	if fb == nil || fb.Width <= 0 || fb.Height <= 0 || !validScreenVertex(v0) || !validScreenVertex(v1) || !validScreenVertex(v2) {
 		return
 	}
@@ -892,11 +903,14 @@ func (fb *Framebuffer) DrawVoxelTrianglePerspective(v0, v1, v2 ScreenVertex) {
 					}
 
 					if alpha == 255 {
-						fb.Depth[idx] = depth
+						if writeDepth {
+							fb.Depth[idx] = depth
+						}
 						fb.Color[idx] = pixelCol
 					} else {
 						// Translucent alpha blending (e.g. water surface)
-						// Do not overwrite depth buffer for translucent pixels to eliminate all z-fighting and flickering
+						// Transparent geometry is sorted back-to-front and must not hide
+						// other transparent layers that still need to blend afterward.
 						bg := fb.Color[idx]
 						bgr := (bg >> 16) & 0xFF
 						bgg := (bg >> 8) & 0xFF
@@ -909,7 +923,9 @@ func (fb *Framebuffer) DrawVoxelTrianglePerspective(v0, v1, v2 ScreenVertex) {
 						outG := uint32(float32(pg)*aNorm + float32(bgg)*(1-aNorm))
 						outB := uint32(float32(pb)*aNorm + float32(bgb)*(1-aNorm))
 						fb.Color[idx] = 0xFF000000 | (outR << 16) | (outG << 8) | outB
-						fb.Depth[idx] = depth
+						if writeDepth {
+							fb.Depth[idx] = depth
+						}
 					}
 				}
 			}
@@ -1236,3 +1252,4 @@ func (fb *Framebuffer) DrawBlockDamage(cam *Camera, bx, by, bz int32, stage int)
 		}
 	}
 }
+

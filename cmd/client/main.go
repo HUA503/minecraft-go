@@ -3175,14 +3175,12 @@ func (c *Client) RenderFrame() {
 	c.framebuf.DrawCelestialBodies(c.camera, worldTime)
 	c.framebuf.DrawClouds(c.camera, worldTime)
 
-	// 2. Render cached 3D chunk meshes with authentic two-pass rendering (Pass 1: Opaque, Pass 2: Translucent Water)
+	// 2. Render cached 3D chunk meshes in opaque and sorted translucent passes.
 	c.meshMu.RLock()
-	lx, ly, lz := c.camera.GetLookVector()
 	camX, camY, camZ := c.camera.X, c.camera.Y, c.camera.Z
 
 	type visibleSection struct {
-		mesh        *render.Mesh
-		distForward float64
+		mesh *render.Mesh
 	}
 	visibleSections := make([]visibleSection, 0, len(c.meshCache))
 	for key, mesh := range c.meshCache {
@@ -3195,15 +3193,14 @@ func (c *Client) RenderFrame() {
 		scx := float64(key[0]*16 + 8)
 		scy := float64(key[1]*16 + 8)
 		scz := float64(key[2]*16 + 8)
-		distForward := (scx-camX)*lx + (scy-camY)*ly + (scz-camZ)*lz
 		if !c.camera.SphereInFrustum(scx, scy, scz, 13.856406460551018, c.framebuf.Width, c.framebuf.Height, 0.10) {
 			continue
 		}
-		visibleSections = append(visibleSections, visibleSection{mesh: mesh, distForward: distForward})
+		visibleSections = append(visibleSections, visibleSection{mesh: mesh})
 	}
 	c.meshMu.RUnlock()
 
-	// Pass 1: Render all OPAQUE solid/cutout terrain blocks first (Stone, Dirt, Sand, Wood, Leaves, etc.)
+	// Pass 1: Render opaque and alpha-cutout terrain before translucent blocks.
 	for _, sec := range visibleSections {
 		mesh := sec.mesh
 		for i := 0; i+2 < len(mesh.Indices); i += 3 {
@@ -3211,8 +3208,8 @@ func (c *Client) RenderFrame() {
 			if !valid {
 				continue
 			}
-			if v0.BlockID == 8 || v0.BlockID == 9 {
-				continue // Deferred to translucent Pass 2 to eliminate all water flickering
+			if render.IsTranslucentBlock(v0.BlockID) {
+				continue // Water, glass, and portals are composited after opaque terrain.
 			}
 
 			// World-space exact normal culling for planar voxel face
@@ -3303,10 +3300,16 @@ func (c *Client) RenderFrame() {
 		}
 	}
 
-	// 3.8 Pass 2: Render TRANSLUCENT water blocks (back-to-front sorting for smooth blending & zero flicker)
-	sort.Slice(visibleSections, func(a, b int) bool {
-		return visibleSections[a].distForward > visibleSections[b].distForward
-	})
+	// 3.8 Pass 2: collect transparent faces and sort individual clipped triangles
+	// back-to-front. Section-center sorting can reverse glass/water surfaces
+	// inside the same chunk and made the result depend on map iteration order.
+	type translucentTriangle struct {
+		v0, v1, v2 render.ScreenVertex
+		depth      float64
+		blockID    int32
+		faceIndex  int
+	}
+	translucent := make([]translucentTriangle, 0)
 	for _, sec := range visibleSections {
 		mesh := sec.mesh
 		for i := 0; i+2 < len(mesh.Indices); i += 3 {
@@ -3314,11 +3317,11 @@ func (c *Client) RenderFrame() {
 			if !valid {
 				continue
 			}
-			if v0.BlockID != 8 && v0.BlockID != 9 {
+			if !render.IsTranslucentBlock(v0.BlockID) {
 				continue
 			}
 
-			// Exact face normal culling for translucent water faces (skips non-facing surfaces & eliminates water z-fighting)
+			// Exact face normal culling for translucent block faces.
 			switch v0.FaceIndex {
 			case 0: // +X face (visible only if camX > v0.X)
 				if camX <= float64(v0.X) {
@@ -3364,10 +3367,37 @@ func (c *Client) RenderFrame() {
 				sv0 := render.NewScreenVertex(p0, tri.V0.U, tri.V0.V, tri.V0.BlockID, tri.V0.FaceIndex, tri.V0.LightingMult)
 				sv1 := render.NewScreenVertex(p1, tri.V1.U, tri.V1.V, tri.V1.BlockID, tri.V1.FaceIndex, tri.V1.LightingMult)
 				sv2 := render.NewScreenVertex(p2, tri.V2.U, tri.V2.V, tri.V2.BlockID, tri.V2.FaceIndex, tri.V2.LightingMult)
-
-				c.framebuf.DrawVoxelTrianglePerspective(sv0, sv1, sv2)
+				depth := (tri.V0.Z + tri.V1.Z + tri.V2.Z) / 3
+				translucent = append(translucent, translucentTriangle{
+					v0: sv0, v1: sv1, v2: sv2, depth: depth,
+					blockID: v0.BlockID, faceIndex: v0.FaceIndex,
+				})
 			}
 		}
+	}
+	if len(translucent) > 1 {
+		sort.SliceStable(translucent, func(i, j int) bool {
+			a, b := translucent[i], translucent[j]
+			if a.depth != b.depth {
+				return a.depth > b.depth
+			}
+			if a.blockID != b.blockID {
+				return a.blockID < b.blockID
+			}
+			if a.faceIndex != b.faceIndex {
+				return a.faceIndex < b.faceIndex
+			}
+			if a.v0.Y != b.v0.Y {
+				return a.v0.Y < b.v0.Y
+			}
+			if a.v0.X != b.v0.X {
+				return a.v0.X < b.v0.X
+			}
+			return a.v0.Depth < b.v0.Depth
+		})
+	}
+	for _, tri := range translucent {
+		c.framebuf.DrawTranslucentVoxelTrianglePerspective(tri.v0, tri.v1, tri.v2)
 	}
 
 	// 4. Draw player model in third person or held item in first person
