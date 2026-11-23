@@ -125,6 +125,7 @@ type Engine struct {
 	DimensionWorlds  map[int]map[world.ChunkPos]*world.Chunk
 	CurrentDimension int // 0: Overworld, 1: Nether, 2: End
 	Players          map[int32]*PlayerEntity
+	clientPlayers    map[int32]PlayerEntity
 	nextPlayerID     int32
 	Mobs             map[int32]*MobEntity
 	nextMobID        int32
@@ -155,6 +156,7 @@ func NewEngine() *Engine {
 		DimensionWorlds:  make(map[int]map[world.ChunkPos]*world.Chunk),
 		CurrentDimension: 0,
 		Players:          make(map[int32]*PlayerEntity),
+		clientPlayers:    make(map[int32]PlayerEntity),
 		nextPlayerID:     1,
 		Mobs:             make(map[int32]*MobEntity),
 		nextMobID:        100,
@@ -233,10 +235,45 @@ func (e *Engine) GetPlayerList() []PlayerEntity {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 	res := make([]PlayerEntity, 0, len(e.Players))
-	for _, p := range e.Players {
+	for id, p := range e.Players {
+		if p.ClientDriven {
+			if snapshot, ok := e.clientPlayers[id]; ok {
+				res = append(res, snapshot)
+				continue
+			}
+		}
 		res = append(res, *p)
 	}
 	return res
+}
+
+// SetPlayerClientDriven enables client-owned movement and creates an AI-facing state snapshot.
+func (e *Engine) SetPlayerClientDriven(id int32, enabled bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if p := e.Players[id]; p != nil {
+		p.ClientDriven = enabled
+		if enabled {
+			if e.clientPlayers == nil {
+				e.clientPlayers = make(map[int32]PlayerEntity)
+			}
+			snapshot := *p
+			e.clientPlayers[id] = snapshot
+		} else {
+			delete(e.clientPlayers, id)
+		}
+	}
+}
+
+// UpdateClientPlayerSnapshot publishes client-owned movement state for mob AI.
+func (e *Engine) UpdateClientPlayerSnapshot(id int32, pos Vec3, gameMode int) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if snapshot, ok := e.clientPlayers[id]; ok {
+		snapshot.Position = pos
+		snapshot.GameMode = gameMode
+		e.clientPlayers[id] = snapshot
+	}
 }
 
 func (e *Engine) SpawnMob(mobType MobType, pos Vec3) *MobEntity {
@@ -803,6 +840,10 @@ func (e *Engine) DamagePlayer(id int32, amount float32, reason string) {
 	if p.Health <= 0 {
 		p.Health = 0
 		p.IsAlive = false
+		if snapshot, ok := e.clientPlayers[id]; ok {
+			snapshot.IsAlive = false
+			e.clientPlayers[id] = snapshot
+		}
 		e.mu.Unlock()
 		select {
 		case e.Events <- WorldEvent{
@@ -832,6 +873,11 @@ func (e *Engine) RespawnPlayer(id int32, spawnPos Vec3) {
 		p.Velocity = Vec3{}
 		p.FallDistance = 0
 		p.OnGround = true
+		if snapshot, ok := e.clientPlayers[id]; ok {
+			snapshot.Position = spawnPos
+			snapshot.IsAlive = true
+			e.clientPlayers[id] = snapshot
+		}
 	}
 	e.mu.Unlock()
 

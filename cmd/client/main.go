@@ -345,7 +345,7 @@ func (c *Client) StartSingleplayerWorld(worldDirName string, isNew bool, newSeed
 
 		spawnPos = findSafeSpawnPoint(c.genOverworld, c.engine)
 		c.player = c.engine.AddPlayer(c.username, c.uuid, spawnPos)
-		c.player.ClientDriven = true
+		c.engine.SetPlayerClientDriven(c.player.ID, true)
 		c.player.GameMode = newGameMode
 		c.UnlockAdvancement("minecraft:story/root", "进入世界")
 		c.isCreative = (newGameMode == 1)
@@ -430,7 +430,7 @@ func (c *Client) StartSingleplayerWorld(worldDirName string, isNew bool, newSeed
 			posToSpawn = sim.Vec3{X: savedPlayer.X, Y: savedPlayer.Y, Z: savedPlayer.Z}
 		}
 		c.player = c.engine.AddPlayer(c.username, c.uuid, posToSpawn)
-		c.player.ClientDriven = true
+		c.engine.SetPlayerClientDriven(c.player.ID, true)
 		c.player.GameMode = newGameMode
 		c.isCreative = (newGameMode == 1)
 		if c.isCreative {
@@ -458,6 +458,7 @@ func (c *Client) StartSingleplayerWorld(worldDirName string, isNew bool, newSeed
 		c.UnlockAdvancement("minecraft:story/root", "进入世界")
 	}
 
+	c.publishPlayerSnapshot()
 	c.camera.X = c.player.Position.X
 	c.camera.Y = c.player.Position.Y + 1.62
 	c.camera.Z = c.player.Position.Z
@@ -669,6 +670,7 @@ func (c *Client) SwitchDimension(dim gen.Dimension) {
 
 	c.player.Position = newPos
 	c.player.Velocity = sim.Vec3{}
+	c.publishPlayerSnapshot()
 	c.camera.X = newPos.X
 	c.camera.Y = newPos.Y + 1.62
 	c.camera.Z = newPos.Z
@@ -962,7 +964,7 @@ func (c *Client) Connect() error {
 
 	spawnVec := sim.Vec3{X: 8.5, Y: 65.0, Z: 8.5}
 	c.player = c.engine.AddPlayer(c.username, c.uuid, spawnVec)
-	c.player.ClientDriven = true
+	c.engine.SetPlayerClientDriven(c.player.ID, true)
 	c.camera.X = spawnVec.X
 	c.camera.Y = spawnVec.Y + 1.62
 	c.camera.Z = spawnVec.Z
@@ -1421,6 +1423,7 @@ func (c *Client) PhysicsStep(fwdInput, strafeInput float64, jumpRequested bool, 
 
 func (c *Client) MoveRelative(forward, strafe float64) {
 	c.PhysicsStep(forward, strafe, false, 0.05)
+	c.publishPlayerSnapshot()
 }
 
 func (c *Client) Jump() {
@@ -1657,6 +1660,17 @@ func (c *Client) advancementIDs() []string {
 	}
 	sort.Strings(ids)
 	return ids
+}
+
+func (c *Client) publishPlayerSnapshot() {
+	if c.engine == nil || c.player == nil {
+		return
+	}
+	mode := 0
+	if c.isCreative {
+		mode = 1
+	}
+	c.engine.UpdateClientPlayerSnapshot(c.player.ID, c.player.Position, mode)
 }
 
 func (c *Client) advancementLines() []string {
@@ -4625,6 +4639,7 @@ func runGraphicalWindow(c *Client, w, h int) {
 		}
 
 		c.PhysicsStep(fwdInput, strafeInput, spaceDown, dt)
+		c.publishPlayerSnapshot()
 
 		// Synchronize crosshair raycast target with current position & orientation
 		c.UpdateRaycastTarget()
