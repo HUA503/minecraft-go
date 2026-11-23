@@ -240,7 +240,10 @@ func findSafeSpawnPoint(generator *gen.Generator, engine *sim.Engine) sim.Vec3 {
 					continue
 				}
 				if chunk == nil {
-					chunk = generator.GenerateChunk(cp)
+					chunk = generateChunkSafely(generator, cp)
+					if chunk == nil {
+						continue
+					}
 					engine.LoadGeneratedChunkInDimension(dimension, cp, chunk)
 				}
 				for localX := int32(0); localX < world.ChunkWidth; localX++ {
@@ -559,7 +562,10 @@ func (c *Client) StartSingleplayerWorld(worldDirName string, isNew bool, newSeed
 				return
 			}
 			if chk == nil {
-				chk = c.genOverworld.GenerateChunk(cp)
+				chk = generateChunkSafely(c.genOverworld, cp)
+				if chk == nil {
+					return
+				}
 				c.engine.LoadGeneratedChunkInDimension(int(gen.DimensionOverworld), cp, chk)
 			}
 			surfY := spawnPos.Y
@@ -1060,6 +1066,9 @@ func (c *Client) chunkStreamLoop() {
 func (c *Client) processChunkStreamJob(job chunkStreamJob) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
+			if !job.unload {
+				c.suppressChunkStreamRetry(job)
+			}
 			log.Printf("[Client] chunk stream job failed for %v (dimension %d): %v\n%s", job.pos, job.dimension, recovered, debug.Stack())
 		}
 	}()
@@ -1084,15 +1093,7 @@ func (c *Client) processChunkStreamJob(job chunkStreamJob) {
 
 	chunk, loadErr := job.engine.GetChunkInDimensionWithError(job.dimension, job.pos)
 	if loadErr != nil {
-		c.streamJobsMu.Lock()
-		if c.streamJobsFailed == nil {
-			c.streamJobsFailed = make(map[chunkStreamKey]chunkStreamFailure)
-		}
-		c.streamJobsFailed[chunkStreamKey{dimension: job.dimension, pos: job.pos}] = chunkStreamFailure{
-			generation: job.generation,
-			retryAfter: time.Now().Add(30 * time.Second),
-		}
-		c.streamJobsMu.Unlock()
+		c.suppressChunkStreamRetry(job)
 		log.Printf("[Client] Refusing to regenerate unreadable chunk %v in dimension %d: %v", job.pos, job.dimension, loadErr)
 		return
 	}
@@ -1109,6 +1110,10 @@ func (c *Client) processChunkStreamJob(job chunkStreamJob) {
 			return
 		}
 		chunk = generateChunkSafely(job.generator, job.pos)
+		if chunk == nil {
+			c.suppressChunkStreamRetry(job)
+			return
+		}
 		if !c.meshGenerationIs(job.generation) {
 			return
 		}
@@ -1136,6 +1141,18 @@ func (c *Client) processChunkStreamJob(job chunkStreamJob) {
 	c.meshMu.Unlock()
 }
 
+func (c *Client) suppressChunkStreamRetry(job chunkStreamJob) {
+	c.streamJobsMu.Lock()
+	if c.streamJobsFailed == nil {
+		c.streamJobsFailed = make(map[chunkStreamKey]chunkStreamFailure)
+	}
+	c.streamJobsFailed[chunkStreamKey{dimension: job.dimension, pos: job.pos}] = chunkStreamFailure{
+		generation: job.generation,
+		retryAfter: time.Now().Add(30 * time.Second),
+	}
+	c.streamJobsMu.Unlock()
+}
+
 func (c *Client) waitForChunkStreamIdle() {
 	for {
 		c.streamJobsMu.Lock()
@@ -1155,7 +1172,7 @@ func generateChunkSafely(generator *gen.Generator, pos world.ChunkPos) (chunk *w
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			log.Printf("[Client] chunk generation failed for %v: %v\n%s", pos, recovered, debug.Stack())
-			chunk = world.NewChunk(pos)
+			chunk = nil
 		}
 	}()
 	return generator.GenerateChunk(pos)
