@@ -18,6 +18,18 @@ type Framebuffer struct {
 }
 
 func NewFramebuffer(w, h int) *Framebuffer {
+	if w <= 0 || h <= 0 {
+		w, h = 800, 600
+	}
+	// The software renderer keeps both a color and a depth buffer. Bound the
+	// allocation so malformed CLI dimensions cannot overflow w*h or exhaust RAM.
+	const maxPixels = 4 * 1024 * 1024
+	pixels := float64(w) * float64(h)
+	if pixels > maxPixels {
+		scale := math.Sqrt(float64(maxPixels) / pixels)
+		w = max(1, int(float64(w)*scale))
+		h = max(1, int(float64(h)*scale))
+	}
 	return &Framebuffer{
 		Width:           w,
 		Height:          h,
