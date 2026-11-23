@@ -100,6 +100,17 @@ func (r *Region) chunkRangeOverlaps(index, offset, sectors int) (bool, error) {
 	return false, nil
 }
 
+func writeAtFull(file *os.File, data []byte, offset int64) error {
+	n, err := file.WriteAt(data, offset)
+	if err != nil {
+		return err
+	}
+	if n != len(data) {
+		return io.ErrShortWrite
+	}
+	return nil
+}
+
 type sectorRange struct {
 	start int
 	end   int
@@ -257,6 +268,10 @@ func (r *Region) WriteChunkData(chunkX, chunkZ int32, chunkNBT *nbt.CompoundTag)
 	}
 
 	idx := chunkIndex(chunkX, chunkZ)
+	oldLocation := make([]byte, 4)
+	if _, err := r.file.ReadAt(oldLocation, int64(idx*4)); err != nil {
+		return err
+	}
 	info, err := r.file.Stat()
 	if err != nil {
 		return err
@@ -286,7 +301,7 @@ func (r *Region) WriteChunkData(chunkX, chunkZ int32, chunkNBT *nbt.CompoundTag)
 		payload.Write(make([]byte, padding))
 	}
 
-	if _, err := r.file.WriteAt(payload.Bytes(), writeOffset); err != nil {
+	if err := writeAtFull(r.file, payload.Bytes(), writeOffset); err != nil {
 		return err
 	}
 	if err := r.file.Sync(); err != nil {
@@ -300,15 +315,35 @@ func (r *Region) WriteChunkData(chunkX, chunkZ int32, chunkNBT *nbt.CompoundTag)
 		byte(sectorOffset),
 		byte(allocSectors),
 	}
-	if _, err := r.file.WriteAt(locHeader, int64(idx*4)); err != nil {
-		return err
+	if err := writeAtFull(r.file, locHeader, int64(idx*4)); err != nil {
+		rollbackErr := writeAtFull(r.file, oldLocation, int64(idx*4))
+		if rollbackErr == nil {
+			rollbackErr = r.file.Sync()
+		}
+		if rollbackErr != nil {
+			return fmt.Errorf("write chunk location header: %w (restore previous location header: %v)", err, rollbackErr)
+		}
+		return fmt.Errorf("write chunk location header: %w; previous location header restored", err)
+	}
+	// The new payload was synced before this pointer update. Sync the pointer
+	// before writing the timestamp so the previous allocation stays recoverable
+	// if committing the new location fails.
+	if err := r.file.Sync(); err != nil {
+		rollbackErr := writeAtFull(r.file, oldLocation, int64(idx*4))
+		if rollbackErr == nil {
+			rollbackErr = r.file.Sync()
+		}
+		if rollbackErr != nil {
+			return fmt.Errorf("sync chunk location header: %w (restore previous location header: %v)", err, rollbackErr)
+		}
+		return fmt.Errorf("sync chunk location header: %w; previous location header restored", err)
 	}
 
 	// Update Timestamp Header
 	now := uint32(time.Now().Unix())
 	tsHeader := make([]byte, 4)
 	binary.BigEndian.PutUint32(tsHeader, now)
-	if _, err := r.file.WriteAt(tsHeader, int64(4096+idx*4)); err != nil {
+	if err := writeAtFull(r.file, tsHeader, int64(4096+idx*4)); err != nil {
 		return err
 	}
 	return r.file.Sync()
