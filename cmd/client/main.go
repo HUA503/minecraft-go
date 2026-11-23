@@ -659,6 +659,13 @@ func (c *Client) SwitchDimension(dim gen.Dimension) {
 	if c.engine == nil || c.currentDim == dim {
 		return
 	}
+	// Flush and release streamed chunks from the dimension being left so repeated
+	// portal travel does not retain every visited dimension's active chunk set.
+	for cp := range c.loadedChunks {
+		if err := c.engine.UnloadChunk(cp); err != nil {
+			log.Printf("[Client] Failed to save dimension %d chunk %v while switching: %v", c.currentDim, cp, err)
+		}
+	}
 	c.currentDim = dim
 	c.engine.SwitchDimension(int(dim))
 
