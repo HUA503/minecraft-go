@@ -325,31 +325,56 @@ func ChunkFromNBT(tag *nbt.CompoundTag) (*Chunk, error) {
 	z := tag.GetInt("zPos")
 	c := NewChunk(ChunkPos{X: x, Z: z})
 
-	if secList, ok := tag.Get("sections").(*nbt.ListTag); ok {
-		for _, elem := range secList.Elements {
+	if secValue := tag.Get("sections"); secValue != nil {
+		secList, ok := secValue.(*nbt.ListTag)
+		if !ok || (len(secList.Elements) > 0 && secList.ElementType != nbt.TagCompound) {
+			return nil, errors.New("invalid chunk sections list")
+		}
+		seenSections := make(map[int]struct{}, len(secList.Elements))
+		for sectionIndex, elem := range secList.Elements {
 			secTag, ok := elem.(*nbt.CompoundTag)
 			if !ok {
-				continue
+				return nil, fmt.Errorf("invalid chunk section %d", sectionIndex)
 			}
 			var secY int
 			if byteY, ok := secTag.Get("Y").(*nbt.ByteTag); ok {
 				secY = int(byteY.Value)
 			} else if intY, ok := secTag.Get("Y").(*nbt.IntTag); ok {
 				secY = int(intY.Value)
+			} else {
+				return nil, fmt.Errorf("chunk section %d has invalid Y", sectionIndex)
 			}
 			secIdx := secY - MinSectionY
 			if secIdx < 0 || secIdx >= NumSections {
-				continue
+				return nil, fmt.Errorf("chunk section %d has out-of-range Y %d", sectionIndex, secY)
 			}
+			if _, duplicate := seenSections[secIdx]; duplicate {
+				return nil, fmt.Errorf("chunk contains duplicate section Y %d", secY)
+			}
+			seenSections[secIdx] = struct{}{}
 			sec := c.Sections[secIdx]
 
-			if bArr, ok := secTag.Get("BlockStates").(*nbt.IntArrayTag); ok && len(bArr.Value) == 4096 {
+			if statesValue := secTag.Get("BlockStates"); statesValue != nil {
+				bArr, ok := statesValue.(*nbt.IntArrayTag)
+				if !ok || len(bArr.Value) != 4096 {
+					return nil, fmt.Errorf("chunk section Y %d has invalid BlockStates", secY)
+				}
 				for idx, val := range bArr.Value {
+					if val < 0 {
+						return nil, fmt.Errorf("chunk section Y %d has negative block state", secY)
+					}
 					sec.BlockStates.Set(idx, val)
 				}
 			}
-			if bArr, ok := secTag.Get("Biomes").(*nbt.IntArrayTag); ok && len(bArr.Value) == 64 {
+			if biomesValue := secTag.Get("Biomes"); biomesValue != nil {
+				bArr, ok := biomesValue.(*nbt.IntArrayTag)
+				if !ok || len(bArr.Value) != 64 {
+					return nil, fmt.Errorf("chunk section Y %d has invalid Biomes", secY)
+				}
 				for idx, val := range bArr.Value {
+					if val < 0 {
+						return nil, fmt.Errorf("chunk section Y %d has negative biome ID", secY)
+					}
 					sec.Biomes.Set(idx, val)
 				}
 			}
@@ -357,14 +382,40 @@ func ChunkFromNBT(tag *nbt.CompoundTag) (*Chunk, error) {
 	}
 
 	// Also support backwards-compatible "ModifiedBlocks" list tag
-	if modBlocks, ok := tag.Get("ModifiedBlocks").(*nbt.ListTag); ok {
-		for _, elem := range modBlocks.Elements {
+	if modValue := tag.Get("ModifiedBlocks"); modValue != nil {
+		modBlocks, ok := modValue.(*nbt.ListTag)
+		if !ok || (len(modBlocks.Elements) > 0 && modBlocks.ElementType != nbt.TagCompound) {
+			return nil, errors.New("invalid ModifiedBlocks list")
+		}
+		const maxModifiedBlocks = ChunkWidth * ChunkWidth * ChunkHeight
+		if len(modBlocks.Elements) > maxModifiedBlocks {
+			return nil, fmt.Errorf("ModifiedBlocks count %d exceeds chunk capacity", len(modBlocks.Elements))
+		}
+		for i, elem := range modBlocks.Elements {
 			if bTag, ok := elem.(*nbt.CompoundTag); ok {
+				if _, ok := bTag.Get("x").(*nbt.IntTag); !ok {
+					return nil, fmt.Errorf("ModifiedBlocks entry %d has invalid x", i)
+				}
+				if _, ok := bTag.Get("y").(*nbt.IntTag); !ok {
+					return nil, fmt.Errorf("ModifiedBlocks entry %d has invalid y", i)
+				}
+				if _, ok := bTag.Get("z").(*nbt.IntTag); !ok {
+					return nil, fmt.Errorf("ModifiedBlocks entry %d has invalid z", i)
+				}
+				if _, ok := bTag.Get("state").(*nbt.IntTag); !ok {
+					return nil, fmt.Errorf("ModifiedBlocks entry %d has invalid state", i)
+				}
 				bx := bTag.GetInt("x")
 				by := bTag.GetInt("y")
 				bz := bTag.GetInt("z")
 				state := bTag.GetInt("state")
+				pos := BlockPos{X: bx, Y: by, Z: bz}
+				if !ValidBlockCoordinates(bx, by, bz) || pos.ToChunkPos() != c.Pos || state < 0 {
+					return nil, fmt.Errorf("ModifiedBlocks entry %d has invalid position or state", i)
+				}
 				c.SetBlock(bx, by, bz, state)
+			} else {
+				return nil, fmt.Errorf("invalid ModifiedBlocks entry %d", i)
 			}
 		}
 	}
