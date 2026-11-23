@@ -812,6 +812,7 @@ func (c *Client) EnsureChunksAroundPlayer(playerX, playerZ float64, radius int32
 	}
 	pcx := int32(math.Floor(playerX / 16.0))
 	pcz := int32(math.Floor(playerZ / 16.0))
+	engine := c.engine
 
 	// Pass 0: Prune distant meshes and chunks beyond (radius + 2) to maintain strictly bounded memory (< 40MB)
 	c.meshMu.Lock()
@@ -828,6 +829,7 @@ func (c *Client) EnsureChunksAroundPlayer(playerX, playerZ float64, radius int32
 			delete(c.meshCache, key)
 		}
 	}
+	var distantChunks []world.ChunkPos
 	for cp := range c.loadedChunks {
 		diffX := cp.X - pcx
 		if diffX < 0 {
@@ -838,14 +840,19 @@ func (c *Client) EnsureChunksAroundPlayer(playerX, playerZ float64, radius int32
 			diffZ = -diffZ
 		}
 		if diffX > radius+2 || diffZ > radius+2 {
-			if err := c.engine.UnloadChunk(cp); err != nil {
-				log.Printf("[Client] Failed to save chunk %v while unloading; retaining it in memory: %v", cp, err)
-				continue
-			}
-			delete(c.loadedChunks, cp)
+			distantChunks = append(distantChunks, cp)
 		}
 	}
 	c.meshMu.Unlock()
+	for _, cp := range distantChunks {
+		if err := engine.UnloadChunk(cp); err != nil {
+			log.Printf("[Client] Failed to save chunk %v while unloading; retaining it in memory: %v", cp, err)
+			continue
+		}
+		c.meshMu.Lock()
+		delete(c.loadedChunks, cp)
+		c.meshMu.Unlock()
+	}
 
 	// Pass 1: Progressively generate missing chunks in radius+1 (up to 2 chunks per frame to eliminate main-thread stutter)
 	generatedCount := 0
@@ -856,14 +863,14 @@ func (c *Client) EnsureChunksAroundPlayer(playerX, playerZ float64, radius int32
 			alreadyLoaded := c.loadedChunks[cp]
 			c.meshMu.Unlock()
 			if !alreadyLoaded {
-				if existing := c.engine.GetChunk(cp); existing != nil {
+				if existing := engine.GetChunk(cp); existing != nil {
 					c.meshMu.Lock()
 					c.loadedChunks[cp] = true
 					c.meshMu.Unlock()
 					continue
 				}
 				chunk := generator.GenerateChunk(cp)
-				c.engine.LoadChunk(cp, chunk)
+				engine.LoadChunk(cp, chunk)
 				c.meshMu.Lock()
 				c.loadedChunks[cp] = true
 				c.meshMu.Unlock()
@@ -879,7 +886,7 @@ func (c *Client) EnsureChunksAroundPlayer(playerX, playerZ float64, radius int32
 	}
 
 	getBlock := func(x, y, z int32) int32 {
-		return c.engine.GetBlock(x, y, z)
+		return engine.GetBlock(x, y, z)
 	}
 
 	// Pass 2: Progressive section meshing (build at most 2 sections per frame)
