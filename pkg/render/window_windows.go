@@ -159,6 +159,7 @@ type BITMAPINFO struct {
 type Window struct {
 	Hwnd           uintptr
 	Hdc            uintptr
+	closeOnce      sync.Once
 	Width          int
 	Height         int
 	Closed         bool
@@ -592,7 +593,7 @@ func (w *Window) ToggleFullscreen() {
 }
 
 func (w *Window) Close() {
-	if !w.Closed {
+	w.closeOnce.Do(func() {
 		w.Closed = true
 		if w.MouseCaptured {
 			w.SetMouseCaptured(false)
@@ -605,6 +606,9 @@ func (w *Window) Close() {
 			procDestroyWindow.Call(w.Hwnd)
 			w.Hwnd = 0
 		}
+		if globalWnd == w {
+			globalWnd = nil
+		}
 		procPostQuitMessage.Call(0)
-	}
+	})
 }
