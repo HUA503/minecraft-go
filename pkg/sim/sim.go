@@ -184,11 +184,32 @@ func (e *Engine) GetWorldTime() int64 {
 	return e.WorldTime
 }
 
+// GetWorldClock returns the total tick count and the current day time atomically.
+func (e *Engine) GetWorldClock() (ticks, dayTime int64) {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return e.TickCount, e.WorldTime
+}
+
 // SetWorldTime sets the authoritative 24000-tick Minecraft world time.
 func (e *Engine) SetWorldTime(t int64) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.WorldTime = t % 24000
+	if e.WorldTime < 0 {
+		e.WorldTime += 24000
+	}
+}
+
+// SetWorldClock restores the total tick count and current day time from saved world metadata.
+func (e *Engine) SetWorldClock(ticks, dayTime int64) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if ticks < 0 {
+		ticks = 0
+	}
+	e.TickCount = ticks
+	e.WorldTime = dayTime % 24000
 	if e.WorldTime < 0 {
 		e.WorldTime += 24000
 	}

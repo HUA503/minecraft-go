@@ -358,6 +358,7 @@ func (c *Client) StartSingleplayerWorld(worldDirName string, isNew bool, newSeed
 		// Initial level.dat save
 		lvlData := &world.LevelData{
 			Seed:      seed,
+			DayTime:   c.engine.GetWorldTime(),
 			SpawnX:    int32(spawnPos.X),
 			SpawnY:    int32(spawnPos.Y),
 			SpawnZ:    int32(spawnPos.Z),
@@ -405,6 +406,12 @@ func (c *Client) StartSingleplayerWorld(worldDirName string, isNew bool, newSeed
 	} else {
 		lvlData, err := sm.LoadLevel()
 		if err == nil && lvlData != nil {
+			if lvlData.Time != 0 || lvlData.DayTime != 0 {
+				c.engine.SetWorldClock(lvlData.Time, lvlData.DayTime)
+			} else {
+				// Older saves omitted the clock fields; preserve the established noon default.
+				c.engine.SetWorldClock(0, 6000)
+			}
 			seed = lvlData.Seed
 			newGameMode = lvlData.GameMode
 			if lvlData.LevelName != "" {
@@ -549,8 +556,11 @@ func (c *Client) SaveAndQuitToTitle() {
 				sp := findSafeSpawnPoint(c.genOverworld, c.engine)
 				saveX, saveY, saveZ = sp.X, sp.Y, sp.Z
 			}
+			ticks, dayTime := c.engine.GetWorldClock()
 			lvl := &world.LevelData{
 				Seed:      seed,
+				Time:      ticks,
+				DayTime:   dayTime,
 				SpawnX:    int32(saveX),
 				SpawnY:    int32(saveY),
 				SpawnZ:    int32(saveZ),
