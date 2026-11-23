@@ -57,6 +57,8 @@ type chunkStreamKey struct {
 
 type ClientScreenState int
 
+var crashLogMu sync.Mutex
+
 const (
 	ScreenTitle ClientScreenState = iota
 	ScreenWorldSelect
@@ -4475,6 +4477,8 @@ func main() {
 }
 
 func writeCrashLog(contents string) {
+	crashLogMu.Lock()
+	defer crashLogMu.Unlock()
 	configDir, err := os.UserConfigDir()
 	if err != nil {
 		log.Printf("[Client] Could not locate user config directory for crash log: %v", err)
@@ -4486,8 +4490,20 @@ func writeCrashLog(contents string) {
 		return
 	}
 	logPath := filepath.Join(logDir, "crash.log")
-	if err := os.WriteFile(logPath, []byte(contents), 0644); err != nil {
+	file, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
 		log.Printf("[Client] Could not write crash log %q: %v", logPath, err)
+		return
+	}
+	_, writeErr := fmt.Fprintf(file, "\n===== %s =====\n%s\n", time.Now().Format(time.RFC3339Nano), contents)
+	closeErr := file.Close()
+	if writeErr != nil || closeErr != nil {
+		if writeErr != nil {
+			log.Printf("[Client] Could not append crash details to %q: %v", logPath, writeErr)
+		}
+		if closeErr != nil {
+			log.Printf("[Client] Could not close crash log %q: %v", logPath, closeErr)
+		}
 		return
 	}
 	log.Printf("[Client] Crash details saved to %s", logPath)
