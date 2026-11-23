@@ -1714,6 +1714,12 @@ func (c *Client) Connect() error {
 	if err != nil {
 		return fmt.Errorf("failed to connect to %s: %w", c.serverAddr, err)
 	}
+	connected := false
+	defer func() {
+		if !connected && c.conn != nil {
+			_ = c.conn.Close()
+		}
+	}()
 	if err := c.conn.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
 		_ = c.conn.Close()
 		return fmt.Errorf("set login deadline: %w", err)
@@ -1798,6 +1804,7 @@ func (c *Client) Connect() error {
 	c.networkSendStop = make(chan struct{})
 	go c.networkSendLoop()
 	go c.networkReceiveLoop()
+	connected = true
 
 	return nil
 }
