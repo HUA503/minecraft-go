@@ -401,6 +401,14 @@ func validSavedPlayerPosition(pos sim.Vec3) bool {
 		!math.IsNaN(pos.Z) && !math.IsInf(pos.Z, 0) && math.Abs(pos.Z) <= 29_999_984
 }
 
+func validRemotePlayerPosition(pos protocol.PlayerPositionPacket) bool {
+	return !math.IsNaN(pos.X) && !math.IsInf(pos.X, 0) && math.Abs(pos.X) <= world.WorldBorderLimit &&
+		!math.IsNaN(pos.Y) && !math.IsInf(pos.Y, 0) && pos.Y >= float64(world.MinWorldY-64) && pos.Y <= float64(world.MaxWorldY+64) &&
+		!math.IsNaN(pos.Z) && !math.IsInf(pos.Z, 0) && math.Abs(pos.Z) <= world.WorldBorderLimit &&
+		!math.IsNaN(float64(pos.Yaw)) && !math.IsInf(float64(pos.Yaw), 0) &&
+		!math.IsNaN(float64(pos.Pitch)) && !math.IsInf(float64(pos.Pitch), 0) && pos.Pitch >= -90 && pos.Pitch <= 90
+}
+
 func restoreSavedInventory(target *inventory.PlayerInventory, saved []world.SavedItemStack) {
 	if target == nil {
 		return
@@ -1618,16 +1626,28 @@ func (c *Client) networkReceiveLoop() {
 			}
 		case 0x1A: // PlayerPositionPacket
 			var pos protocol.PlayerPositionPacket
-			if err := pos.Decode(raw.Reader()); err == nil {
-				c.remoteMu.Lock()
-				c.lastRemotePos = sim.Vec3{X: pos.X, Y: pos.Y, Z: pos.Z}
-				c.remotePlayers["Remote"] = &RemotePlayer{
-					Pos:   c.lastRemotePos,
-					Yaw:   pos.Yaw,
-					Pitch: pos.Pitch,
+			if err := pos.Decode(raw.Reader()); err != nil {
+				log.Printf("[Client] Invalid remote player position packet: %v", err)
+				if c.conn != nil {
+					_ = c.conn.Close()
 				}
-				c.remoteMu.Unlock()
+				return
 			}
+			if !validRemotePlayerPosition(pos) {
+				log.Printf("[Client] Closing connection after invalid remote player position: %+v", pos)
+				if c.conn != nil {
+					_ = c.conn.Close()
+				}
+				return
+			}
+			c.remoteMu.Lock()
+			c.lastRemotePos = sim.Vec3{X: pos.X, Y: pos.Y, Z: pos.Z}
+			c.remotePlayers["Remote"] = &RemotePlayer{
+				Pos:   c.lastRemotePos,
+				Yaw:   pos.Yaw,
+				Pitch: pos.Pitch,
+			}
+			c.remoteMu.Unlock()
 		case 0x26: // KeepAlivePacket
 			var ka protocol.KeepAlivePacket
 			if err := ka.Decode(raw.Reader()); err == nil {
