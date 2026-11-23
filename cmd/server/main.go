@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/HUA503/minecraft-go/pkg/inventory"
 	"github.com/HUA503/minecraft-go/pkg/protocol"
@@ -292,7 +293,19 @@ func (sess *ClientSession) Send(pkt protocol.Packet) error {
 	if sess.closed {
 		return net.ErrClosed
 	}
-	return protocol.SendPacket(sess.conn, pkt)
+	if err := sess.conn.SetWriteDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		_ = sess.conn.Close()
+		return err
+	}
+	if err := protocol.SendPacket(sess.conn, pkt); err != nil {
+		_ = sess.conn.Close()
+		return err
+	}
+	if err := sess.conn.SetWriteDeadline(time.Time{}); err != nil {
+		_ = sess.conn.Close()
+		return err
+	}
+	return nil
 }
 
 func (sess *ClientSession) Close() {
