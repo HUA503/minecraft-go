@@ -42,6 +42,15 @@ type sectionMeshJob struct {
 	engine     *sim.Engine
 }
 
+type chunkStreamJob struct {
+	pos        world.ChunkPos
+	generation uint64
+	dimension  int
+	engine     *sim.Engine
+	generator  *gen.Generator
+	unload     bool
+}
+
 type ClientScreenState int
 
 const (
@@ -102,6 +111,10 @@ type Client struct {
 	meshJobsPending     map[[3]int32]sectionMeshJob
 	meshJobsWake        chan struct{}
 	meshWorkerOnce      sync.Once
+	streamJobsMu        sync.Mutex
+	streamJobsPending   map[world.ChunkPos]chunkStreamJob
+	streamJobsWake      chan struct{}
+	streamWorkerOnce    sync.Once
 	remoteMu            sync.RWMutex
 	remotePlayers       map[string]*RemotePlayer
 	lastRemotePos       sim.Vec3
@@ -173,7 +186,7 @@ func buildSectionMeshSafely(engine *sim.Engine, key [3]int32) (mesh *render.Mesh
 		}
 	}()
 	return render.BuildSectionMesh(func(x, y, z int32) int32 {
-		return engine.GetBlock(x, y, z)
+		return engine.GetBlockIfLoaded(x, y, z)
 	}, key[0]*16, key[1]*16, key[2]*16)
 }
 
@@ -731,29 +744,31 @@ func NewClient(serverAddr, username string, isSingleplayer bool, width, height i
 	rand.Read(u[:])
 
 	cli := &Client{
-		serverAddr:       serverAddr,
-		username:         username,
-		uuid:             u,
-		state:            protocol.StateHandshake,
-		framebuf:         render.NewFramebuffer(width, height),
-		camera:           render.NewCamera(8.0, 66.62, 8.0),
-		craftingMgr:      inventory.NewCraftingManager(),
-		isLocal:          isSingleplayer,
-		meshCache:        make(map[[3]int32]*render.Mesh),
-		meshRevisions:    make(map[[3]int32]uint64),
-		meshJobsPending:  make(map[[3]int32]sectionMeshJob),
-		meshJobsWake:     make(chan struct{}, 1),
-		loadedChunks:     make(map[world.ChunkPos]bool),
-		remotePlayers:    make(map[string]*RemotePlayer),
-		lastChunkX:       -999,
-		lastChunkZ:       -999,
-		currentEyeHeight: 1.62,
-		targetFov:        70.0,
-		equipProgress:    1.0,
-		lastSelectedSlot: 1,
-		screenState:      ScreenTitle,
-		newWorldName:     "新世界",
-		newWorldMode:     0,
+		serverAddr:        serverAddr,
+		username:          username,
+		uuid:              u,
+		state:             protocol.StateHandshake,
+		framebuf:          render.NewFramebuffer(width, height),
+		camera:            render.NewCamera(8.0, 66.62, 8.0),
+		craftingMgr:       inventory.NewCraftingManager(),
+		isLocal:           isSingleplayer,
+		meshCache:         make(map[[3]int32]*render.Mesh),
+		meshRevisions:     make(map[[3]int32]uint64),
+		meshJobsPending:   make(map[[3]int32]sectionMeshJob),
+		meshJobsWake:      make(chan struct{}, 1),
+		streamJobsPending: make(map[world.ChunkPos]chunkStreamJob),
+		streamJobsWake:    make(chan struct{}, 1),
+		loadedChunks:      make(map[world.ChunkPos]bool),
+		remotePlayers:     make(map[string]*RemotePlayer),
+		lastChunkX:        -999,
+		lastChunkZ:        -999,
+		currentEyeHeight:  1.62,
+		targetFov:         70.0,
+		equipProgress:     1.0,
+		lastSelectedSlot:  1,
+		screenState:       ScreenTitle,
+		newWorldName:      "新世界",
+		newWorldMode:      0,
 	}
 
 	if isSingleplayer && serverAddr == "" {
@@ -822,7 +837,140 @@ func (c *Client) SwitchDimension(dim gen.Dimension) {
 	c.EnsureChunksAroundPlayer(newPos.X, newPos.Z, 3)
 }
 
-// EnsureChunksAroundPlayer streams procedural world chunks and progressively meshes sections around the player.
+func (c *Client) chunkStreamPending(pos world.ChunkPos) bool {
+	c.streamJobsMu.Lock()
+	defer c.streamJobsMu.Unlock()
+	_, exists := c.streamJobsPending[pos]
+	return exists
+}
+
+func (c *Client) enqueueChunkStreamJobs(jobs []chunkStreamJob) {
+	if len(jobs) == 0 {
+		return
+	}
+	c.streamWorkerOnce.Do(func() { go c.chunkStreamLoop() })
+	c.streamJobsMu.Lock()
+	loadCount := 0
+	for _, pending := range c.streamJobsPending {
+		if !pending.unload {
+			loadCount++
+		}
+	}
+	for _, job := range jobs {
+		if existing, ok := c.streamJobsPending[job.pos]; !ok && !job.unload {
+			if loadCount >= 24 {
+				continue
+			}
+			loadCount++
+		} else if ok && existing.unload && !job.unload {
+			if loadCount >= 24 {
+				continue
+			}
+			loadCount++
+		} else if ok && !existing.unload && job.unload {
+			loadCount--
+		}
+		c.streamJobsPending[job.pos] = job
+	}
+	c.streamJobsMu.Unlock()
+	select {
+	case c.streamJobsWake <- struct{}{}:
+	default:
+	}
+}
+
+func (c *Client) chunkStreamLoop() {
+	for range c.streamJobsWake {
+		for {
+			c.streamJobsMu.Lock()
+			batch := make([]chunkStreamJob, 0, len(c.streamJobsPending))
+			for pos, job := range c.streamJobsPending {
+				batch = append(batch, job)
+				delete(c.streamJobsPending, pos)
+			}
+			c.streamJobsMu.Unlock()
+			if len(batch) == 0 {
+				break
+			}
+			sort.Slice(batch, func(i, j int) bool {
+				if batch[i].unload != batch[j].unload {
+					return !batch[i].unload
+				}
+				if batch[i].pos.X != batch[j].pos.X {
+					return batch[i].pos.X < batch[j].pos.X
+				}
+				return batch[i].pos.Z < batch[j].pos.Z
+			})
+			for _, job := range batch {
+				if job.engine == nil || !c.meshGenerationIs(job.generation) {
+					continue
+				}
+				if job.unload {
+					if err := job.engine.UnloadChunkInDimension(job.dimension, job.pos); err != nil {
+						log.Printf("[Client] Failed to save chunk %v while unloading; retaining it in memory: %v", job.pos, err)
+						continue
+					}
+					c.meshMu.Lock()
+					if c.meshGeneration == job.generation {
+						delete(c.loadedChunks, job.pos)
+						for sy := int32(world.MinSectionY); sy <= world.MaxSectionY; sy++ {
+							delete(c.meshCache, [3]int32{job.pos.X, sy, job.pos.Z})
+						}
+					}
+					c.meshMu.Unlock()
+					continue
+				}
+
+				chunk := job.engine.GetChunkInDimension(job.dimension, job.pos)
+				if chunk == nil {
+					if job.generator == nil {
+						continue
+					}
+					chunk = generateChunkSafely(job.generator, job.pos)
+					if !c.meshGenerationIs(job.generation) {
+						continue
+					}
+					job.engine.LoadGeneratedChunkInDimension(job.dimension, job.pos, chunk)
+				}
+				c.meshMu.Lock()
+				if c.meshGeneration == job.generation {
+					if c.loadedChunks == nil {
+						c.loadedChunks = make(map[world.ChunkPos]bool)
+					}
+					c.loadedChunks[job.pos] = true
+					for sy := int32(world.MinSectionY); sy <= world.MaxSectionY; sy++ {
+						key := [3]int32{job.pos.X, sy, job.pos.Z}
+						c.meshRevisions[key]++
+						delete(c.meshCache, key)
+						for _, neighbor := range [][3]int32{{job.pos.X - 1, sy, job.pos.Z}, {job.pos.X + 1, sy, job.pos.Z}, {job.pos.X, sy, job.pos.Z - 1}, {job.pos.X, sy, job.pos.Z + 1}} {
+							c.meshRevisions[neighbor]++
+							delete(c.meshCache, neighbor)
+						}
+					}
+				}
+				c.meshMu.Unlock()
+			}
+		}
+	}
+}
+
+func generateChunkSafely(generator *gen.Generator, pos world.ChunkPos) (chunk *world.Chunk) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			log.Printf("[Client] chunk generation failed for %v: %v\n%s", pos, recovered, debug.Stack())
+			chunk = world.NewChunk(pos)
+		}
+	}()
+	return generator.GenerateChunk(pos)
+}
+
+func (c *Client) meshGenerationIs(generation uint64) bool {
+	c.meshMu.RLock()
+	defer c.meshMu.RUnlock()
+	return c.meshGeneration == generation
+}
+
+// EnsureChunksAroundPlayer schedules world streaming and progressively meshes sections around the player.
 func (c *Client) EnsureChunksAroundPlayer(playerX, playerZ float64, radius int32) {
 	generator := c.getGenerator()
 	if generator == nil || c.engine == nil {
@@ -831,6 +979,7 @@ func (c *Client) EnsureChunksAroundPlayer(playerX, playerZ float64, radius int32
 	pcx := int32(math.Floor(playerX / 16.0))
 	pcz := int32(math.Floor(playerZ / 16.0))
 	engine := c.engine
+	dimension := engine.GetDimension()
 
 	// Pass 0: Prune distant meshes and chunks beyond (radius + 2) to maintain strictly bounded memory (< 40MB)
 	c.meshMu.Lock()
@@ -862,18 +1011,17 @@ func (c *Client) EnsureChunksAroundPlayer(playerX, playerZ float64, radius int32
 		}
 	}
 	c.meshMu.Unlock()
+	streamJobs := make([]chunkStreamJob, 0, len(distantChunks)+2)
+	c.meshMu.RLock()
+	generation := c.meshGeneration
+	c.meshMu.RUnlock()
 	for _, cp := range distantChunks {
-		if err := engine.UnloadChunk(cp); err != nil {
-			log.Printf("[Client] Failed to save chunk %v while unloading; retaining it in memory: %v", cp, err)
-			continue
-		}
-		c.meshMu.Lock()
-		delete(c.loadedChunks, cp)
-		c.meshMu.Unlock()
+		streamJobs = append(streamJobs, chunkStreamJob{pos: cp, generation: generation, dimension: dimension, engine: engine, unload: true})
 	}
 
-	// Pass 1: Progressively generate missing chunks in radius+1 (up to 2 chunks per frame to eliminate main-thread stutter)
-	generatedCount := 0
+	// Pass 1: Queue at most two missing chunks per call; disk reads, generation,
+	// and save-on-unload all run away from the window/event thread.
+	queuedCount := 0
 	for dx := -radius - 1; dx <= radius+1; dx++ {
 		for dz := -radius - 1; dz <= radius+1; dz++ {
 			cp := world.ChunkPos{X: pcx + dx, Z: pcz + dz}
@@ -881,27 +1029,21 @@ func (c *Client) EnsureChunksAroundPlayer(playerX, playerZ float64, radius int32
 			alreadyLoaded := c.loadedChunks[cp]
 			c.meshMu.Unlock()
 			if !alreadyLoaded {
-				if existing := engine.GetChunk(cp); existing != nil {
-					c.meshMu.Lock()
-					c.loadedChunks[cp] = true
-					c.meshMu.Unlock()
+				if c.chunkStreamPending(cp) {
 					continue
 				}
-				chunk := generator.GenerateChunk(cp)
-				engine.LoadChunk(cp, chunk)
-				c.meshMu.Lock()
-				c.loadedChunks[cp] = true
-				c.meshMu.Unlock()
-				generatedCount++
-				if generatedCount >= 2 {
+				streamJobs = append(streamJobs, chunkStreamJob{pos: cp, generation: generation, dimension: dimension, engine: engine, generator: generator})
+				queuedCount++
+				if queuedCount >= 2 {
 					break
 				}
 			}
 		}
-		if generatedCount >= 2 {
+		if queuedCount >= 2 {
 			break
 		}
 	}
+	c.enqueueChunkStreamJobs(streamJobs)
 
 	// Pass 2: Progressive section meshing (build at most 2 sections per frame)
 	// Prioritize sections closest to player camera (covering Y=-64 up to Y=256)

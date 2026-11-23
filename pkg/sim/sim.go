@@ -551,12 +551,60 @@ func (e *Engine) LoadChunk(cp world.ChunkPos, c *world.Chunk) {
 	e.World[cp] = c
 }
 
-func (e *Engine) GetChunk(cp world.ChunkPos) *world.Chunk {
+// LoadGeneratedChunk installs a chunk generated after the caller has already
+// checked persistent storage. It avoids a second synchronous disk lookup while
+// preserving a chunk another goroutine may have installed in the meantime.
+func (e *Engine) LoadGeneratedChunk(cp world.ChunkPos, c *world.Chunk) {
+	e.LoadGeneratedChunkInDimension(e.GetDimension(), cp, c)
+}
+
+func (e *Engine) LoadGeneratedChunkInDimension(dim int, cp world.ChunkPos, c *world.Chunk) {
+	if c == nil {
+		return
+	}
 	e.mu.Lock()
-	chunk, ok := e.World[cp]
-	if (!ok || chunk == nil) && e.Storage != nil {
-		if loaded, err := e.Storage.LoadChunk(cp); err == nil && loaded != nil {
-			e.World[cp] = loaded
+	defer e.mu.Unlock()
+	if dim < 0 || dim >= len(e.DimensionWorlds) {
+		return
+	}
+	chunks := e.DimensionWorlds[dim]
+	if chunks == nil {
+		chunks = make(map[world.ChunkPos]*world.Chunk)
+		e.DimensionWorlds[dim] = chunks
+	}
+	if existing := chunks[cp]; existing == nil {
+		chunks[cp] = c
+	} else if existing != c {
+		for pos, state := range existing.ModifiedBlocks {
+			c.SetBlock(pos.X, pos.Y, pos.Z, state)
+		}
+		chunks[cp] = c
+	}
+}
+
+func (e *Engine) GetChunk(cp world.ChunkPos) *world.Chunk {
+	return e.GetChunkInDimension(e.GetDimension(), cp)
+}
+
+func (e *Engine) GetChunkInDimension(dim int, cp world.ChunkPos) *world.Chunk {
+	e.mu.Lock()
+	if dim < 0 || dim >= len(e.DimensionWorlds) {
+		e.mu.Unlock()
+		return nil
+	}
+	chunks := e.DimensionWorlds[dim]
+	if chunks == nil {
+		chunks = make(map[world.ChunkPos]*world.Chunk)
+		e.DimensionWorlds[dim] = chunks
+	}
+	chunk, ok := chunks[cp]
+	storage := e.DimensionStorage[dim]
+	if storage == nil && dim == 0 {
+		storage = e.Storage
+	}
+	if (!ok || chunk == nil) && storage != nil {
+		if loaded, err := storage.LoadChunk(cp); err == nil && loaded != nil {
+			chunks[cp] = loaded
 			chunk = loaded
 			ok = true
 		}
@@ -588,6 +636,22 @@ func (e *Engine) GetBlock(x, y, z int32) int32 {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.getBlockLocked(x, y, z)
+}
+
+// GetBlockIfLoaded reads only the active in-memory world map. Rendering uses it
+// to avoid lazy disk I/O while building meshes for chunk boundaries.
+func (e *Engine) GetBlockIfLoaded(x, y, z int32) int32 {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	if !world.ValidBlockCoordinates(x, y, z) {
+		return 0
+	}
+	cp := world.BlockPos{X: x, Y: y, Z: z}.ToChunkPos()
+	chunk := e.World[cp]
+	if chunk == nil {
+		return 0
+	}
+	return chunk.GetBlock(x, y, z)
 }
 
 func (e *Engine) setBlockLocked(x, y, z int32, state int32) {
@@ -628,11 +692,19 @@ func (e *Engine) SetBlock(x, y, z int32, state int32) {
 
 // UnloadChunk purges a distant chunk from active simulation, saving it to disk if dirty.
 func (e *Engine) UnloadChunk(pos world.ChunkPos) error {
+	return e.UnloadChunkInDimension(e.GetDimension(), pos)
+}
+
+func (e *Engine) UnloadChunkInDimension(dim int, pos world.ChunkPos) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	if chunk, exists := e.World[pos]; exists {
-		storage := e.DimensionStorage[e.CurrentDimension]
-		if storage == nil && e.CurrentDimension == 0 {
+	if dim < 0 || dim >= len(e.DimensionWorlds) {
+		return nil
+	}
+	chunks := e.DimensionWorlds[dim]
+	if chunk, exists := chunks[pos]; exists {
+		storage := e.DimensionStorage[dim]
+		if storage == nil && dim == 0 {
 			storage = e.Storage
 		}
 		if chunk != nil && chunk.IsDirty {
@@ -643,7 +715,7 @@ func (e *Engine) UnloadChunk(pos world.ChunkPos) error {
 				return err
 			}
 		}
-		delete(e.World, pos)
+		delete(chunks, pos)
 	}
 	return nil
 }
