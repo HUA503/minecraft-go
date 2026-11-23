@@ -3927,7 +3927,7 @@ func main() {
 	}
 
 	log.Printf("==================================================")
-	log.Printf("   Minecraft-Go (Java 26.3 / Horizon Parity)     ")
+	log.Printf("   Minecraft-Go (experimental voxel sandbox)     ")
 	log.Printf("   Player: %s | Mode: %s                        ", *username, map[bool]string{true: "Singleplayer (Embedded)", false: "Multiplayer"}[isSP])
 	log.Printf("==================================================")
 
@@ -3973,7 +3973,7 @@ func runGraphicalWindow(c *Client, w, h int) {
 		}
 	}()
 
-	title := fmt.Sprintf("Minecraft-Go [Java 26.3 Parity] - %s", c.username)
+	title := fmt.Sprintf("Minecraft-Go - %s", c.username)
 	wnd, err := render.NewNativeWindow(title, w, h)
 	if err != nil {
 		log.Printf("[Client] Failed to open native graphical window: %v. Falling back to CLI.", err)

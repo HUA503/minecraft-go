@@ -2,17 +2,15 @@
 
 [![Go Version](https://img.shields.io/badge/go-1.27+-00ADD8?style=flat&logo=go)](https://golang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Parity Target](https://img.shields.io/badge/Minecraft-Java%2026.3%20Parity-brightgreen)](https://www.minecraft.net/en-us/article/minecraft-java-edition-26-3)
-[![Reference: Horizon](https://img.shields.io/badge/Reference-Horizon%20(Rust)-orange)](https://playhorizon.dev)
 
-A clean-room, high-performance implementation of **Minecraft: Java Edition (Release 26.3)** written entirely in **Go**, featuring both an authoritative dedicated server (`cmd/server`) and client (`cmd/client`) targeting gameplay and protocol parity with Minecraft Java Edition and the Horizon engine.
+A Go-based voxel sandbox prototype with a software-rendered client (`cmd/client`) and an authoritative dedicated server (`cmd/server`). It implements a subset of Minecraft-like world, inventory, simulation, and networking systems. It is experimental and is not feature-complete or protocol-compatible with Minecraft Java Edition or Horizon.
 
 ---
 
 ## 🌟 核心特性 (Key Features)
 
-- **Pure Go & 零 CGO 编译约束**: 可以在任意标准 Go 环境（Windows / Linux / macOS）直接 `go build` 和 `go test`。
-- **Java 26.3 现代协议支持**:
+- **Pure Go 实现**: 客户端图形窗口使用 Windows 原生 API；当前客户端窗口仅支持 Windows。
+- **实验性网络协议实现**:
   - 完整协议状态机：`Handshake` -> `Status` / `Login` -> `Configuration` -> `Play`
   - 7-bit LEB128 VarInt / VarLong 高性能编解码
   - 动态包解析分发与 Keep-Alive 保活机制
