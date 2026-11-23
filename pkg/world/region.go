@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"reflect"
 	"sort"
 	"sync"
@@ -63,6 +64,10 @@ func OpenRegion(path string) (*Region, error) {
 		if err := file.Sync(); err != nil {
 			file.Close()
 			return nil, err
+		}
+		if err := syncDirectory(filepath.Dir(path)); err != nil {
+			file.Close()
+			return nil, fmt.Errorf("sync region directory: %w", err)
 		}
 	} else if info.Size() < 8192 {
 		file.Close()
