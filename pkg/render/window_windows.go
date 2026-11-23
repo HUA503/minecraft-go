@@ -160,6 +160,7 @@ type Window struct {
 	Hwnd          uintptr
 	Hdc           uintptr
 	closeOnce     sync.Once
+	threadLocked  bool
 	Width         int
 	Height        int
 	Closed        bool
@@ -314,7 +315,28 @@ func wndProc(hwnd, msg, wparam, lparam uintptr) (result uintptr) {
 
 // NewNativeWindow creates a real graphical desktop window.
 func NewNativeWindow(title string, width, height int) (*Window, error) {
-	runtime.LockOSThread()                   // Pin goroutine to native OS thread for reliable Win32 message pumping
+	runtime.LockOSThread() // Pin goroutine to native OS thread for reliable Win32 message pumping
+	threadLockOwned := true
+	var createdHwnd, createdHdc uintptr
+	var wnd *Window
+	handedOff := false
+	defer func() {
+		if handedOff {
+			return
+		}
+		if createdHdc != 0 && createdHwnd != 0 {
+			procReleaseDC.Call(createdHwnd, createdHdc)
+		}
+		if createdHwnd != 0 {
+			procDestroyWindow.Call(createdHwnd)
+		}
+		if globalWnd == wnd {
+			globalWnd = nil
+		}
+		if threadLockOwned {
+			runtime.UnlockOSThread()
+		}
+	}()
 	procSetProcessDPIAware.Call()            // Enable 1:1 hardware pixel scaling
 	procDisableProcessWindowsGhosting.Call() // Prevent Windows from falsely marking application as "Not Responding"
 
@@ -346,13 +368,15 @@ func NewNativeWindow(title string, width, height int) (*Window, error) {
 	if hwnd == 0 {
 		return nil, fmt.Errorf("failed to create Win32 native window")
 	}
+	createdHwnd = hwnd
 
 	procShowWindow.Call(hwnd, SW_SHOW)
 	procUpdateWindow.Call(hwnd)
 
 	hdc, _, _ := procGetDC.Call(hwnd)
+	createdHdc = hdc
 
-	wnd := &Window{
+	wnd = &Window{
 		Hwnd:   hwnd,
 		Hdc:    hdc,
 		Width:  width,
@@ -372,6 +396,9 @@ func NewNativeWindow(title string, width, height int) (*Window, error) {
 
 	// Auto capture mouse by default for true FPS gaming
 	wnd.SetMouseCaptured(true)
+	wnd.threadLocked = true
+	threadLockOwned = false
+	handedOff = true
 
 	return wnd, nil
 }
@@ -652,6 +679,10 @@ func (w *Window) Close() {
 			globalWnd = nil
 		}
 		procPostQuitMessage.Call(0)
+		if w.threadLocked {
+			w.threadLocked = false
+			runtime.UnlockOSThread()
+		}
 	})
 }
 
