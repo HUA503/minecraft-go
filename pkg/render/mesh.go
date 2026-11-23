@@ -101,8 +101,12 @@ func BuildSectionMesh(getBlock func(x, y, z int32) int32, originX, originY, orig
 				if blockID == 0 {
 					continue // Air: no mesh
 				}
+				if blockID == 65 {
+					addLadderQuad(mesh, originX+x, originY+y, originZ+z, getBlock)
+					continue
+				}
 
-				// Special crossed diagonal quads for foliage & torches
+				// Special crossed diagonal quads for foliage and the torch sprite.
 				if IsFoliage(blockID) {
 					addCrossedQuads(mesh, originX+x, originY+y, originZ+z, blockID)
 					continue
@@ -112,7 +116,7 @@ func BuildSectionMesh(getBlock func(x, y, z int32) int32, originX, originY, orig
 				for face := 0; face < 6; face++ {
 					off := NeighborOffsets[face]
 					neighborID := getBlock(originX+x+off[0], originY+y+off[1], originZ+z+off[2])
-					
+
 					// If neighbor is an opaque full cube, this face is hidden
 					if IsOpaqueCube(neighborID) {
 						continue
@@ -353,5 +357,44 @@ func addCrossedQuads(mesh *Mesh, x, y, z int32, blockID int32) {
 		baseIdx+4, baseIdx+6, baseIdx+7,
 		baseIdx+6, baseIdx+5, baseIdx+4,
 		baseIdx+7, baseIdx+6, baseIdx+4,
+	)
+}
+
+func addLadderQuad(mesh *Mesh, x, y, z int32, getBlock func(x, y, z int32) int32) {
+	fx, fy, fz := float32(x), float32(y), float32(z)
+	const inset = float32(0.02)
+	var vertices [4][3]float32
+	switch {
+	case IsOpaqueCube(getBlock(x+1, y, z)):
+		planeX := fx + 1 - inset
+		vertices = [4][3]float32{{planeX, fy, fz}, {planeX, fy + 1, fz}, {planeX, fy + 1, fz + 1}, {planeX, fy, fz + 1}}
+	case IsOpaqueCube(getBlock(x-1, y, z)):
+		planeX := fx + inset
+		vertices = [4][3]float32{{planeX, fy, fz + 1}, {planeX, fy + 1, fz + 1}, {planeX, fy + 1, fz}, {planeX, fy, fz}}
+	case IsOpaqueCube(getBlock(x, y, z+1)):
+		planeZ := fz + 1 - inset
+		vertices = [4][3]float32{{fx + 1, fy, planeZ}, {fx + 1, fy + 1, planeZ}, {fx, fy + 1, planeZ}, {fx, fy, planeZ}}
+	case IsOpaqueCube(getBlock(x, y, z-1)):
+		planeZ := fz + inset
+		vertices = [4][3]float32{{fx, fy, planeZ}, {fx, fy + 1, planeZ}, {fx + 1, fy + 1, planeZ}, {fx + 1, fy, planeZ}}
+	default:
+		// Keep unsupported/floating ladder blocks visible with a stable default orientation.
+		planeZ := fz + inset
+		vertices = [4][3]float32{{fx, fy, planeZ}, {fx, fy + 1, planeZ}, {fx + 1, fy + 1, planeZ}, {fx + 1, fy, planeZ}}
+	}
+
+	base := uint32(len(mesh.Vertices))
+	uv := [4][2]float32{{0, 1}, {0, 0}, {1, 0}, {1, 1}}
+	for i, vertex := range vertices {
+		mesh.Vertices = append(mesh.Vertices, Vertex{
+			X: vertex[0], Y: vertex[1], Z: vertex[2], U: uv[i][0], V: uv[i][1],
+			BlockID: 65, FaceIndex: 6, LightingMult: 0.9,
+		})
+	}
+	mesh.Indices = append(mesh.Indices,
+		base, base+1, base+2,
+		base, base+2, base+3,
+		base+2, base+1, base,
+		base+3, base+2, base,
 	)
 }
