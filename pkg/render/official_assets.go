@@ -3,6 +3,7 @@ package render
 import (
 	"bytes"
 	"embed"
+	"fmt"
 	"image"
 	_ "image/png"
 	"io"
@@ -12,6 +13,11 @@ import (
 	"sync"
 
 	"github.com/HUA503/minecraft-go/pkg/inventory"
+)
+
+const (
+	maxTextureEncodedBytes = 16 << 20
+	maxTexturePixels       = 4 * 1024 * 1024
 )
 
 //go:embed assets/textures/item/*.png assets/textures/block/*.png assets/textures/gui/sprites/hud/*.png assets/textures/gui/sprites/hud/heart/*.png assets/textures/entity/*/*.png
@@ -34,7 +40,7 @@ type RawImage struct {
 
 // Sample returns the pixel color at normalized UV coordinates [0.0, 1.0].
 func (img *RawImage) Sample(u, v float32) uint32 {
-	if img == nil || img.Width == 0 || img.Height == 0 || len(img.Pixels) == 0 {
+	if img == nil || img.Width <= 0 || img.Height <= 0 || img.Height > len(img.Pixels)/img.Width {
 		return 0
 	}
 	if u < 0 {
@@ -65,9 +71,56 @@ func (img *RawImage) SampleUVRect(u0, v0, u1, v1 float32, subU, subV float32) ui
 	return img.Sample(u, v)
 }
 
+func decodeBoundedImage(r io.Reader) (image.Image, error) {
+	data, err := io.ReadAll(io.LimitReader(r, maxTextureEncodedBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > maxTextureEncodedBytes {
+		return nil, fmt.Errorf("texture file exceeds %d bytes", maxTextureEncodedBytes)
+	}
+	config, _, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	if config.Width <= 0 || config.Height <= 0 || config.Width > maxTexturePixels/config.Height {
+		return nil, fmt.Errorf("texture dimensions %dx%d exceed supported limit", config.Width, config.Height)
+	}
+	decoded, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	bounds := decoded.Bounds()
+	if bounds.Dx() <= 0 || bounds.Dy() <= 0 || bounds.Dx() > maxTexturePixels/bounds.Dy() {
+		return nil, fmt.Errorf("decoded texture dimensions %dx%d exceed supported limit", bounds.Dx(), bounds.Dy())
+	}
+	return decoded, nil
+}
+
+func readTextureFile(path string) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	if info, err := f.Stat(); err != nil {
+		return nil, err
+	} else if info.Size() > maxTextureEncodedBytes {
+		return nil, fmt.Errorf("texture file exceeds %d bytes", maxTextureEncodedBytes)
+	}
+	data, err := io.ReadAll(io.LimitReader(f, maxTextureEncodedBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > maxTextureEncodedBytes {
+		return nil, fmt.Errorf("texture file exceeds %d bytes", maxTextureEncodedBytes)
+	}
+	return data, nil
+}
+
 // LoadRawImage decodes any PNG image into a RawImage.
 func LoadRawImage(r io.Reader) (*RawImage, error) {
-	img, _, err := image.Decode(r)
+	img, err := decodeBoundedImage(r)
 	if err != nil {
 		return nil, err
 	}
@@ -139,7 +192,7 @@ func readSingleAssetCandidate(relPath string) ([]byte, error) {
 		filepath.Join("..", "..", "pkg", "render", "assets", "textures", normPath),
 	}
 	for _, p := range candidates {
-		if data, err := os.ReadFile(p); err == nil && len(data) > 0 {
+		if data, err := readTextureFile(p); err == nil && len(data) > 0 {
 			return data, nil
 		}
 	}
@@ -175,7 +228,7 @@ func GetOfficialImage(relPath string) (*RawImage, bool) {
 // LoadPNG16x16 decodes a 16x16 PNG image from an io.Reader into a [16][16]uint32 RGBA pixel buffer.
 func LoadPNG16x16(r io.Reader) ([16][16]uint32, error) {
 	var s [16][16]uint32
-	img, _, err := image.Decode(r)
+	img, err := decodeBoundedImage(r)
 	if err != nil {
 		return s, err
 	}
@@ -215,7 +268,7 @@ func ReadOfficialTextureBytes(category, name string) ([]byte, error) {
 		filepath.Join("..", "..", "assets", "minecraft", "textures", category, name),
 	}
 	for _, p := range candidates {
-		if data, err := os.ReadFile(p); err == nil && len(data) > 0 {
+		if data, err := readTextureFile(p); err == nil && len(data) > 0 {
 			return data, nil
 		}
 	}
