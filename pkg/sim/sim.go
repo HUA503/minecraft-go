@@ -1,6 +1,7 @@
 package sim
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"math"
@@ -569,18 +570,36 @@ func (e *Engine) CloseStorage() error {
 }
 
 func (e *Engine) LoadChunk(cp world.ChunkPos, c *world.Chunk) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if existing, ok := e.World[cp]; ok && existing != nil {
+	e.LoadChunkInDimension(e.GetDimension(), cp, c)
+}
+
+// LoadChunkInDimension loads persistent data when present and installs the
+// supplied fallback only when the region slot is genuinely empty.
+func (e *Engine) LoadChunkInDimension(dim int, cp world.ChunkPos, c *world.Chunk) {
+	if c == nil {
 		return
 	}
-	if e.Storage != nil {
-		if loaded, err := e.Storage.LoadChunk(cp); err == nil && loaded != nil {
-			e.World[cp] = loaded
-			return
-		}
+	loaded, err := e.GetChunkInDimensionWithError(dim, cp)
+	if err != nil {
+		log.Printf("[World] Refusing to replace unreadable chunk %v in dimension %d: %v", cp, dim, err)
+		return
 	}
-	e.World[cp] = c
+	if loaded != nil {
+		return
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if dim < 0 || dim >= len(e.DimensionWorlds) {
+		return
+	}
+	chunks := e.DimensionWorlds[dim]
+	if chunks == nil {
+		chunks = make(map[world.ChunkPos]*world.Chunk)
+		e.DimensionWorlds[dim] = chunks
+	}
+	if chunks[cp] == nil {
+		chunks[cp] = c
+	}
 }
 
 // LoadGeneratedChunk installs a chunk generated after the caller has already
@@ -619,10 +638,17 @@ func (e *Engine) GetChunk(cp world.ChunkPos) *world.Chunk {
 }
 
 func (e *Engine) GetChunkInDimension(dim int, cp world.ChunkPos) *world.Chunk {
+	chunk, _ := e.GetChunkInDimensionWithError(dim, cp)
+	return chunk
+}
+
+// GetChunkInDimensionWithError distinguishes an absent region slot from an
+// unreadable chunk, so callers never mistake corruption for fresh terrain.
+func (e *Engine) GetChunkInDimensionWithError(dim int, cp world.ChunkPos) (*world.Chunk, error) {
 	e.mu.RLock()
 	if dim < 0 || dim >= len(e.DimensionWorlds) {
 		e.mu.RUnlock()
-		return nil
+		return nil, nil
 	}
 	chunks := e.DimensionWorlds[dim]
 	var chunk *world.Chunk
@@ -635,14 +661,20 @@ func (e *Engine) GetChunkInDimension(dim int, cp world.ChunkPos) *world.Chunk {
 	}
 	e.mu.RUnlock()
 	if chunk != nil || storage == nil {
-		return chunk
+		return chunk, nil
 	}
 
 	// Region-file reads can be slow. Never hold the global simulation lock while
 	// doing disk I/O; install the loaded chunk only after rechecking the map.
 	loaded, err := storage.LoadChunk(cp)
-	if err != nil || loaded == nil {
-		return nil
+	if errors.Is(err, world.ErrChunkNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if loaded == nil {
+		return nil, nil
 	}
 	e.mu.Lock()
 	if dim >= 0 && dim < len(e.DimensionWorlds) {
@@ -659,7 +691,7 @@ func (e *Engine) GetChunkInDimension(dim int, cp world.ChunkPos) *world.Chunk {
 		}
 	}
 	e.mu.Unlock()
-	return chunk
+	return chunk, nil
 }
 
 func (e *Engine) getBlockLocked(x, y, z int32) int32 {

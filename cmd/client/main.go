@@ -55,6 +55,11 @@ type chunkStreamKey struct {
 	pos       world.ChunkPos
 }
 
+type chunkStreamFailure struct {
+	generation uint64
+	retryAfter time.Time
+}
+
 type ClientScreenState int
 
 var crashLogMu sync.Mutex
@@ -123,6 +128,7 @@ type Client struct {
 	streamJobsMu        sync.Mutex
 	streamJobsPending   map[chunkStreamKey]chunkStreamJob
 	streamJobsRunning   map[chunkStreamKey]chunkStreamJob
+	streamJobsFailed    map[chunkStreamKey]chunkStreamFailure
 	streamJobsWake      chan struct{}
 	streamJobsIdle      chan struct{}
 	streamJobsActive    int
@@ -228,7 +234,11 @@ func findSafeSpawnPoint(generator *gen.Generator, engine *sim.Engine) sim.Vec3 {
 				}
 				cp := world.ChunkPos{X: dx, Z: dz}
 				dimension := int(generator.Dimension)
-				chunk := engine.GetChunkInDimension(dimension, cp)
+				chunk, err := engine.GetChunkInDimensionWithError(dimension, cp)
+				if err != nil {
+					log.Printf("[Client] Skipping unreadable spawn chunk %v in dimension %d: %v", cp, dimension, err)
+					continue
+				}
 				if chunk == nil {
 					chunk = generator.GenerateChunk(cp)
 					engine.LoadGeneratedChunkInDimension(dimension, cp, chunk)
@@ -543,7 +553,11 @@ func (c *Client) StartSingleplayerWorld(worldDirName string, isNew bool, newSeed
 			wx := int32(math.Floor(mx))
 			wz := int32(math.Floor(mz))
 			cp := world.BlockPos{X: wx, Y: 0, Z: wz}.ToChunkPos()
-			chk := c.engine.GetChunk(cp)
+			chk, loadErr := c.engine.GetChunkInDimensionWithError(int(gen.DimensionOverworld), cp)
+			if loadErr != nil {
+				log.Printf("[Client] Skipping mob spawn near unreadable chunk %v: %v", cp, loadErr)
+				return
+			}
 			if chk == nil {
 				chk = c.genOverworld.GenerateChunk(cp)
 				c.engine.LoadGeneratedChunkInDimension(int(gen.DimensionOverworld), cp, chk)
@@ -936,6 +950,12 @@ func (c *Client) chunkStreamPending(pos world.ChunkPos, dimension int, generatio
 	c.streamJobsMu.Lock()
 	defer c.streamJobsMu.Unlock()
 	key := chunkStreamKey{dimension: dimension, pos: pos}
+	if failure, exists := c.streamJobsFailed[key]; exists {
+		if failure.generation == generation && time.Now().Before(failure.retryAfter) {
+			return true
+		}
+		delete(c.streamJobsFailed, key)
+	}
 	if job, exists := c.streamJobsPending[key]; exists && job.generation == generation {
 		return true
 	}
@@ -1062,7 +1082,20 @@ func (c *Client) processChunkStreamJob(job chunkStreamJob) {
 		return
 	}
 
-	chunk := job.engine.GetChunkInDimension(job.dimension, job.pos)
+	chunk, loadErr := job.engine.GetChunkInDimensionWithError(job.dimension, job.pos)
+	if loadErr != nil {
+		c.streamJobsMu.Lock()
+		if c.streamJobsFailed == nil {
+			c.streamJobsFailed = make(map[chunkStreamKey]chunkStreamFailure)
+		}
+		c.streamJobsFailed[chunkStreamKey{dimension: job.dimension, pos: job.pos}] = chunkStreamFailure{
+			generation: job.generation,
+			retryAfter: time.Now().Add(30 * time.Second),
+		}
+		c.streamJobsMu.Unlock()
+		log.Printf("[Client] Refusing to regenerate unreadable chunk %v in dimension %d: %v", job.pos, job.dimension, loadErr)
+		return
+	}
 	if !c.meshGenerationIs(job.generation) {
 		if job.engine.GetDimension() != job.dimension {
 			if err := job.engine.UnloadChunkInDimension(job.dimension, job.pos); err != nil {
@@ -1081,6 +1114,9 @@ func (c *Client) processChunkStreamJob(job chunkStreamJob) {
 		}
 		job.engine.LoadGeneratedChunkInDimension(job.dimension, job.pos, chunk)
 	}
+	c.streamJobsMu.Lock()
+	delete(c.streamJobsFailed, chunkStreamKey{dimension: job.dimension, pos: job.pos})
+	c.streamJobsMu.Unlock()
 	c.meshMu.Lock()
 	if c.meshGeneration == job.generation && job.engine.GetDimension() == job.dimension {
 		if c.loadedChunks == nil {
@@ -1434,6 +1470,9 @@ func (c *Client) resetMeshCache(resetLoadedChunks bool) {
 		c.loadedChunks = make(map[world.ChunkPos]bool)
 	}
 	c.meshMu.Unlock()
+	c.streamJobsMu.Lock()
+	clear(c.streamJobsFailed)
+	c.streamJobsMu.Unlock()
 }
 
 func (c *Client) RebuildMeshes() {

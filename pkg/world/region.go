@@ -23,6 +23,11 @@ const (
 	CompressionNone = 3
 )
 
+// ErrChunkNotFound means a valid region file has no allocated payload for the
+// requested chunk. Callers may generate a new chunk only for this condition;
+// other read errors can indicate damaged data that must be preserved.
+var ErrChunkNotFound = errors.New("chunk not generated in region")
+
 // Region represents an Anvil MCA region file reader and writer.
 type Region struct {
 	file *os.File
@@ -166,7 +171,7 @@ func (r *Region) ReadChunkData(chunkX, chunkZ int32) (*nbt.CompoundTag, error) {
 	sectorCount := int(locBuf[3])
 
 	if offset == 0 && sectorCount == 0 {
-		return nil, errors.New("chunk not generated in region")
+		return nil, ErrChunkNotFound
 	}
 	if offset < 2 || sectorCount == 0 {
 		return nil, fmt.Errorf("corrupt chunk location: offset %d, sector count %d", offset, sectorCount)
