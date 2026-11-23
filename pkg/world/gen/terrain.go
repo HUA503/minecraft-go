@@ -121,6 +121,11 @@ func (g *Generator) GenerateChunk(cp world.ChunkPos) *world.Chunk {
 		g.generateEnd(c, cp)
 	}
 
+	// Generated terrain is the chunk baseline, not a player edit. Retaining every
+	// generated coordinate in ModifiedBlocks duplicates the palette data in RAM
+	// and again in the custom NBT tag on disk.
+	c.ModifiedBlocks = nil
+	c.IsDirty = false
 	return c
 }
 
