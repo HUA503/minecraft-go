@@ -68,6 +68,29 @@ func chunkIndex(chunkX, chunkZ int32) int {
 	return int((rx & 31) + (rz&31)*32)
 }
 
+func (r *Region) chunkRangeOverlaps(index, offset, sectors int) (bool, error) {
+	locations := make([]byte, 4096)
+	if _, err := r.file.ReadAt(locations, 0); err != nil {
+		return false, err
+	}
+	end := offset + sectors
+	for other := 0; other < ChunksPerRegion; other++ {
+		if other == index {
+			continue
+		}
+		base := other * 4
+		otherOffset := (int(locations[base]) << 16) | (int(locations[base+1]) << 8) | int(locations[base+2])
+		otherSectors := int(locations[base+3])
+		if otherOffset < 2 || otherSectors == 0 {
+			continue
+		}
+		if offset < otherOffset+otherSectors && otherOffset < end {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // ReadChunkData reads raw uncompressed NBT bytes of a chunk at (chunkX, chunkZ).
 func (r *Region) ReadChunkData(chunkX, chunkZ int32) (*nbt.CompoundTag, error) {
 	r.mu.Lock()
@@ -97,6 +120,13 @@ func (r *Region) ReadChunkData(chunkX, chunkZ int32) (*nbt.CompoundTag, error) {
 	allocatedBytes := int64(sectorCount * SectorSize)
 	if byteOffset+allocatedBytes > info.Size() {
 		return nil, fmt.Errorf("corrupt chunk location: sectors [%d, %d) exceed region size %d", offset, offset+int64(sectorCount), info.Size())
+	}
+	overlap, err := r.chunkRangeOverlaps(idx, int(offset), sectorCount)
+	if err != nil {
+		return nil, err
+	}
+	if overlap {
+		return nil, fmt.Errorf("corrupt chunk location: sectors [%d, %d) overlap another chunk", offset, offset+int64(sectorCount))
 	}
 	var length uint32
 	if err := binary.Read(io.NewSectionReader(r.file, byteOffset, 4), binary.BigEndian, &length); err != nil {
@@ -180,6 +210,13 @@ func (r *Region) WriteChunkData(chunkX, chunkZ int32, chunkNBT *nbt.CompoundTag)
 	}
 	existingRangeValid := existingOffset >= 2 && existingSectors >= sectorsNeeded &&
 		int64(existingOffset+existingSectors)*SectorSize <= info.Size()
+	if existingRangeValid {
+		overlap, err := r.chunkRangeOverlaps(idx, existingOffset, existingSectors)
+		if err != nil {
+			return err
+		}
+		existingRangeValid = !overlap
+	}
 
 	var sectorOffset int
 	var allocSectors int
