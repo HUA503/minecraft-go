@@ -1549,10 +1549,10 @@ func (c *Client) checkWaterState() (inWater bool, atSurface bool) {
 	belowY := int32(math.Floor(py - 0.2))
 	headY := int32(math.Floor(py + 1.6))
 
-	bFeet := c.engine.GetBlock(bx, feetY, bz)
-	bTorso := c.engine.GetBlock(bx, torsoY, bz)
-	bBelow := c.engine.GetBlock(bx, belowY, bz)
-	bHead := c.engine.GetBlock(bx, headY, bz)
+	bFeet := c.engine.GetBlockIfLoaded(bx, feetY, bz)
+	bTorso := c.engine.GetBlockIfLoaded(bx, torsoY, bz)
+	bBelow := c.engine.GetBlockIfLoaded(bx, belowY, bz)
+	bHead := c.engine.GetBlockIfLoaded(bx, headY, bz)
 
 	waterFeet := isWater(bFeet)
 	waterTorso := isWater(bTorso)
@@ -1562,7 +1562,7 @@ func (c *Client) checkWaterState() (inWater bool, atSurface bool) {
 	cornerWater := false
 	for _, dx := range []float64{-0.25, 0.25} {
 		for _, dz := range []float64{-0.25, 0.25} {
-			cb := c.engine.GetBlock(int32(math.Floor(px+dx)), feetY, int32(math.Floor(pz+dz)))
+			cb := c.engine.GetBlockIfLoaded(int32(math.Floor(px+dx)), feetY, int32(math.Floor(pz+dz)))
 			if isWater(cb) {
 				cornerWater = true
 				break
@@ -1620,7 +1620,7 @@ func (c *Client) PhysicsStep(fwdInput, strafeInput float64, jumpRequested bool, 
 		bx := int32(math.Floor(c.player.Position.X))
 		by := int32(math.Floor(c.player.Position.Y))
 		bz := int32(math.Floor(c.player.Position.Z))
-		onLadder = c.engine.GetBlock(bx, by, bz) == 65 || c.engine.GetBlock(bx, by+1, bz) == 65
+		onLadder = c.engine.GetBlockIfLoaded(bx, by, bz) == 65 || c.engine.GetBlockIfLoaded(bx, by+1, bz) == 65
 	}
 
 	// 1. Water Detection & Aquatic Physics vs Air Gravity
@@ -1724,7 +1724,7 @@ func (c *Client) PhysicsStep(fwdInput, strafeInput float64, jumpRequested bool, 
 			maxBZ := int32(math.Floor(pz + 0.25))
 			for bx := minBX; bx <= maxBX; bx++ {
 				for bz := minBZ; bz <= maxBZ; bz++ {
-					if c.engine.GetBlock(bx, feetY, bz) != 0 {
+					if c.engine.GetBlockIfLoaded(bx, feetY, bz) != 0 {
 						return true
 					}
 				}
@@ -1773,7 +1773,7 @@ func (c *Client) PhysicsStep(fwdInput, strafeInput float64, jumpRequested bool, 
 			bx := int32(math.Floor(resolvedPos.X))
 			by := int32(math.Floor(resolvedPos.Y - 0.2))
 			bz := int32(math.Floor(resolvedPos.Z))
-			underBlock := c.engine.GetBlock(bx, by, bz)
+			underBlock := c.engine.GetBlockIfLoaded(bx, by, bz)
 			switch underBlock {
 			case 1, 4: // Stone, Cobblestone
 				sound.PlayHardwareFeedback(sound.SoundBlockStoneStep)
@@ -1819,7 +1819,7 @@ func (c *Client) PhysicsStep(fwdInput, strafeInput float64, jumpRequested bool, 
 	case 1: // Third-person back: 3.5 blocks behind with obstacle raycast clipping
 		camDist := 3.5
 		ray := sim.Raycast(sim.Vec3{X: eyeX, Y: eyeY, Z: eyeZ}, sim.Vec3{X: -lx, Y: -ly, Z: -lz}, 3.5, func(x, y, z int32) bool {
-			return sim.IsSolidBlock(c.engine.GetBlock(x, y, z))
+			return sim.IsSolidBlock(c.engine.GetBlockIfLoaded(x, y, z))
 		})
 		if ray.Hit {
 			camDist = math.Max(0.25, ray.Distance-0.25)
@@ -1830,7 +1830,7 @@ func (c *Client) PhysicsStep(fwdInput, strafeInput float64, jumpRequested bool, 
 	case 2: // Third-person front: 3.5 blocks in front with obstacle raycast clipping
 		camDist := 3.5
 		ray := sim.Raycast(sim.Vec3{X: eyeX, Y: eyeY, Z: eyeZ}, sim.Vec3{X: lx, Y: ly, Z: lz}, 3.5, func(x, y, z int32) bool {
-			return sim.IsSolidBlock(c.engine.GetBlock(x, y, z))
+			return sim.IsSolidBlock(c.engine.GetBlockIfLoaded(x, y, z))
 		})
 		if ray.Hit {
 			camDist = math.Max(0.25, ray.Distance-0.25)
@@ -1859,8 +1859,8 @@ func (c *Client) PhysicsStep(fwdInput, strafeInput float64, jumpRequested bool, 
 		bx := int32(math.Floor(resolvedPos.X))
 		by := int32(math.Floor(resolvedPos.Y))
 		bz := int32(math.Floor(resolvedPos.Z))
-		curBlock := c.engine.GetBlock(bx, by, bz)
-		headBlock := c.engine.GetBlock(bx, by+1, bz)
+		curBlock := c.engine.GetBlockIfLoaded(bx, by, bz)
+		headBlock := c.engine.GetBlockIfLoaded(bx, by+1, bz)
 		inNetherPortal := (curBlock == 90 || headBlock == 90)
 		inEndPortal := (curBlock == 119 || headBlock == 119)
 
@@ -1954,7 +1954,7 @@ func (c *Client) UpdateRaycastTarget() {
 	dir := sim.Vec3{X: lx, Y: ly, Z: lz}
 
 	isSolid := func(x, y, z int32) bool {
-		b := c.engine.GetBlock(x, y, z)
+		b := c.engine.GetBlockIfLoaded(x, y, z)
 		return b != 0 && b != 8 && b != 9 && b != 10 && b != 11
 	}
 
@@ -2022,7 +2022,7 @@ func (c *Client) UpdateMining(isLeftMouseDown bool, dt float64) {
 		blockPosVec := sim.Vec3{X: float64(c.miningPos.X) + 0.5, Y: float64(c.miningPos.Y) + 0.5, Z: float64(c.miningPos.Z) + 0.5}
 		camPosVec := sim.Vec3{X: c.camera.X, Y: c.camera.Y, Z: c.camera.Z}
 		dist := camPosVec.DistanceTo(blockPosVec)
-		blockID := c.engine.GetBlock(c.miningPos.X, c.miningPos.Y, c.miningPos.Z)
+		blockID := c.engine.GetBlockIfLoaded(c.miningPos.X, c.miningPos.Y, c.miningPos.Z)
 		if dist <= 5.5 && blockID != 0 && blockID != 7 {
 			activePos = c.miningPos
 		} else {
@@ -2037,7 +2037,7 @@ func (c *Client) UpdateMining(isLeftMouseDown bool, dt float64) {
 			c.isMining = false
 			return
 		}
-		blockID := c.engine.GetBlock(c.targetedPos.X, c.targetedPos.Y, c.targetedPos.Z)
+		blockID := c.engine.GetBlockIfLoaded(c.targetedPos.X, c.targetedPos.Y, c.targetedPos.Z)
 		if blockID == 0 || blockID == 7 { // Air or Bedrock
 			c.breakProgress = 0.0
 			c.isMining = false
@@ -2049,7 +2049,7 @@ func (c *Client) UpdateMining(isLeftMouseDown bool, dt float64) {
 		c.breakProgress = 0.0
 	}
 
-	blockID := c.engine.GetBlock(activePos.X, activePos.Y, activePos.Z)
+	blockID := c.engine.GetBlockIfLoaded(activePos.X, activePos.Y, activePos.Z)
 	if blockID == 0 || blockID == 7 {
 		c.breakProgress = 0.0
 		c.hasMiningBlock = false
@@ -2422,7 +2422,7 @@ func (c *Client) MineTargetedBlock() (int32, bool) {
 		heldToolID = sel.ItemID
 	}
 	targetPos := c.targetedPos
-	blockID := c.engine.GetBlock(targetPos.X, targetPos.Y, targetPos.Z)
+	blockID := c.engine.GetBlockIfLoaded(targetPos.X, targetPos.Y, targetPos.Z)
 	drop, ok := c.engine.BreakBlockWithTool(c.player.ID, targetPos, heldToolID)
 	if ok && blockID == 1 {
 		c.UnlockAdvancement("minecraft:story/mine_stone", "石器时代")
@@ -2461,7 +2461,7 @@ func (c *Client) PlaceBlockInFront() bool {
 	dir := sim.Vec3{X: lx, Y: ly, Z: lz}
 
 	isSolid := func(x, y, z int32) bool {
-		b := c.engine.GetBlock(x, y, z)
+		b := c.engine.GetBlockIfLoaded(x, y, z)
 		return b != 0 && b != 8 && b != 9 && b != 10 && b != 11
 	}
 	res := sim.Raycast(origin, dir, 5.0, isSolid)
@@ -2469,7 +2469,7 @@ func (c *Client) PlaceBlockInFront() bool {
 		return false
 	}
 
-	hitBlockID := c.engine.GetBlock(res.BlockX, res.BlockY, res.BlockZ)
+	hitBlockID := c.engine.GetBlockIfLoaded(res.BlockX, res.BlockY, res.BlockZ)
 	var targetPos world.BlockPos
 	if inventory.IsReplaceableBlock(hitBlockID) {
 		// Replaceable grass/flowers are directly replaced at their position
@@ -2480,7 +2480,7 @@ func (c *Client) PlaceBlockInFront() bool {
 			if sim.PlacementIntersects(pBox, bBox) {
 				// Player is standing in this foliage! Pass through foliage to hit the solid block underneath/behind
 				solidRes := sim.Raycast(origin, dir, 5.0, func(x, y, z int32) bool {
-					b := c.engine.GetBlock(x, y, z)
+					b := c.engine.GetBlockIfLoaded(x, y, z)
 					return sim.IsSolidBlock(b)
 				})
 				if solidRes.Hit {
@@ -2569,7 +2569,7 @@ func (c *Client) UpdateRightClick(isRightDown bool, dt float64) {
 		if c.placeCooldown <= 0 {
 			// Check if clicking on Crafting Table or Furnace
 			if c.hasTarget {
-				targetID := c.engine.GetBlock(c.targetedPos.X, c.targetedPos.Y, c.targetedPos.Z)
+				targetID := c.engine.GetBlockIfLoaded(c.targetedPos.X, c.targetedPos.Y, c.targetedPos.Z)
 				if targetID == 58 { // Crafting Table
 					c.showInventoryGUI = true
 					c.isCraftingTableOpen = true
@@ -2833,8 +2833,8 @@ func (c *Client) RenderFrame() {
 		bx := int32(math.Floor(c.camera.X))
 		by := int32(math.Floor(c.camera.Y))
 		bz := int32(math.Floor(c.camera.Z))
-		camEyeBlock := c.engine.GetBlock(bx, by, bz)
-		aboveEyeBlock := c.engine.GetBlock(bx, by+1, bz)
+		camEyeBlock := c.engine.GetBlockIfLoaded(bx, by, bz)
+		aboveEyeBlock := c.engine.GetBlockIfLoaded(bx, by+1, bz)
 		// Truly submerged: block at eye is water AND block above eye is water, or eye is deeply submerged (not skimming air surface)
 		if (camEyeBlock == 8 || camEyeBlock == 9) && (aboveEyeBlock == 8 || aboveEyeBlock == 9 || c.camera.Y-float64(by) < 0.75) {
 			c.framebuf.DrawUnderwaterOverlay()
@@ -2935,7 +2935,7 @@ func (c *Client) RenderFrame() {
 
 		targetName := "minecraft:air"
 		if c.hasTarget && c.engine != nil {
-			tID := c.engine.GetBlock(c.targetedPos.X, c.targetedPos.Y, c.targetedPos.Z)
+			tID := c.engine.GetBlockIfLoaded(c.targetedPos.X, c.targetedPos.Y, c.targetedPos.Z)
 			switch tID {
 			case 1:
 				targetName = "minecraft:stone"
@@ -5001,7 +5001,7 @@ func runGraphicalWindow(c *Client, w, h int) {
 			}
 		} else if btn == 2 {
 			if c.hasTarget && c.engine != nil {
-				targetID := c.engine.GetBlock(c.targetedPos.X, c.targetedPos.Y, c.targetedPos.Z)
+				targetID := c.engine.GetBlockIfLoaded(c.targetedPos.X, c.targetedPos.Y, c.targetedPos.Z)
 				if targetID == 58 { // Crafting Table
 					c.showInventoryGUI = true
 					c.isCraftingTableOpen = true

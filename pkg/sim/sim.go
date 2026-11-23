@@ -587,55 +587,76 @@ func (e *Engine) GetChunk(cp world.ChunkPos) *world.Chunk {
 }
 
 func (e *Engine) GetChunkInDimension(dim int, cp world.ChunkPos) *world.Chunk {
-	e.mu.Lock()
+	e.mu.RLock()
 	if dim < 0 || dim >= len(e.DimensionWorlds) {
-		e.mu.Unlock()
+		e.mu.RUnlock()
 		return nil
 	}
 	chunks := e.DimensionWorlds[dim]
-	if chunks == nil {
-		chunks = make(map[world.ChunkPos]*world.Chunk)
-		e.DimensionWorlds[dim] = chunks
+	var chunk *world.Chunk
+	if chunks != nil {
+		chunk = chunks[cp]
 	}
-	chunk, ok := chunks[cp]
 	storage := e.DimensionStorage[dim]
 	if storage == nil && dim == 0 {
 		storage = e.Storage
 	}
-	if (!ok || chunk == nil) && storage != nil {
-		if loaded, err := storage.LoadChunk(cp); err == nil && loaded != nil {
+	e.mu.RUnlock()
+	if chunk != nil || storage == nil {
+		return chunk
+	}
+
+	// Region-file reads can be slow. Never hold the global simulation lock while
+	// doing disk I/O; install the loaded chunk only after rechecking the map.
+	loaded, err := storage.LoadChunk(cp)
+	if err != nil || loaded == nil {
+		return nil
+	}
+	e.mu.Lock()
+	if dim >= 0 && dim < len(e.DimensionWorlds) {
+		chunks = e.DimensionWorlds[dim]
+		if chunks == nil {
+			chunks = make(map[world.ChunkPos]*world.Chunk)
+			e.DimensionWorlds[dim] = chunks
+		}
+		if existing := chunks[cp]; existing != nil {
+			chunk = existing
+		} else {
 			chunks[cp] = loaded
 			chunk = loaded
-			ok = true
 		}
 	}
 	e.mu.Unlock()
-	if !ok {
-		return nil
-	}
 	return chunk
 }
 
 func (e *Engine) getBlockLocked(x, y, z int32) int32 {
-	cp := world.BlockPos{X: x, Y: y, Z: z}.ToChunkPos()
-	chunk, ok := e.World[cp]
-	if (!ok || chunk == nil) && e.Storage != nil {
-		if loaded, err := e.Storage.LoadChunk(cp); err == nil && loaded != nil {
-			e.World[cp] = loaded
-			chunk = loaded
-			ok = true
-		}
+	if !world.ValidBlockCoordinates(x, y, z) {
+		return 0
 	}
-	if !ok || chunk == nil {
+	cp := world.BlockPos{X: x, Y: y, Z: z}.ToChunkPos()
+	chunk := e.World[cp]
+	if chunk == nil {
 		return 0
 	}
 	return chunk.GetBlock(x, y, z)
 }
 
 func (e *Engine) GetBlock(x, y, z int32) int32 {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	return e.getBlockLocked(x, y, z)
+	if !world.ValidBlockCoordinates(x, y, z) {
+		return 0
+	}
+	dimension := e.GetDimension()
+	chunk := e.GetChunkInDimension(dimension, world.BlockPos{X: x, Y: y, Z: z}.ToChunkPos())
+	if chunk == nil {
+		return 0
+	}
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	if e.CurrentDimension != dimension {
+		return 0
+	}
+	return chunk.GetBlock(x, y, z)
 }
 
 // GetBlockIfLoaded reads only the active in-memory world map. Rendering uses it
