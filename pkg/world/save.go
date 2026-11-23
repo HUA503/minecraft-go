@@ -141,7 +141,14 @@ func (sm *SaveManager) LoadChunk(cp ChunkPos) (*Chunk, error) {
 	if err != nil {
 		return nil, err
 	}
-	return ChunkFromNBT(tag)
+	chunk, err := ChunkFromNBT(tag)
+	if err != nil {
+		return nil, err
+	}
+	if chunk.Pos != cp {
+		return nil, fmt.Errorf("corrupt chunk at region slot %v: payload coordinates are %v", cp, chunk.Pos)
+	}
+	return chunk, nil
 }
 
 // SaveLevel writes level.dat with world seed, spawn point, and time.

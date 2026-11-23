@@ -366,6 +366,10 @@ func (c *Client) StartSingleplayerWorld(worldDirName string, isNew bool, newSeed
 			log.Printf("[Client] Failed to initialize dimension storage: %v", err)
 			_ = sm.Close()
 			c.saveMgr = nil
+			c.engine = nil
+			c.player = nil
+			c.currentWorldDir = ""
+			c.currentWorldName = ""
 			return
 		}
 	}
