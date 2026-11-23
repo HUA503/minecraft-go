@@ -77,6 +77,37 @@ func TestAmbientOcclusionSmoothLighting(t *testing.T) {
 	}
 }
 
+func TestAmbientOcclusionReadsDiagonalBlockAcrossSectionCorner(t *testing.T) {
+	blocks := map[[3]int32]int32{
+		{15, 15, 15}: 1, // Target cube in section (0, 0, 0).
+	}
+	getBlock := func(x, y, z int32) int32 {
+		return blocks[[3]int32{x, y, z}]
+	}
+	cornerVertexLight := func() float32 {
+		mesh := BuildSectionMesh(getBlock, 0, 0, 0)
+		for _, vertex := range mesh.Vertices {
+			if vertex.BlockID == 1 && vertex.FaceIndex == 0 && vertex.X == 16 && vertex.Y == 16 && vertex.Z == 16 {
+				return vertex.LightingMult
+			}
+		}
+		t.Fatal("could not find target cube's +X corner vertex")
+		return 0
+	}
+
+	withoutDiagonal := cornerVertexLight()
+	blocks[[3]int32{16, 16, 16}] = 1 // Occupies the diagonal neighbor section.
+	withDiagonal := cornerVertexLight()
+
+	if withoutDiagonal != FaceLighting[0] {
+		t.Fatalf("unoccluded corner light = %v, want %v", withoutDiagonal, FaceLighting[0])
+	}
+	want := FaceLighting[0] * 0.8
+	if withDiagonal != want {
+		t.Fatalf("diagonal block AO light = %v, want %v", withDiagonal, want)
+	}
+}
+
 func TestCameraLookVectorAndProjection(t *testing.T) {
 	cam := NewCamera(0, 0, 0)
 	cam.Yaw = 0
