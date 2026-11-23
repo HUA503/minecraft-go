@@ -979,7 +979,7 @@ func (c *Client) networkReceiveLoop() {
 			stack := debug.Stack()
 			msg := fmt.Sprintf("FATAL NETWORK RECEIVE PANIC: %v\n\nStack:\n%s\n", r, string(stack))
 			log.Println(msg)
-			_ = os.WriteFile("crash.log", []byte(msg), 0644)
+			writeCrashLog(msg)
 		}
 	}()
 	for {
@@ -3748,7 +3748,7 @@ func main() {
 			stack := debug.Stack()
 			msg := fmt.Sprintf("FATAL CLIENT PANIC: %v\n\nStack:\n%s\n", r, string(stack))
 			log.Println(msg)
-			_ = os.WriteFile("crash.log", []byte(msg), 0644)
+			writeCrashLog(msg)
 		}
 	}()
 
@@ -3767,6 +3767,9 @@ func main() {
 	}
 
 	client := NewClient(*serverAddr, *username, isSP, *width, *height)
+	if configDir, err := os.UserConfigDir(); err == nil {
+		log.Printf("[Client] Crash log path: %s", filepath.Join(configDir, "minecraft-go", "crash.log"))
+	}
 
 	if *benchmark {
 		log.Println("[Client] Running rendering benchmark (1000 frames)...")
@@ -3804,6 +3807,25 @@ func main() {
 	runGraphicalWindow(client, *width, *height)
 }
 
+func writeCrashLog(contents string) {
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		log.Printf("[Client] Could not locate user config directory for crash log: %v", err)
+		return
+	}
+	logDir := filepath.Join(configDir, "minecraft-go")
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		log.Printf("[Client] Could not create crash log directory %q: %v", logDir, err)
+		return
+	}
+	logPath := filepath.Join(logDir, "crash.log")
+	if err := os.WriteFile(logPath, []byte(contents), 0644); err != nil {
+		log.Printf("[Client] Could not write crash log %q: %v", logPath, err)
+		return
+	}
+	log.Printf("[Client] Crash details saved to %s", logPath)
+}
+
 func runGraphicalWindow(c *Client, w, h int) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -3812,7 +3834,7 @@ func runGraphicalWindow(c *Client, w, h int) {
 			stack := debug.Stack()
 			msg := fmt.Sprintf("FATAL GRAPHICAL WINDOW PANIC: %v\n\nStack:\n%s\n", r, string(stack))
 			log.Println(msg)
-			_ = os.WriteFile("crash.log", []byte(msg), 0644)
+			writeCrashLog(msg)
 		}
 	}()
 
