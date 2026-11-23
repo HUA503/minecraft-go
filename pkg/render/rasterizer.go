@@ -29,6 +29,17 @@ func NewFramebuffer(w, h int) *Framebuffer {
 		scale := math.Sqrt(float64(maxPixels) / pixels)
 		w = max(1, int(float64(w)*scale))
 		h = max(1, int(float64(h)*scale))
+		if float64(w)*float64(h) > maxPixels {
+			if w > maxPixels {
+				w, h = maxPixels, 1
+			} else if h > maxPixels {
+				w, h = 1, maxPixels
+			} else if w >= h {
+				w = max(1, maxPixels/h)
+			} else {
+				h = max(1, maxPixels/w)
+			}
+		}
 	}
 	return &Framebuffer{
 		Width:           w,
