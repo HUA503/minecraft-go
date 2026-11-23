@@ -4728,11 +4728,17 @@ func runGraphicalWindow(c *Client, w, h int) {
 		runInteractiveLoop(c)
 		return
 	}
-	defer wnd.Close()
 	c.wndRef = wnd
-	defer c.SaveAndQuitToTitle()
 	watchdogDone := make(chan struct{})
 	defer close(watchdogDone)
+	defer func() {
+		c.wndRef = nil
+		c.SaveAndQuitToTitle()
+	}()
+	// Destroy the native window before the potentially slow final disk flush.
+	// This keeps Windows from treating an intentionally saving process as a
+	// window that stopped responding.
+	defer wnd.Close()
 	var loopHeartbeat atomic.Int64
 	loopHeartbeat.Store(time.Now().UnixNano())
 	var hangReported atomic.Bool
