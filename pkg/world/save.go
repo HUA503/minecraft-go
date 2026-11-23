@@ -198,13 +198,27 @@ func (sm *SaveManager) SaveLevel(data *LevelData) error {
 	root.Put("Data", dataTag)
 
 	datPath := filepath.Join(sm.worldDir, "level.dat")
-	f, err := os.Create(datPath)
+	f, err := os.CreateTemp(sm.worldDir, "level.dat.tmp-*")
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-
-	return nbt.WriteGzipped(f, "", root)
+	tmpPath := f.Name()
+	defer os.Remove(tmpPath)
+	if err := nbt.WriteGzipped(f, "", root); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpPath, datPath); err != nil {
+		return fmt.Errorf("replace level.dat: %w", err)
+	}
+	return nil
 }
 
 // LoadLevel reads level.dat if present.
