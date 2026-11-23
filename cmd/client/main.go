@@ -117,6 +117,7 @@ type Client struct {
 	placeCooldown    float64
 	particles        []render.Particle
 	showInventoryGUI bool
+	showAdvancementsGUI bool
 	showPauseMenu    bool
 	backBtnRect      [4]int
 	quitBtnRect      [4]int
@@ -1653,6 +1654,25 @@ func (c *Client) advancementIDs() []string {
 	}
 	sort.Strings(ids)
 	return ids
+}
+
+func (c *Client) advancementLines() []string {
+	definitions := []struct{ ID, Title string }{
+		{"minecraft:story/root", "进入世界"},
+		{"minecraft:story/mine_wood", "获取木头"},
+		{"minecraft:story/mine_stone", "石器时代"},
+		{"minecraft-go:story/place_crafting_table", "搭建工作台"},
+		{"minecraft:nether/root", "进入下界"},
+		{"minecraft:story/enter_the_end", "进入末地"},
+		{"minecraft:end/kill_dragon", "解放末地"},
+	}
+	lines := make([]string, 0, len(definitions))
+	for _, advancement := range definitions {
+		if c.advancements[advancement.ID] {
+			lines = append(lines, "✓  "+advancement.Title)
+		}
+	}
+	return lines
 }
 
 // ExecuteCommand parses and executes in-game commands or sends player chat.
@@ -3939,6 +3959,11 @@ func runGraphicalWindow(c *Client, w, h int) {
 			}
 			return
 		}
+		if c.showAdvancementsGUI && (vkCode == 0x1B || vkCode == 0x4C) {
+			c.showAdvancementsGUI = false
+			wnd.SetMouseCaptured(true)
+			return
+		}
 		switch vkCode {
 		case 0x46: // F: Mine
 			c.MineTargetedBlock()
@@ -3954,6 +3979,11 @@ func runGraphicalWindow(c *Client, w, h int) {
 					c.isFurnaceOpen = false
 					wnd.SetMouseCaptured(false)
 				}
+			}
+		case 0x4C: // L: Advancements
+			if !c.showPauseMenu && !c.showInventoryGUI && !c.isFurnaceOpen && !c.isChatOpen {
+				c.showAdvancementsGUI = !c.showAdvancementsGUI
+				wnd.SetMouseCaptured(!c.showAdvancementsGUI)
 			}
 		case 0x54: // T: Open Chat
 			if !c.showPauseMenu && !c.showInventoryGUI && !c.isFurnaceOpen {
@@ -4003,7 +4033,7 @@ func runGraphicalWindow(c *Client, w, h int) {
 
 	// Mouse wheel hotbar switching
 	wnd.OnMouseWheel = func(delta int) {
-		if c.screenState != ScreenPlaying || c.showPauseMenu || c.showInventoryGUI || c.isFurnaceOpen || c.isChatOpen || c.player == nil || c.player.Inventory == nil {
+		if c.screenState != ScreenPlaying || c.showPauseMenu || c.showInventoryGUI || c.showAdvancementsGUI || c.isFurnaceOpen || c.isChatOpen || c.player == nil || c.player.Inventory == nil {
 			return
 		}
 		if delta > 0 {
@@ -4498,6 +4528,14 @@ func runGraphicalWindow(c *Client, w, h int) {
 			c.RenderFrame()
 			mx, my := wnd.GetCursorClientPos(c.framebuf.Width, c.framebuf.Height)
 			c.backBtnRect, c.quitBtnRect = c.framebuf.DrawPauseMenu(mx, my)
+			wnd.Present(c.framebuf)
+			continue
+		}
+
+		if c.showAdvancementsGUI {
+			time.Sleep(16 * time.Millisecond)
+			c.RenderFrame()
+			c.framebuf.DrawAdvancementScreen(c.advancementLines())
 			wnd.Present(c.framebuf)
 			continue
 		}
