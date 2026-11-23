@@ -236,7 +236,7 @@ func (sm *SaveManager) SaveLevel(data *LevelData) error {
 	if err := f.Close(); err != nil {
 		return err
 	}
-	if err := os.Rename(tmpPath, datPath); err != nil {
+	if err := replaceFile(tmpPath, datPath); err != nil {
 		return fmt.Errorf("replace level.dat: %w", err)
 	}
 	return nil
