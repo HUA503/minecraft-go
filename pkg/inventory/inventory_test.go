@@ -15,9 +15,11 @@ func TestCreativeCatalogHasUniqueUsableItems(t *testing.T) {
 		}
 		seen[item.ID] = struct{}{}
 	}
-	for _, item := range CreativeCatalog(CreativeBlocks) {
-		if !IsPlaceableBlock(item.ID) {
-			t.Errorf("creative block %d (%s) cannot be placed", item.ID, item.Name)
+	for _, category := range []CreativeCategory{CreativeBlocks, CreativeDecoration} {
+		for _, item := range CreativeCatalog(category) {
+			if !IsPlaceableBlock(item.ID) {
+				t.Errorf("creative block %d (%s) cannot be placed", item.ID, item.Name)
+			}
 		}
 	}
 	if got := CreativeCatalog(CreativeFood); len(got) == 0 {
@@ -266,3 +268,4 @@ func TestSlotLeftAndRightClickLogic(t *testing.T) {
 		t.Fatalf("right click stack 1 failed: cursor=%d, slot=%d", cursor.Count, slotEmpty.Count)
 	}
 }
+

@@ -136,9 +136,9 @@ const (
 func IsPlaceableBlock(itemID int32) bool {
 	switch itemID {
 	case ItemStone, ItemGrass, ItemDirt, ItemCobblestone, ItemOakPlanks,
-		7, 8, 9, 10, 11, 12, 13, 14, 15, 16, ItemOakLog, 18, 19, 20, 21, 22, 23,
+		6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, ItemOakLog, 18, 19, 20, 21, 22, 23, 24, 35, 43,
 		31, 32, 33, 37, 38, ItemGoldBlock, ItemIronBlock, ItemStoneSlab, 45, 46, 47, 48, 49, ItemTorch, 52, ItemChest, 56, ItemDiamondBlock, ItemCraftingTable, ItemFurnace,
-		65, 73, 74, 81, 83, 86, 87, 88, 89, 90, 103, 111, 119, 120, 121, 122, 126, 150, 153, 154, 324, 330:
+		65, 73, 74, 79, 80, 81, 82, 83, 86, 87, 88, 89, 90, 98, 103, 111, 112, 119, 120, 121, 122, 126, 150, 153, 154, 155, 159, 172, 173, 174, 179, 324, 330:
 		return true
 	default:
 		return false
@@ -148,7 +148,7 @@ func IsPlaceableBlock(itemID int32) bool {
 // IsReplaceableBlock reports whether a block can be replaced by placing another block into its space.
 func IsReplaceableBlock(blockID int32) bool {
 	switch blockID {
-	case 0, 8, 9, 10, 11, 31, 32, 33, 37, 38, 50, 83, 111:
+	case 0, 6, 8, 9, 10, 11, 31, 32, 33, 37, 38, 50, 83, 111:
 		return true
 	default:
 		return false
@@ -383,3 +383,4 @@ func HandleSlotRightClick(cursor *ItemStack, slot *ItemStack) {
 		}
 	}
 }
+

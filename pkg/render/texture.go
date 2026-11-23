@@ -438,7 +438,7 @@ func initDefaultTextures() {
 	for y := 0; y < 16; y++ {
 		for x := 0; x < 16; x++ {
 			// Natural slender grass blades rising from bottom (y=0) to top (y=15)
-			bladeWidth := 1 + (15 - y) / 3
+			bladeWidth := 1 + (15-y)/3
 			isBlade := false
 			bladeCenters := [5]int{2, 5, 8, 11, 14}
 			for _, bc := range bladeCenters {
@@ -961,7 +961,11 @@ func initOfficialBlockTextures() {
 	loadSingle(3, "dirt")
 	loadSingle(4, "cobblestone")
 	loadSingle(5, "oak_planks")
+	loadSingle(6, "oak_sapling")
 	loadSingle(7, "bedrock")
+	loadBlock(24, "sandstone_top", "sandstone_bottom", "sandstone")
+	loadSingle(35, "white_wool")
+	loadSingle(43, "stone")
 	loadSingle(12, "sand")
 	loadSingle(13, "gravel")
 	loadSingle(14, "gold_ore")
@@ -981,14 +985,24 @@ func initOfficialBlockTextures() {
 	loadBlock(58, "crafting_table_top", "oak_planks", "crafting_table_side")
 	loadBlock(61, "furnace_top", "furnace_top", "furnace_front")
 	loadSingle(65, "ladder")
+	loadSingle(79, "ice")
+	loadSingle(80, "snow")
 	loadSingle(82, "clay")
 	loadSingle(83, "sugar_cane")
 	loadBlock(86, "pumpkin_top", "pumpkin_top", "pumpkin_side")
 	loadSingle(87, "netherrack")
 	loadSingle(88, "soul_sand")
 	loadSingle(89, "glowstone")
+	loadSingle(98, "stone_bricks")
+	loadSingle(112, "nether_bricks")
 	loadBlock(103, "melon_top", "melon_top", "melon_side")
 	loadSingle(121, "end_stone")
+	loadBlock(155, "quartz_block_top", "quartz_block_bottom", "quartz_block_side")
+	loadSingle(159, "white_terracotta")
+	loadSingle(172, "terracotta")
+	loadSingle(173, "coal_block")
+	loadSingle(174, "packed_ice")
+	loadBlock(179, "red_sandstone_top", "red_sandstone_bottom", "red_sandstone")
 }
 
 // SampleBlockColor samples pixel color from block texture and applies directional lighting.
@@ -1046,9 +1060,10 @@ func ApplyLighting(col uint32, mult float32) uint32 {
 	if mult >= 1.0 {
 		return col
 	}
-	r := float32((col >> 16) & 0xFF) * mult
-	g := float32((col >> 8) & 0xFF) * mult
-	b := float32(col & 0xFF) * mult
+	r := float32((col>>16)&0xFF) * mult
+	g := float32((col>>8)&0xFF) * mult
+	b := float32(col&0xFF) * mult
 
 	return (a << 24) | (uint32(r) << 16) | (uint32(g) << 8) | uint32(b)
 }
+

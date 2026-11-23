@@ -64,7 +64,7 @@ func IsOpaqueCube(blockID int32) bool {
 		return false
 	case 90: // Nether portal (translucent)
 		return false
-	case 31, 32: // Tall grass, Dead bush
+	case 6, 31, 32: // Sapling, tall grass, dead bush
 		return false
 	case 37, 38: // Dandelion, Poppy
 		return false
@@ -93,7 +93,7 @@ func IsTranslucentBlock(blockID int32) bool {
 // IsFoliage returns true if the block is rendered as crossed diagonal quads.
 func IsFoliage(blockID int32) bool {
 	switch blockID {
-	case 31, 32, 37, 38, 50, 65, 83:
+	case 6, 31, 32, 37, 38, 50, 65, 83:
 		return true
 	default:
 		return false
