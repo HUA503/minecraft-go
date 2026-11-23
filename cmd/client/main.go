@@ -78,6 +78,8 @@ type Client struct {
 	currentWorldDir     string
 	currentWorldName    string
 	availableWorlds     []render.WorldInfo
+	worldScanResult     chan []render.WorldInfo
+	worldScanPending    bool
 	selectedWorldIdx    int
 	newWorldName        string
 	newWorldMode        int // 0: Survival, 1: Creative
@@ -364,11 +366,42 @@ func (c *Client) CloseCurrentGUI() {
 
 func (c *Client) scanSavedWorlds() {
 	c.availableWorlds = nil
+	if c.worldScanPending {
+		return
+	}
+	result := make(chan []render.WorldInfo, 1)
+	c.worldScanResult = result
+	c.worldScanPending = true
+	go func() {
+		result <- loadSavedWorlds()
+	}()
+}
+
+func (c *Client) pollSavedWorldScan() {
+	if !c.worldScanPending || c.worldScanResult == nil {
+		return
+	}
+	select {
+	case worlds := <-c.worldScanResult:
+		c.availableWorlds = worlds
+		c.worldScanResult = nil
+		c.worldScanPending = false
+		if len(worlds) == 0 {
+			c.selectedWorldIdx = -1
+		} else if c.selectedWorldIdx < 0 || c.selectedWorldIdx >= len(worlds) {
+			c.selectedWorldIdx = 0
+		}
+	default:
+	}
+}
+
+func loadSavedWorlds() []render.WorldInfo {
+	var worlds []render.WorldInfo
 	savesDir := "saves"
 	_ = os.MkdirAll(savesDir, 0755)
 	entries, err := os.ReadDir(savesDir)
 	if err != nil {
-		return
+		return worlds
 	}
 	for _, entry := range entries {
 		if entry.IsDir() {
@@ -391,10 +424,11 @@ func (c *Client) scanSavedWorlds() {
 					}
 					_ = sm.Close()
 				}
-				c.availableWorlds = append(c.availableWorlds, wInfo)
+				worlds = append(worlds, wInfo)
 			}
 		}
 	}
+	return worlds
 }
 
 func validSavedPlayerPosition(pos sim.Vec3) bool {
@@ -5255,6 +5289,7 @@ func runGraphicalWindow(c *Client, w, h int) {
 		if !wnd.PollEvents() {
 			break
 		}
+		c.pollSavedWorldScan()
 		// Detect window resize (Fullscreen toggle or maximize) and clamp internal software rasterizer resolution
 		// Internal CPU rasterizer target is optimized to max 960x540 (or 800x600 for 4:3), preserving exact window aspect ratio.
 		// Windows GDI's StretchDIBits hardware-upscales seamlessly to full 1080p/2K/4K display with zero CPU overhead.
@@ -5340,7 +5375,7 @@ func runGraphicalWindow(c *Client, w, h int) {
 		if c.screenState == ScreenWorldSelect {
 			time.Sleep(16 * time.Millisecond)
 			mx, my := wnd.GetCursorClientPos(c.framebuf.Width, c.framebuf.Height)
-			c.wsPlayBtn, c.wsNewBtn, c.wsBackBtn, c.wsRects = c.framebuf.DrawWorldSelectScreen(c.availableWorlds, c.selectedWorldIdx, mx, my)
+			c.wsPlayBtn, c.wsNewBtn, c.wsBackBtn, c.wsRects = c.framebuf.DrawWorldSelectScreenWithLoading(c.availableWorlds, c.selectedWorldIdx, c.worldScanPending, mx, my)
 			wnd.Present(c.framebuf)
 			continue
 		}

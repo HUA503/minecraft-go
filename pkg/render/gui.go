@@ -12,13 +12,13 @@ import (
 type GUISlotType int
 
 const (
-	SlotNone GUISlotType = iota
-	SlotInventory        // Player inventory: 0..8 Hotbar, 9..35 Main Storage
-	SlotCraftGrid        // Crafting grid: 0..3 (2x2) or 0..8 (3x3)
-	SlotCraftResult      // Crafting output result slot
-	SlotFurnaceInput     // Furnace smelting input slot (0)
-	SlotFurnaceFuel      // Furnace fuel slot (1)
-	SlotFurnaceOutput    // Furnace smelted output slot (2)
+	SlotNone          GUISlotType = iota
+	SlotInventory                 // Player inventory: 0..8 Hotbar, 9..35 Main Storage
+	SlotCraftGrid                 // Crafting grid: 0..3 (2x2) or 0..8 (3x3)
+	SlotCraftResult               // Crafting output result slot
+	SlotFurnaceInput              // Furnace smelting input slot (0)
+	SlotFurnaceFuel               // Furnace fuel slot (1)
+	SlotFurnaceOutput             // Furnace smelted output slot (2)
 )
 
 // GUISlotHit records the detected slot hit during mouse interactions.
@@ -708,6 +708,12 @@ func (fb *Framebuffer) DrawAdvancementScreen(lines []string) {
 
 // DrawWorldSelectScreen renders the world selection and management dialog.
 func (fb *Framebuffer) DrawWorldSelectScreen(worlds []WorldInfo, selectedIdx int, mouseX, mouseY int) (playBtn, newBtn, backBtn [4]int, worldRects [][4]int) {
+	return fb.DrawWorldSelectScreenWithLoading(worlds, selectedIdx, false, mouseX, mouseY)
+}
+
+// DrawWorldSelectScreenWithLoading keeps slow save-directory scans off the UI
+// thread while showing a distinct state from an actually empty save folder.
+func (fb *Framebuffer) DrawWorldSelectScreenWithLoading(worlds []WorldInfo, selectedIdx int, loading bool, mouseX, mouseY int) (playBtn, newBtn, backBtn [4]int, worldRects [][4]int) {
 	// Darkened background
 	for y := 0; y < fb.Height; y++ {
 		for x := 0; x < fb.Width; x++ {
@@ -731,6 +737,9 @@ func (fb *Framebuffer) DrawWorldSelectScreen(worlds []WorldInfo, selectedIdx int
 	worldRects = make([][4]int, len(worlds))
 	if len(worlds) == 0 {
 		emptyMsg := "没有找到存档，请新建世界！"
+		if loading {
+			emptyMsg = "正在读取存档..."
+		}
 		ew := MeasureText5x7(emptyMsg, 1)
 		fb.DrawText5x7((fb.Width-ew)/2, listY+listH/2-4, emptyMsg, 0xFFAAAAAA, 1)
 	} else {
