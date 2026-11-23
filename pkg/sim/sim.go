@@ -228,13 +228,13 @@ func (e *Engine) GetItemDrops() []ItemDrop {
 	return drops
 }
 
-// GetPlayerList returns a thread-safe snapshot slice of active players.
-func (e *Engine) GetPlayerList() []*PlayerEntity {
+// GetPlayerList returns value snapshots of active players.
+func (e *Engine) GetPlayerList() []PlayerEntity {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	res := make([]*PlayerEntity, 0, len(e.Players))
+	res := make([]PlayerEntity, 0, len(e.Players))
 	for _, p := range e.Players {
-		res = append(res, p)
+		res = append(res, *p)
 	}
 	return res
 }

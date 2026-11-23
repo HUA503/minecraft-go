@@ -178,7 +178,9 @@ func (m *MobEntity) TickMob(engine *Engine) {
 	var closestPlayer *PlayerEntity
 	closestDistSq := 16.0 * 16.0
 
-	for _, p := range engine.GetPlayerList() {
+	players := engine.GetPlayerList()
+	for i := range players {
+		p := &players[i]
 		if !p.IsAlive || p.GameMode == 1 || p.GameMode == 3 {
 			continue
 		}
