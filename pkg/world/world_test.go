@@ -1,6 +1,8 @@
 package world
 
 import (
+	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -133,6 +135,119 @@ func TestOpenRegionInitializesCompleteHeaders(t *testing.T) {
 		if b != 0 {
 			t.Fatalf("new region header byte %d = %d, want zero", i, b)
 		}
+	}
+}
+
+type injectedRegionFile struct {
+	regionFile
+	shortWriteOffset    int64
+	shortWriteRemaining int
+	failSyncCall        int
+	syncCalls           int
+	syncErr             error
+}
+
+func (f *injectedRegionFile) WriteAt(p []byte, offset int64) (int, error) {
+	if offset == f.shortWriteOffset && f.shortWriteRemaining > 0 {
+		f.shortWriteRemaining--
+		if len(p) <= 1 {
+			return 0, nil
+		}
+		return f.regionFile.WriteAt(p[:len(p)-1], offset)
+	}
+	return f.regionFile.WriteAt(p, offset)
+}
+
+func (f *injectedRegionFile) Sync() error {
+	f.syncCalls++
+	if f.syncCalls == f.failSyncCall {
+		return f.syncErr
+	}
+	return f.regionFile.Sync()
+}
+
+func testChunkTag(status string) *nbt.CompoundTag {
+	tag := nbt.NewCompound()
+	tag.Put("xPos", &nbt.IntTag{Value: 1})
+	tag.Put("zPos", &nbt.IntTag{Value: 1})
+	tag.Put("Status", &nbt.StringTag{Value: status})
+	return tag
+}
+
+func TestRegionRollbackPreservesChunkAfterLocationShortWrite(t *testing.T) {
+	region, err := OpenRegion(filepath.Join(t.TempDir(), "r.0.0.mca"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer region.Close()
+	if err := region.WriteChunkData(1, 1, testChunkTag("old")); err != nil {
+		t.Fatal(err)
+	}
+	index := chunkIndex(1, 1)
+	oldLocation := make([]byte, 4)
+	if _, err := region.file.ReadAt(oldLocation, int64(index*4)); err != nil {
+		t.Fatal(err)
+	}
+
+	region.file = &injectedRegionFile{
+		regionFile:          region.file,
+		shortWriteOffset:    int64(index * 4),
+		shortWriteRemaining: 1,
+	}
+	if err := region.WriteChunkData(1, 1, testChunkTag("new")); err == nil {
+		t.Fatal("expected short location-header write to fail")
+	}
+	location := make([]byte, 4)
+	if _, err := region.file.ReadAt(location, int64(index*4)); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(location, oldLocation) {
+		t.Fatalf("location header after rollback = %v, want %v", location, oldLocation)
+	}
+	got, err := region.ReadChunkData(1, 1)
+	if err != nil {
+		t.Fatalf("old chunk became unreadable after rollback: %v", err)
+	}
+	if got.GetString("Status") != "old" {
+		t.Fatalf("chunk after rollback has status %q, want old", got.GetString("Status"))
+	}
+}
+
+func TestRegionRollbackPreservesChunkAfterLocationSyncFailure(t *testing.T) {
+	region, err := OpenRegion(filepath.Join(t.TempDir(), "r.0.0.mca"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer region.Close()
+	if err := region.WriteChunkData(1, 1, testChunkTag("old")); err != nil {
+		t.Fatal(err)
+	}
+	index := chunkIndex(1, 1)
+	oldLocation := make([]byte, 4)
+	if _, err := region.file.ReadAt(oldLocation, int64(index*4)); err != nil {
+		t.Fatal(err)
+	}
+	region.file = &injectedRegionFile{
+		regionFile:   region.file,
+		failSyncCall: 2, // payload sync succeeds; location-table sync fails
+		syncErr:      errors.New("injected location sync failure"),
+	}
+	if err := region.WriteChunkData(1, 1, testChunkTag("new")); err == nil {
+		t.Fatal("expected location-table sync failure")
+	}
+	location := make([]byte, 4)
+	if _, err := region.file.ReadAt(location, int64(index*4)); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(location, oldLocation) {
+		t.Fatalf("location header after rollback = %v, want %v", location, oldLocation)
+	}
+	got, err := region.ReadChunkData(1, 1)
+	if err != nil {
+		t.Fatalf("old chunk became unreadable after rollback: %v", err)
+	}
+	if got.GetString("Status") != "old" {
+		t.Fatalf("chunk after rollback has status %q, want old", got.GetString("Status"))
 	}
 }
 
