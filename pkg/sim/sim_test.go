@@ -60,6 +60,133 @@ func TestTickDoesNotDeadlockAtHundredthTick(t *testing.T) {
 	}
 }
 
+func TestPoplarSaplingRandomTickGrowth(t *testing.T) {
+	eng := NewEngine()
+	for chunkX := int32(-1); chunkX <= 1; chunkX++ {
+		for chunkZ := int32(-1); chunkZ <= 1; chunkZ++ {
+			pos := world.ChunkPos{X: chunkX, Z: chunkZ}
+			eng.World[pos] = world.NewChunk(pos)
+		}
+	}
+	eng.SetBlock(15, 63, 15, 2)
+	eng.SetBlock(15, 64, 15, 10063)
+
+	eng.mu.Lock()
+	grown := eng.growPoplarSaplingLocked(15, 64, 15)
+	eng.mu.Unlock()
+	if !grown {
+		t.Fatal("supported poplar sapling with clear sky should grow")
+	}
+	for dy := int32(0); dy < 5; dy++ {
+		if got := eng.GetBlock(15, 64+dy, 15); got != 10010 {
+			t.Fatalf("poplar trunk at y=%d = %d, want block 10010", 64+dy, got)
+		}
+	}
+	leafCount := 0
+	for x := int32(13); x <= 17; x++ {
+		for y := int32(67); y <= 69; y++ {
+			for z := int32(13); z <= 17; z++ {
+				id := eng.GetBlock(x, y, z)
+				if id >= 10060 && id <= 10062 {
+					leafCount++
+				}
+			}
+		}
+	}
+	if leafCount < 30 {
+		t.Fatalf("grown poplar has only %d leaves", leafCount)
+	}
+}
+
+func TestPoplarSaplingGrowsThroughEngineRandomTickLoop(t *testing.T) {
+	seed, saplingPos, ok := findPoplarGrowthRandomTick()
+	if !ok {
+		t.Fatal("failed to find a deterministic random-tick sample for poplar growth")
+	}
+	eng := NewEngine()
+	eng.randomTickState = seed
+	eng.World[world.ChunkPos{}] = world.NewChunk(world.ChunkPos{})
+	eng.World[world.ChunkPos{}].SetBlock(saplingPos.X, saplingPos.Y-1, saplingPos.Z, 2)
+	eng.World[world.ChunkPos{}].SetBlock(saplingPos.X, saplingPos.Y, saplingPos.Z, poplarSaplingID)
+	eng.Players[1] = &PlayerEntity{
+		ID: 1, IsAlive: true, ClientDriven: true,
+		Position: Vec3{X: 0.5, Y: 64, Z: 0.5}, Inventory: inventory.NewPlayerInventory(),
+	}
+
+	eng.Tick()
+	if got := eng.GetBlock(saplingPos.X, saplingPos.Y, saplingPos.Z); got != poplarLogID {
+		t.Fatalf("engine random tick left block %d at sapling position; want poplar log %d", got, poplarLogID)
+	}
+}
+
+func findPoplarGrowthRandomTick() (uint64, world.BlockPos, bool) {
+	next := func(state *uint64) uint64 {
+		value := *state
+		value ^= value << 13
+		value ^= value >> 7
+		value ^= value << 17
+		*state = value
+		return value
+	}
+	for seed := uint64(1); seed < 10_000; seed++ {
+		state := seed
+		random := next(&state)
+		pos := world.BlockPos{
+			X: int32(random & 15), Y: world.MinWorldY + int32((random>>4)&15), Z: int32((random >> 8) & 15),
+		}
+		if next(&state)%7 == 0 && pos.X >= 2 && pos.X <= 13 && pos.Z >= 2 && pos.Z <= 13 && pos.Y > world.MinWorldY && pos.Y+5 <= world.MaxWorldY {
+			return seed, pos, true
+		}
+	}
+	return 0, world.BlockPos{}, false
+}
+
+func TestPoplarSaplingGrowthWaitsForObstructionToClear(t *testing.T) {
+	eng := NewEngine()
+	for chunkX := int32(-1); chunkX <= 1; chunkX++ {
+		for chunkZ := int32(-1); chunkZ <= 1; chunkZ++ {
+			pos := world.ChunkPos{X: chunkX, Z: chunkZ}
+			eng.World[pos] = world.NewChunk(pos)
+		}
+	}
+	eng.SetBlock(15, 63, 15, 2)
+	eng.SetBlock(15, 64, 15, 10063)
+	eng.SetBlock(17, 67, 15, 1)
+
+	eng.mu.Lock()
+	grown := eng.growPoplarSaplingLocked(15, 64, 15)
+	eng.mu.Unlock()
+	if grown || eng.GetBlock(15, 64, 15) != 10063 {
+		t.Fatal("obstructed poplar growth must leave the sapling and terrain untouched")
+	}
+}
+
+func TestPoplarLeavesBreakAndShearDrops(t *testing.T) {
+	makeEngine := func() *Engine {
+		eng := NewEngine()
+		pos := world.ChunkPos{X: 0, Z: 0}
+		eng.World[pos] = world.NewChunk(pos)
+		eng.World[pos].SetBlock(2, 64, 2, 10060)
+		eng.Players[1] = &PlayerEntity{ID: 1, IsAlive: true, Inventory: inventory.NewPlayerInventory()}
+		eng.randomTickState = 1 // deterministic roll that does not drop a sapling
+		return eng
+	}
+
+	hand := makeEngine()
+	if dropped := hand.BreakBlock(1, world.BlockPos{X: 2, Y: 64, Z: 2}); dropped != inventory.ItemAir {
+		t.Fatalf("hand-breaking poplar leaves dropped %d, want no drop", dropped)
+	}
+	if got := hand.Players[1].Inventory.Slots[0]; !got.IsEmpty() {
+		t.Fatalf("hand-breaking leaves unexpectedly gave an item: %+v", got)
+	}
+
+	shears := makeEngine()
+	drop, harvested := shears.BreakBlockWithTool(1, world.BlockPos{X: 2, Y: 64, Z: 2}, inventory.ItemShears)
+	if !harvested || drop != 10060 {
+		t.Fatalf("shears breaking poplar leaves = (drop %d, harvested %t), want (10060, true)", drop, harvested)
+	}
+}
+
 func TestRaycastHitBlock(t *testing.T) {
 	solidBlocks := map[[3]int32]bool{
 		{5, 64, 0}: true,
@@ -937,4 +1064,3 @@ func TestFurnaceSmeltingAndDrop(t *testing.T) {
 		t.Fatalf("expected furnace contents (iron ingot) dropped when broken")
 	}
 }
-

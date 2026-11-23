@@ -71,6 +71,8 @@ func IsSolidBlock(blockID int32) bool {
 	switch blockID {
 	case 0: // Air
 		return false
+	case 6, 10063: // Oak/poplar saplings
+		return false
 	case 8, 9: // Water
 		return false
 	case 10, 11: // Lava

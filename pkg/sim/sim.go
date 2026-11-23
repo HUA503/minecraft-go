@@ -140,6 +140,7 @@ type Engine struct {
 	nextCrystalID    int32
 	TickCount        int64
 	WorldTime        int64
+	randomTickState  uint64
 	Events           chan WorldEvent
 	stopChan         chan struct{}
 	loopMu           sync.Mutex
@@ -169,7 +170,8 @@ func NewEngine() *Engine {
 		EndCrystals:      make(map[int32]*EndCrystal),
 		nextCrystalID:    1,
 		WorldTime:        6000, // Canonical Minecraft noon daylight
-		Difficulty:       2,    // Default: Normal difficulty
+		randomTickState:  uint64(time.Now().UnixNano()) | 1,
+		Difficulty:       2, // Default: Normal difficulty
 		Events:           make(chan WorldEvent, 1024),
 		stopChan:         make(chan struct{}),
 		tickDone:         make(chan struct{}),
@@ -890,10 +892,23 @@ func (e *Engine) BreakBlockWithTool(playerID int32, pos world.BlockPos, toolID i
 
 	canHarvest := inventory.CanHarvestBlock(toolID, origBlock)
 	var dropItem int32
+	if inventory.IsExtendedLeaves(origBlock) {
+		if toolID == inventory.ItemShears {
+			canHarvest = true
+			dropItem = origBlock
+		} else {
+			e.mu.Lock()
+			canHarvest = e.nextRandomTickValueLocked()%20 == 0
+			e.mu.Unlock()
+			dropItem = poplarSaplingID
+		}
+	}
 
 	if canHarvest {
 		// Determine drop item
-		dropItem = origBlock
+		if !inventory.IsExtendedLeaves(origBlock) {
+			dropItem = origBlock
+		}
 		switch origBlock {
 		case 1, 4: // Stone, Cobblestone -> Cobblestone
 			dropItem = inventory.ItemCobblestone
@@ -977,6 +992,16 @@ func (e *Engine) BreakBlock(playerID int32, pos world.BlockPos) int32 {
 
 	// Determine drop item
 	dropItem := origBlock
+	if inventory.IsExtendedLeaves(origBlock) {
+		e.mu.Lock()
+		dropsSapling := e.nextRandomTickValueLocked()%20 == 0
+		e.mu.Unlock()
+		if dropsSapling {
+			dropItem = poplarSaplingID
+		} else {
+			dropItem = inventory.ItemAir
+		}
+	}
 	switch origBlock {
 	case 1: // Stone -> Cobblestone
 		dropItem = inventory.ItemCobblestone
@@ -989,7 +1014,7 @@ func (e *Engine) BreakBlock(playerID int32, pos world.BlockPos) int32 {
 	}
 
 	e.mu.Lock()
-	if p, ok := e.Players[playerID]; ok && p.Inventory != nil {
+	if p, ok := e.Players[playerID]; ok && p.Inventory != nil && dropItem != inventory.ItemAir {
 		p.Inventory.AddItem(dropItem, 1)
 	}
 	e.mu.Unlock()
@@ -1001,7 +1026,7 @@ func (e *Engine) BreakBlock(playerID int32, pos world.BlockPos) int32 {
 func (e *Engine) PlaceBlock(playerID int32, pos world.BlockPos, blockID int32) bool {
 	existing := e.GetBlock(pos.X, pos.Y, pos.Z)
 	// Air (0), water (8, 9), lava (10, 11), tall grass (31, 32), flowers (37, 38), and torches (50) are replaceable
-	if existing != 0 && existing != 8 && existing != 9 && existing != 10 && existing != 11 &&
+	if existing != 0 && existing != 6 && existing != 8 && existing != 9 && existing != 10 && existing != 11 && existing != poplarSaplingID &&
 		existing != 31 && existing != 32 && existing != 37 && existing != 38 && existing != 50 {
 		return false
 	}
@@ -1533,6 +1558,9 @@ func (e *Engine) Tick() {
 		}
 	}
 
+	// Random block ticks are applied only to already loaded chunks near players.
+	e.tickRandomBlocksLocked()
+
 	// Periodic natural mob spawning & despawning every 60 ticks (3 seconds)
 	if e.TickCount%60 == 0 && len(e.Players) > 0 {
 		e.tickNaturalMobSpawningLocked()
@@ -2056,4 +2084,3 @@ func (e *Engine) tickEnderDragon() {
 		dragon.Pitch = float32(-math.Asin(dir.Y) * 180.0 / math.Pi)
 	}
 }
-
