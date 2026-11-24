@@ -1,94 +1,123 @@
 package render
 
-import "github.com/HUA503/minecraft-go/pkg/inventory"
+import (
+	"strconv"
+
+	"github.com/HUA503/minecraft-go/pkg/inventory"
+)
 
 const (
 	creativeColumns = 9
 	creativeRows    = 5
 	creativePerPage = creativeColumns * creativeRows
-	creativePanelW  = 204
-	creativePanelH  = 234
-	creativeTabsH   = 26
-	creativeSlotsH  = 227
+	creativePanelW  = 195
+	creativePanelH  = 136
+	creativeHotbarY = 112
 )
 
-// creativeGUIOrigin chooses a scale that leaves room for the creative tabs as
-// well as the panel. The player inventory can be nudged up on short windows so
-// its hotbar remains visible; drawing and hit testing share this calculation.
-func creativeGUIOrigin(w, h int) (scale, px, py, inventoryOffsetY int) {
-	scale = min(w/creativePanelW, h/(creativePanelH+creativeTabsH))
-	if scale < 1 {
-		scale = 1
-	}
+// creativeGUIOrigin follows AbstractContainerScreen's 195x136 image bounds.
+// Top and bottom tab rows extend beyond those bounds by their vanilla sprite sizes.
+func creativeGUIOrigin(w, h int) (scale, px, py int) {
+	scale = CalculateGUIScaleFromDimensions(w, h)
 	px = w/2 - creativePanelW*scale/2
-	py = (h-(creativePanelH+creativeTabsH)*scale)/2 + creativeTabsH*scale
-	if py < creativeTabsH*scale {
-		py = creativeTabsH * scale
-	}
-	if bottom := py + creativeSlotsH*scale; bottom > h {
-		inventoryOffsetY = h - bottom
-	}
-	return scale, px, py, inventoryOffsetY
+	py = h/2 - creativePanelH*scale/2
+	return scale, px, py
 }
 
-// Icon order follows the compact tab strip used by the Java creative screen.
-// Java 26.3 uses a Creeper spawn egg for the Spawn Eggs tab icon.
-var creativeTabIcons = [...]int32{345, 1, 35, 6, 54, 331, 270, 268, 260, 296, 11002}
-var creativeTabNames = [...]string{"搜索物品", "建筑方块", "有色方块", "自然方块", "功能方块", "红石方块", "工具与实用物品", "战斗", "食物与饮料", "材料", "刷怪蛋"}
+type creativeTabLayout struct {
+	category     inventory.CreativeCategory
+	column       int
+	bottom       bool
+	rightAligned bool
+	icon         int32
+	name         string
+}
 
-// DrawCreativeInventoryGUI draws a scrollable item catalog above the player's
-// inventory. The player inventory remains interactive so items can be moved
-// from the catalog to the hotbar using the usual cursor clicks.
+// Positions and spacing match Java 26.3 CreativeModeInventoryScreen: five
+// left-aligned tabs on each row, with Search aligned at the top right.
+var creativeTabs = [...]creativeTabLayout{
+	{category: inventory.CreativeBlocks, column: 0, icon: 1, name: "建筑方块"},
+	{category: inventory.CreativeDecoration, column: 1, icon: 35, name: "有色方块"},
+	{category: inventory.CreativeNatural, column: 2, icon: 6, name: "自然方块"},
+	{category: inventory.CreativeFunctional, column: 3, icon: 54, name: "功能方块"},
+	{category: inventory.CreativeRedstone, column: 4, icon: 331, name: "红石方块"},
+	{category: inventory.CreativeAll, column: 6, rightAligned: true, icon: 345, name: "搜索物品"},
+	{category: inventory.CreativeTools, column: 0, bottom: true, icon: 270, name: "工具与实用物品"},
+	{category: inventory.CreativeCombat, column: 1, bottom: true, icon: 268, name: "战斗"},
+	{category: inventory.CreativeFood, column: 2, bottom: true, icon: 260, name: "食物与饮料"},
+	{category: inventory.CreativeMaterials, column: 3, bottom: true, icon: 296, name: "材料"},
+	{category: inventory.CreativeSpawnEggs, column: 4, bottom: true, icon: 11002, name: "刷怪蛋"},
+}
+
+func creativeTabX(tab creativeTabLayout) int {
+	if tab.rightAligned {
+		return creativePanelW - 27*(7-tab.column) + 1
+	}
+	return 27 + 27*tab.column
+}
+
+func creativeTabY(tab creativeTabLayout) int {
+	if tab.bottom {
+		return creativePanelH - 4
+	}
+	return -28
+}
+
+func creativeTabSpriteVariant(tab creativeTabLayout) int {
+	return tab.column + 1
+}
+
+// DrawCreativeInventoryGUI draws the Java 26.3 creative item picker: a 195x136
+// panel with a 9x5 catalog and the player's hotbar below it.
 func (fb *Framebuffer) DrawCreativeInventoryGUI(inv *inventory.PlayerInventory, cursor inventory.ItemStack, category inventory.CreativeCategory, query string, scrollRow, mouseX, mouseY int) {
 	if fb == nil || inv == nil {
 		return
 	}
-	scale, px, py, inventoryOffsetY := creativeGUIOrigin(fb.Width, fb.Height)
+	scale, px, py := creativeGUIOrigin(fb.Width, fb.Height)
 	for i, c := range fb.Color {
 		r, g, b := (c>>16)&0xFF, (c>>8)&0xFF, c&0xFF
 		fb.Color[i] = 0xFF000000 | ((r / 3) << 16) | ((g / 3) << 8) | (b / 3)
-	}
-	if image, ok := GetOfficialImage("gui/container/inventory.png"); ok {
-		drawCreativeTextureRegion(fb, px-scale, py+(61*scale)+inventoryOffsetY, scale, image, 176, 166)
 	}
 	creativeTexture := "gui/container/creative_inventory/tab_items.png"
 	if category == inventory.CreativeAll {
 		creativeTexture = "gui/container/creative_inventory/tab_item_search.png"
 	}
 	if image, ok := GetOfficialImage(creativeTexture); ok {
-		drawCreativeTextureRegion(fb, px-scale, py, scale, image, 195, 136)
+		drawCreativeTextureRegion(fb, px, py, scale, image, creativePanelW, creativePanelH)
 	}
-	for i := range creativeTabIcons {
-		if int(category) == i {
+	drawTab := func(tab creativeTabLayout, selected bool) {
+		row := "top"
+		if tab.bottom {
+			row = "bottom"
+		}
+		state := "unselected"
+		if selected {
+			state = "selected"
+		}
+		variant := creativeTabSpriteVariant(tab)
+		texturePath := "gui/sprites/container/creative_inventory/tab_" + row + "_" + state + "_" + strconv.Itoa(variant) + ".png"
+		if image, ok := GetOfficialImage(texturePath); ok {
+			tabX := px + creativeTabX(tab)*scale
+			tabY := py + creativeTabY(tab)*scale
+			fb.DrawRawImageScaled(tabX, tabY, scale, image)
+			iconY := tabY + 8*scale
+			if tab.bottom {
+				iconY -= 2 * scale
+			}
+			fb.DrawItemIconScaled(tabX+5*scale, iconY, tab.icon, scale)
+		}
+	}
+	for _, tab := range creativeTabs {
+		if tab.category == category {
 			continue
 		}
-		x := px + (2+i*18)*scale
-		variant := "4"
-		if i == 0 {
-			variant = "1"
-		} else if i == len(creativeTabIcons)-1 {
-			variant = "7"
-		}
-		if tab, ok := GetOfficialImage("gui/sprites/container/creative_inventory/tab_top_unselected_" + variant + ".png"); ok {
-			fb.DrawRawImageScaled(x, py-26*scale, scale, tab)
-		}
+		drawTab(tab, false)
 	}
-	selected := int(category)
-	if selected >= 0 && selected < len(creativeTabIcons) {
-		variant := "4"
-		if selected == 0 {
-			variant = "1"
-		} else if selected == len(creativeTabIcons)-1 {
-			variant = "7"
+	for _, tab := range creativeTabs {
+		if tab.category == category {
+			drawTab(tab, true)
+			break
 		}
-		x := px + (2+selected*18)*scale
-		if tab, ok := GetOfficialImage("gui/sprites/container/creative_inventory/tab_top_selected_" + variant + ".png"); ok {
-			fb.DrawRawImageScaled(x, py-26*scale, scale, tab)
-		}
-	}
-	for i, icon := range creativeTabIcons {
-		x := px + (7+i*18)*scale
-		fb.DrawItemIconScaled(x, py-20*scale, icon, scale)
 	}
 
 	items := inventory.SearchCreativeCatalog(category, query)
@@ -103,8 +132,8 @@ func (fb *Framebuffer) DrawCreativeInventoryGUI(inv *inventory.PlayerInventory, 
 	hoveredName := ""
 	for i := 0; i < creativePerPage && start+i < len(items); i++ {
 		row, col := i/creativeColumns, i%creativeColumns
-		sx := px + (7+col*18)*scale
-		sy := py + (16+row*18)*scale
+		sx := px + (9+col*18)*scale
+		sy := py + (18+row*18)*scale
 		fb.DrawItemIconScaled(sx+scale, sy+scale, items[start+i].ID, scale)
 		if mouseX >= sx && mouseX < sx+18*scale && mouseY >= sy && mouseY < sy+18*scale {
 			fb.DrawRect(sx+scale, sy+scale, 16*scale, 16*scale, 0x50FFFFFF)
@@ -112,12 +141,16 @@ func (fb *Framebuffer) DrawCreativeInventoryGUI(inv *inventory.PlayerInventory, 
 		}
 	}
 	drawCreativeTooltip(fb, hoveredName, mouseX, mouseY, scale)
-	trackX, trackY, trackH := px+174*scale, py+16*scale, 90*scale
+	trackX, trackY, trackH := px+175*scale, py+18*scale, 112*scale
 	thumbY := trackY
 	if maxScroll > 0 {
-		thumbY += (trackH - 15*scale) * scrollRow / maxScroll
+		thumbY += (trackH - 17*scale) * scrollRow / maxScroll
 	}
-	if thumb, ok := GetOfficialImage("gui/sprites/container/creative_inventory/scroller.png"); ok {
+	thumbName := "scroller_disabled.png"
+	if maxScroll > 0 {
+		thumbName = "scroller.png"
+	}
+	if thumb, ok := GetOfficialImage("gui/sprites/container/creative_inventory/" + thumbName); ok {
 		fb.DrawRawImageScaled(trackX, thumbY, scale, thumb)
 	} else {
 		fb.DrawRect(trackX, thumbY, 12*scale, 15*scale, 0xFFAAAAAA)
@@ -128,18 +161,13 @@ func (fb *Framebuffer) DrawCreativeInventoryGUI(inv *inventory.PlayerInventory, 
 		if query != "" {
 			searchLabel = query
 		}
-		fb.DrawText5x7(px+83*scale, py+7*scale, searchLabel, 0xFF404040, scale)
+		drawCreativeSearchText(fb, px+82*scale, py+6*scale, searchLabel, 0xFF404040, scale, 80*scale)
 	}
 
-	invX, invY := px+7*scale, py+144*scale+inventoryOffsetY
+	invX, invY := px+9*scale, py+creativeHotbarY*scale
 	hoveredInventoryName := ""
-	for row := 0; row < 3; row++ {
-		for col := 0; col < 9; col++ {
-			hoveredInventoryName = drawCreativePlayerSlot(fb, inv, 9+row*9+col, invX+col*18*scale, invY+row*18*scale, scale, mouseX, mouseY)
-		}
-	}
 	for col := 0; col < 9; col++ {
-		name := drawCreativePlayerSlot(fb, inv, col, invX+col*18*scale, py+203*scale+inventoryOffsetY, scale, mouseX, mouseY)
+		name := drawCreativePlayerSlot(fb, inv, col, invX+col*18*scale, invY, scale, mouseX, mouseY)
 		if name != "" {
 			hoveredInventoryName = name
 		}
@@ -147,10 +175,10 @@ func (fb *Framebuffer) DrawCreativeInventoryGUI(inv *inventory.PlayerInventory, 
 	if hoveredInventoryName != "" {
 		drawCreativeTooltip(fb, hoveredInventoryName, mouseX, mouseY, scale)
 	}
-	for i := range creativeTabIcons {
-		x, y := px+(2+i*18)*scale, py-26*scale
-		if mouseX >= x && mouseX < x+18*scale && mouseY >= y && mouseY < y+32*scale {
-			drawCreativeTooltip(fb, creativeTabNames[i], mouseX, mouseY, scale)
+	for _, tab := range creativeTabs {
+		x, y := px+creativeTabX(tab)*scale, py+(creativeTabY(tab)-4)*scale
+		if mouseX >= x && mouseX < x+26*scale && mouseY >= y && mouseY < y+32*scale {
+			drawCreativeTooltip(fb, tab.name, mouseX, mouseY, scale)
 			break
 		}
 	}
@@ -255,20 +283,78 @@ func creativeTooltipWidth(label string, scale int) int {
 	return MeasureText5x7(label, scale) + 8*scale
 }
 
+func drawCreativeSearchText(fb *Framebuffer, x, y int, text string, color uint32, scale, maxWidth int) {
+	if fb == nil || scale < 1 || maxWidth <= 0 {
+		return
+	}
+	drawPass := func(originX, originY int, drawColor uint32) {
+		cursorX := originX
+		for _, ch := range text {
+			if ch > 0x7F {
+				glyph := GetCJKGlyph(ch)
+				const glyphSize = 9
+				for gy := 0; gy < glyphSize; gy++ {
+					sourceY := gy * len(glyph) / glyphSize
+					for gx := 0; gx < glyphSize; gx++ {
+						sourceX := gx * 12 / glyphSize
+						if glyph[sourceY]&(1<<(11-sourceX)) != 0 {
+							drawCreativeSearchPixel(fb, cursorX+gx*scale, originY+gy*scale, scale, drawColor, x, x+maxWidth)
+						}
+					}
+				}
+				cursorX += glyphSize * scale
+				continue
+			}
+			if ch >= 'a' && ch <= 'z' {
+				ch = ch - 'a' + 'A'
+			}
+			glyph, ok := font5x7[ch]
+			if !ok {
+				glyph = font5x7['?']
+			}
+			for gy, bits := range glyph {
+				for gx := 0; gx < 5; gx++ {
+					if bits&(1<<(4-gx)) != 0 {
+						drawCreativeSearchPixel(fb, cursorX+gx*scale, originY+gy*scale, scale, drawColor, x, x+maxWidth)
+					}
+				}
+			}
+			cursorX += 6 * scale
+		}
+	}
+	drawPass(x+scale, y+scale, 0xFF222222)
+	drawPass(x, y, color)
+}
+
+func drawCreativeSearchPixel(fb *Framebuffer, x, y, scale int, color uint32, clipLeft, clipRight int) {
+	for dy := 0; dy < scale; dy++ {
+		py := y + dy
+		if py < 0 || py >= fb.Height {
+			continue
+		}
+		for dx := 0; dx < scale; dx++ {
+			px := x + dx
+			if px >= clipLeft && px < clipRight && px >= 0 && px < fb.Width {
+				fb.Color[py*fb.Width+px] = color
+			}
+		}
+	}
+}
+
 // HitTestCreativeInventory maps mouse coordinates to a tab, catalog item,
 // scrollbar, or player inventory slot.
 func HitTestCreativeInventory(w, h int, category inventory.CreativeCategory, query string, scrollRow, mouseX, mouseY int) GUISlotHit {
-	scale, px, py, inventoryOffsetY := creativeGUIOrigin(w, h)
-	if category == inventory.CreativeAll && mouseX >= px+80*scale && mouseX < px+170*scale && mouseY >= py+4*scale && mouseY < py+15*scale {
+	scale, px, py := creativeGUIOrigin(w, h)
+	if category == inventory.CreativeAll && mouseX >= px+82*scale && mouseX < px+162*scale && mouseY >= py+4*scale && mouseY < py+15*scale {
 		return GUISlotHit{Type: SlotCreativeSearch}
 	}
-	for i := range creativeTabIcons {
-		x := px + (2+i*18)*scale
-		if mouseX >= x && mouseX < x+18*scale && mouseY >= py-26*scale && mouseY < py+6*scale {
-			return GUISlotHit{Type: SlotCreativeTab, Index: i}
+	for _, tab := range creativeTabs {
+		x, y := px+creativeTabX(tab)*scale, py+(creativeTabY(tab)-4)*scale
+		if mouseX >= x && mouseX <= x+26*scale && mouseY >= y && mouseY <= y+32*scale {
+			return GUISlotHit{Type: SlotCreativeTab, Index: int(tab.category)}
 		}
 	}
-	trackX, trackY, trackH := px+174*scale, py+16*scale, 90*scale
+	trackX, trackY, trackH := px+175*scale, py+18*scale, 112*scale
 	if mouseX >= trackX && mouseX < trackX+12*scale && mouseY >= trackY && mouseY < trackY+trackH {
 		return GUISlotHit{Type: SlotCreativeScroll, Index: (mouseY - trackY) * 100 / max(1, trackH-1)}
 	}
@@ -283,22 +369,14 @@ func HitTestCreativeInventory(w, h int, category inventory.CreativeCategory, que
 	start := scrollRow * creativeColumns
 	for i := 0; i < creativePerPage; i++ {
 		row, col := i/creativeColumns, i%creativeColumns
-		sx, sy := px+(7+col*18)*scale, py+(16+row*18)*scale
+		sx, sy := px+(9+col*18)*scale, py+(18+row*18)*scale
 		if mouseX >= sx && mouseX < sx+18*scale && mouseY >= sy && mouseY < sy+18*scale && start+i < len(items) {
 			return GUISlotHit{Type: SlotCreativeItem, Index: start + i}
 		}
 	}
-	invX, invY := px+7*scale, py+144*scale+inventoryOffsetY
-	for row := 0; row < 3; row++ {
-		for col := 0; col < 9; col++ {
-			sx, sy := invX+col*18*scale, invY+row*18*scale
-			if mouseX >= sx && mouseX < sx+18*scale && mouseY >= sy && mouseY < sy+18*scale {
-				return GUISlotHit{Type: SlotInventory, Index: 9 + row*9 + col}
-			}
-		}
-	}
+	invX, invY := px+9*scale, py+creativeHotbarY*scale
 	for col := 0; col < 9; col++ {
-		sx, sy := invX+col*18*scale, py+203*scale+inventoryOffsetY
+		sx, sy := invX+col*18*scale, invY
 		if mouseX >= sx && mouseX < sx+18*scale && mouseY >= sy && mouseY < sy+18*scale {
 			return GUISlotHit{Type: SlotInventory, Index: col}
 		}

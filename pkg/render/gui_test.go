@@ -116,12 +116,12 @@ func TestCreativeInventoryCatalogAndHitTesting(t *testing.T) {
 	}
 
 	w, h := 400, 300
-	scale, px, py, _ := creativeGUIOrigin(w, h)
-	hitItem := HitTestCreativeInventory(w, h, inventory.CreativeAll, "", 0, px+8*scale, py+17*scale)
+	scale, px, py := creativeGUIOrigin(w, h)
+	hitItem := HitTestCreativeInventory(w, h, inventory.CreativeAll, "", 0, px+10*scale, py+19*scale)
 	if hitItem.Type != SlotCreativeItem || hitItem.Index != 0 {
 		t.Fatalf("first creative item slot hit = %+v", hitItem)
 	}
-	hitTools := HitTestCreativeInventory(w, h, inventory.CreativeAll, "", 0, px+(2+int(inventory.CreativeTools)*18+2)*scale, py-20*scale)
+	hitTools := HitTestCreativeInventory(w, h, inventory.CreativeAll, "", 0, px+(creativeTabX(creativeTabs[6])+10)*scale, py+140*scale)
 	if hitTools.Type != SlotCreativeTab || hitTools.Index != int(inventory.CreativeTools) {
 		t.Fatalf("tools tab hit = %+v", hitTools)
 	}
@@ -132,7 +132,7 @@ func TestCreativeInventoryCatalogAndHitTesting(t *testing.T) {
 	if hit := HitTestCreativeInventory(w, h, inventory.CreativeBlocks, "", 0, px+100*scale, py+8*scale); hit.Type == SlotCreativeSearch {
 		t.Fatalf("search field should not be active outside the search tab: %+v", hit)
 	}
-	hitLaterItem := HitTestCreativeInventory(w, h, inventory.CreativeAll, "", 1, px+8*scale, py+17*scale)
+	hitLaterItem := HitTestCreativeInventory(w, h, inventory.CreativeAll, "", 1, px+10*scale, py+19*scale)
 	if hitLaterItem.Type != SlotCreativeItem || hitLaterItem.Index != 9 {
 		t.Fatalf("creative second-page item hit = %+v", hitLaterItem)
 	}
@@ -140,7 +140,7 @@ func TestCreativeInventoryCatalogAndHitTesting(t *testing.T) {
 	if hitScroll.Type != SlotCreativeScroll || hitScroll.Index < 40 || hitScroll.Index > 65 {
 		t.Fatalf("creative scrollbar hit = %+v", hitScroll)
 	}
-	if hit := HitTestCreativeInventory(w, h, inventory.CreativeAll, "", 0, px+8*scale, py+204*scale); hit.Type != SlotInventory || hit.Index != 0 {
+	if hit := HitTestCreativeInventory(w, h, inventory.CreativeAll, "", 0, px+10*scale, py+113*scale); hit.Type != SlotInventory || hit.Index != 0 {
 		t.Fatalf("creative hotbar hit = %+v", hit)
 	}
 
@@ -168,25 +168,48 @@ func TestCreativeChineseTooltipsUseCJKTextWidth(t *testing.T) {
 	}
 }
 
+func TestCreativeSearchTextFitsAndClipsToVanillaField(t *testing.T) {
+	fb := NewFramebuffer(96, 40)
+	drawCreativeSearchText(fb, 4, 3, "搜索物品以及超长查询", 0xFFFFFFFF, 2, 36)
+	visible := 0
+	for y := 0; y < fb.Height; y++ {
+		for x := 0; x < fb.Width; x++ {
+			if fb.Color[y*fb.Width+x] == 0 {
+				continue
+			}
+			if x < 4 || x >= 40 {
+				t.Fatalf("search text escaped its 36px field at (%d,%d)", x, y)
+			}
+			visible++
+		}
+	}
+	if visible == 0 {
+		t.Fatal("search text rendered no visible pixels")
+	}
+}
+
 func TestCreativeInventoryFitsMinimumGUIResolution(t *testing.T) {
 	for _, size := range [][2]int{{320, 240}, {400, 300}, {1280, 720}, {1920, 1080}} {
 		w, h := size[0], size[1]
-		scale, px, py, inventoryOffsetY := creativeGUIOrigin(w, h)
+		scale, px, py := creativeGUIOrigin(w, h)
 		if px < 0 || px+creativePanelW*scale > w {
 			t.Errorf("creative panel exceeds framebuffer horizontally at %dx%d: scale=%d x=%d", w, h, scale, px)
 		}
-		if py-creativeTabsH*scale < 0 {
-			t.Errorf("creative tabs are clipped at %dx%d: scale=%d y=%d", w, h, scale, py-creativeTabsH*scale)
+		if py-32*scale < 0 {
+			t.Errorf("creative top tabs are clipped at %dx%d: scale=%d y=%d", w, h, scale, py-32*scale)
 		}
-		if py+creativeSlotsH*scale+inventoryOffsetY > h {
-			t.Errorf("creative hotbar is clipped at %dx%d: scale=%d y=%d", w, h, scale, py+creativeSlotsH*scale+inventoryOffsetY)
+		if py+creativePanelH*scale+32*scale > h {
+			t.Errorf("creative bottom tabs are clipped at %dx%d: scale=%d y=%d", w, h, scale, py+creativePanelH*scale+32*scale)
+		}
+		if py+(creativeHotbarY+18)*scale > h {
+			t.Errorf("creative hotbar is clipped at %dx%d: scale=%d y=%d", w, h, scale, py+(creativeHotbarY+18)*scale)
 		}
 		if w == 320 && h == 240 {
-			tab := HitTestCreativeInventory(w, h, inventory.CreativeAll, "", 0, px+8*scale, py-20*scale)
-			if tab.Type != SlotCreativeTab || tab.Index != 0 {
+			tab := HitTestCreativeInventory(w, h, inventory.CreativeAll, "", 0, px+(creativeTabX(creativeTabs[0])+10)*scale, py-20*scale)
+			if tab.Type != SlotCreativeTab || tab.Index != int(inventory.CreativeBlocks) {
 				t.Errorf("minimum-size visible tab hit = %+v", tab)
 			}
-			hotbar := HitTestCreativeInventory(w, h, inventory.CreativeAll, "", 0, px+8*scale, py+204*scale+inventoryOffsetY)
+			hotbar := HitTestCreativeInventory(w, h, inventory.CreativeAll, "", 0, px+10*scale, py+113*scale)
 			if hotbar.Type != SlotInventory || hotbar.Index != 0 {
 				t.Errorf("minimum-size hotbar hit = %+v", hotbar)
 			}
@@ -214,11 +237,11 @@ func TestCreativeInventoryScrollUsesRowsAndReachesLastCatalogItem(t *testing.T) 
 	}
 
 	w, h := 400, 300
-	scale, px, py, _ := creativeGUIOrigin(w, h)
+	scale, px, py := creativeGUIOrigin(w, h)
 	visible := last - start
 	row, col := visible/creativeColumns, visible%creativeColumns
-	x := px + (8+col*18)*scale
-	y := py + (17+row*18)*scale
+	x := px + (10+col*18)*scale
+	y := py + (19+row*18)*scale
 	hit := HitTestCreativeInventory(w, h, inventory.CreativeAll, "", maxRow, x, y)
 	if hit.Type != SlotCreativeItem || hit.Index != last {
 		t.Fatalf("last item hit at max scroll = %+v, want catalog index %d", hit, last)
@@ -227,8 +250,8 @@ func TestCreativeInventoryScrollUsesRowsAndReachesLastCatalogItem(t *testing.T) 
 
 func TestCreativeInventoryShowsPlayerItemTooltipAndDurability(t *testing.T) {
 	const width, height = 400, 300
-	scale, px, py, inventoryOffsetY := creativeGUIOrigin(width, height)
-	mouseX, mouseY := px+8*scale, py+204*scale+inventoryOffsetY
+	scale, px, py := creativeGUIOrigin(width, height)
+	mouseX, mouseY := px+10*scale, py+113*scale
 
 	inv := inventory.NewPlayerInventory()
 	inv.Slots[0] = inventory.ItemStack{ItemID: inventory.ItemStone, Count: 1}
@@ -250,16 +273,19 @@ func TestCreativeInventoryShowsPlayerItemTooltipAndDurability(t *testing.T) {
 }
 
 func TestCreativeInventoryUsesEmbeddedVanillaGUITextures(t *testing.T) {
-	if _, ok := GetOfficialItemSprite(creativeTabIcons[len(creativeTabIcons)-1]); !ok {
+	if _, ok := GetOfficialItemSprite(creativeTabs[len(creativeTabs)-1].icon); !ok {
 		t.Fatal("creative Spawn Eggs tab icon has no official creeper spawn egg sprite")
 	}
 	for _, path := range []string{
 		"assets/textures/gui/sprites/container/slot.png",
 		"assets/textures/gui/sprites/container/creative_inventory/tab_top_selected_1.png",
 		"assets/textures/gui/sprites/container/creative_inventory/tab_top_unselected_4.png",
+		"assets/textures/gui/sprites/container/creative_inventory/tab_bottom_selected_1.png",
+		"assets/textures/gui/sprites/container/creative_inventory/tab_bottom_unselected_5.png",
 		"assets/textures/gui/container/inventory.png",
 		"assets/textures/gui/container/creative_inventory/tab_items.png",
 		"assets/textures/gui/container/creative_inventory/tab_item_search.png",
+		"assets/textures/gui/container/creative_inventory/tab_inventory.png",
 	} {
 		if _, err := EmbeddedTextures.ReadFile(path); err != nil {
 			t.Errorf("missing embedded vanilla GUI texture %s: %v", path, err)
