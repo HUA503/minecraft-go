@@ -3083,6 +3083,17 @@ func (c *Client) UpdateRightClick(isRightDown bool, dt float64) {
 		}
 		return
 	}
+	if sel.ItemID == inventory.ItemBoneMeal {
+		if isRightDown && c.isLocal && c.placeCooldown <= 0 && c.hasTarget {
+			if grown, ok := c.engine.UseBoneMealOnRedShrub(c.player.ID, c.targetedPos); ok {
+				c.RebuildAffectedMeshes(grown)
+				c.spawnBlockDebris(grown, 10100, 6)
+				sound.PlayHardwareFeedback("minecraft:item.bone_meal.use")
+				c.placeCooldown = 0.3
+			}
+		}
+		return
+	}
 	if isRightDown && c.isLocal && c.placeCooldown <= 0 && c.hasTarget {
 		if props, ok := inventory.GetToolProperties(sel.ItemID); ok && props.Type == inventory.ToolAxe {
 			blockID := c.engine.GetBlockIfLoaded(c.targetedPos.X, c.targetedPos.Y, c.targetedPos.Z)

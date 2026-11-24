@@ -34,6 +34,9 @@ func TestCreativeCatalogHasUniqueUsableItems(t *testing.T) {
 	if got := SearchCreativeCatalog(CreativeNatural, "red shrub"); len(got) != 1 || got[0].ID != 10100 || got[0].Name != "红灌木" {
 		t.Fatalf("26.3 red shrub is missing from the natural creative tab: %+v", got)
 	}
+	if got := SearchCreativeCatalog(CreativeMaterials, "bone meal"); len(got) != 1 || got[0].ID != ItemBoneMeal {
+		t.Fatalf("bone meal is missing from the materials tab: %+v", got)
+	}
 }
 
 func TestExtendedBlockRegistryIsNamespacedAndExposesColorSets(t *testing.T) {
@@ -228,6 +231,10 @@ func TestInventoryStackingAndRemoval(t *testing.T) {
 
 func TestCraftingRecipes(t *testing.T) {
 	cm := NewCraftingManager()
+	boneMeal, ok := cm.MatchCrafting([]int32{ItemBone, ItemAir, ItemAir, ItemAir}, 2)
+	if !ok || boneMeal.ItemID != ItemBoneMeal || boneMeal.Count != 3 {
+		t.Fatalf("bone meal recipe = %+v, %v; want 3 bone meal", boneMeal, ok)
+	}
 
 	// Test 1: 1 Oak Log -> 4 Planks in 2x2 grid
 	gridLog := []int32{

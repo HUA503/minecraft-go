@@ -79,6 +79,9 @@ func creativeItemRegistryName(itemID int32) string {
 	if egg, ok := SpawnEggByID(itemID); ok {
 		return egg.EntityName
 	}
+	if itemID == ItemBoneMeal {
+		return "minecraft:bone_meal"
+	}
 	return ""
 }
 
@@ -115,7 +118,7 @@ var creativeCatalog = []CreativeItem{
 	{314, "金头盔", CreativeCombat}, {315, "金胸甲", CreativeCombat}, {316, "金护腿", CreativeCombat}, {317, "金靴子", CreativeCombat},
 
 	{262, "箭", CreativeMaterials}, {263, "煤炭", CreativeMaterials}, {264, "钻石", CreativeMaterials}, {265, "铁锭", CreativeMaterials}, {266, "金锭", CreativeMaterials},
-	{280, "木棍", CreativeMaterials}, {331, "红石粉", CreativeRedstone}, {352, "骨头", CreativeMaterials}, {288, "羽毛", CreativeMaterials},
+	{280, "木棍", CreativeMaterials}, {331, "红石粉", CreativeRedstone}, {352, "骨头", CreativeMaterials}, {351, "骨粉", CreativeMaterials}, {288, "羽毛", CreativeMaterials},
 	{289, "火药", CreativeMaterials}, {287, "线", CreativeMaterials}, {334, "皮革", CreativeMaterials}, {318, "燧石", CreativeMaterials}, {295, "小麦种子", CreativeMaterials}, {296, "小麦", CreativeMaterials},
 	{322, "金苹果", CreativeFood}, {325, "铁桶", CreativeTools}, {326, "水桶", CreativeTools}, {327, "熔岩桶", CreativeTools}, {346, "钓鱼竿", CreativeTools},
 	{332, "雪球", CreativeTools}, {344, "鸡蛋", CreativeTools}, {368, "末影珍珠", CreativeTools}, {324, "橡木门", CreativeFunctional},

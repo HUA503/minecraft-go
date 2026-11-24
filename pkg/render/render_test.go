@@ -773,6 +773,9 @@ func TestCreativeSpawnEggsHaveOfficialTextures(t *testing.T) {
 			t.Errorf("spawn egg %s has no official icon", egg.EntityName)
 		}
 	}
+	if _, ok := GetOfficialItemSprite(inventory.ItemBoneMeal); !ok {
+		t.Fatal("bone meal has no official item icon")
+	}
 }
 
 func TestDrawCloudsAestheticsAndDepth(t *testing.T) {

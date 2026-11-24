@@ -1095,6 +1095,61 @@ func (e *Engine) PlaceBlock(playerID int32, pos world.BlockPos, blockID int32) b
 	return true
 }
 
+// UseBoneMealOnRedShrub grows one red shrub in a random adjacent loaded,
+// supported position. Bone meal is consumed only after the block update works.
+func (e *Engine) UseBoneMealOnRedShrub(playerID int32, pos world.BlockPos) (world.BlockPos, bool) {
+	if !world.ValidBlockCoordinates(pos.X, pos.Y, pos.Z) {
+		return world.BlockPos{}, false
+	}
+	e.mu.Lock()
+	player, ok := e.Players[playerID]
+	if !ok || player == nil || player.Inventory == nil || player.Inventory.GetSelectedItem().ItemID != inventory.ItemBoneMeal ||
+		e.CurrentDimension != 0 || e.getBlockLocked(pos.X, pos.Y, pos.Z) != 10100 {
+		e.mu.Unlock()
+		return world.BlockPos{}, false
+	}
+	start := int(e.nextRandomTickValueLocked() % 4)
+	directions := [4][2]int32{{1, 0}, {-1, 0}, {0, 1}, {0, -1}}
+	var grown world.BlockPos
+	found := false
+	for i := 0; i < len(directions); i++ {
+		direction := directions[(start+i)%len(directions)]
+		candidate := world.BlockPos{X: pos.X + direction[0], Y: pos.Y, Z: pos.Z + direction[1]}
+		if !world.ValidBlockCoordinates(candidate.X, candidate.Y, candidate.Z) || candidate.Y <= world.MinWorldY {
+			continue
+		}
+		below := world.BlockPos{X: candidate.X, Y: candidate.Y - 1, Z: candidate.Z}
+		if e.World[candidate.ToChunkPos()] == nil || e.World[below.ToChunkPos()] == nil ||
+			e.getBlockLocked(candidate.X, candidate.Y, candidate.Z) != 0 || !IsSolidBlock(e.getBlockLocked(below.X, below.Y, below.Z)) {
+			continue
+		}
+		grown, found = candidate, true
+		break
+	}
+	creative := player.GameMode == 1
+	e.mu.Unlock()
+	if !found || !e.SetBlockChecked(grown.X, grown.Y, grown.Z, 10100) {
+		return world.BlockPos{}, false
+	}
+	if !creative {
+		e.mu.Lock()
+		if current, exists := e.Players[playerID]; exists && current != nil && current.Inventory != nil {
+			slot := current.Inventory.SelectedHotbar
+			if slot >= 0 && slot < len(current.Inventory.Slots) {
+				stack := &current.Inventory.Slots[slot]
+				if stack.ItemID == inventory.ItemBoneMeal && stack.Count > 0 {
+					stack.Count--
+					if stack.Count == 0 {
+						*stack = inventory.ItemStack{}
+					}
+				}
+			}
+		}
+		e.mu.Unlock()
+	}
+	return grown, true
+}
+
 func (e *Engine) AddPlayer(username string, uuid [16]byte, spawnPos Vec3) *PlayerEntity {
 	e.mu.Lock()
 	defer e.mu.Unlock()

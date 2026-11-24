@@ -343,6 +343,8 @@ func GetOfficialItemTextureName(itemID int32) string {
 		return "wheat"
 	case 371:
 		return "gold_nugget"
+	case inventory.ItemBoneMeal:
+		return "bone_meal"
 	case 375:
 		return "spider_eye"
 	case 381:

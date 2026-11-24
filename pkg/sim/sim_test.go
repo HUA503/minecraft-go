@@ -294,6 +294,52 @@ func TestRedShrubPlacementCollisionAndDrop(t *testing.T) {
 	}
 }
 
+func TestBoneMealGrowsRedShrubAndConsumesOnlyInSurvival(t *testing.T) {
+	for _, gameMode := range []int{0, 1} {
+		eng := NewEngine()
+		player := eng.AddPlayer("Steve", [16]byte{byte(gameMode + 1)}, Vec3{X: 20.5, Y: 64, Z: 20.5})
+		player.GameMode = gameMode
+		pos := world.BlockPos{X: 10, Y: 64, Z: 10}
+		eng.SetBlock(pos.X, pos.Y-1, pos.Z, inventory.ItemStone)
+		eng.SetBlock(pos.X, pos.Y, pos.Z, 10100)
+		for _, direction := range [][2]int32{{1, 0}, {-1, 0}, {0, 1}, {0, -1}} {
+			eng.SetBlock(pos.X+direction[0], pos.Y-1, pos.Z+direction[1], inventory.ItemStone)
+		}
+		player.Inventory.Slots[0] = inventory.ItemStack{ItemID: inventory.ItemBoneMeal, Count: 2}
+
+		grown, ok := eng.UseBoneMealOnRedShrub(player.ID, pos)
+		if !ok {
+			t.Fatalf("game mode %d: bone meal did not grow a supported red shrub", gameMode)
+		}
+		if got := eng.GetBlock(grown.X, grown.Y, grown.Z); got != 10100 {
+			t.Fatalf("game mode %d: grown block ID = %d, want red shrub", gameMode, got)
+		}
+		wantCount := 1
+		if gameMode == 1 {
+			wantCount = 2
+		}
+		if got := player.Inventory.Slots[0].Count; got != wantCount {
+			t.Fatalf("game mode %d: bone meal count = %d, want %d", gameMode, got, wantCount)
+		}
+	}
+}
+
+func TestBoneMealDoesNotConsumeWhenRedShrubCannotSpread(t *testing.T) {
+	eng := NewEngine()
+	player := eng.AddPlayer("Steve", [16]byte{1}, Vec3{X: 20.5, Y: 64, Z: 20.5})
+	pos := world.BlockPos{X: 10, Y: 64, Z: 10}
+	eng.SetBlock(pos.X, pos.Y-1, pos.Z, inventory.ItemStone)
+	eng.SetBlock(pos.X, pos.Y, pos.Z, 10100)
+	player.Inventory.Slots[0] = inventory.ItemStack{ItemID: inventory.ItemBoneMeal, Count: 2}
+
+	if _, ok := eng.UseBoneMealOnRedShrub(player.ID, pos); ok {
+		t.Fatal("red shrub unexpectedly spread without adjacent supporting ground")
+	}
+	if got := player.Inventory.Slots[0].Count; got != 2 {
+		t.Fatalf("failed bone meal use consumed an item: count = %d", got)
+	}
+}
+
 func TestBlockPlacementAllFacesAndPillaring(t *testing.T) {
 	eng := NewEngine()
 	p := eng.AddPlayer("Steve", [16]byte{1}, Vec3{8.5, 65.0, 8.5})

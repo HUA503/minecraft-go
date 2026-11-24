@@ -64,6 +64,7 @@ const (
 	ItemSpiderEye      int32 = 375
 	ItemGunpowder      int32 = 289
 	ItemBone           int32 = 352
+	ItemBoneMeal       int32 = 351
 	ItemArrow          int32 = 262
 	ItemBow            int32 = 261
 	ItemFlintAndSteel  int32 = 259

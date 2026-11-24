@@ -20,6 +20,13 @@ func NewCraftingManager() *CraftingManager {
 }
 
 func (cm *CraftingManager) registerDefaults() {
+	// Bone -> bone meal.
+	cm.Recipes = append(cm.Recipes, Recipe{
+		Width: 1, Height: 1,
+		Pattern: []int32{ItemBone},
+		Output:  ItemStack{ItemID: ItemBoneMeal, Count: 3},
+	})
+
 	// 1. Oak Log -> 4 Oak Planks (1x1)
 	cm.Recipes = append(cm.Recipes, Recipe{
 		Width:   1,
