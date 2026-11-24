@@ -316,6 +316,10 @@ func drawCreativePlayerPreview(fb *Framebuffer, inv *inventory.PlayerInventory, 
 	}
 	yaw := math.Atan2(float64(mouseX-centerX), float64(48*scale)) * 0.9
 	cosYaw, sinYaw := math.Cos(yaw), math.Sin(yaw)
+	pitchInput := float64(mouseY-(topY+22*scale)) / float64(24*scale)
+	pitchInput = math.Max(-1, math.Min(1, pitchInput))
+	pitch := pitchInput * 0.65
+	cosPitch, sinPitch := math.Cos(pitch), math.Sin(pitch)
 
 	// The model uses the official classic Steve skin as the local default. The
 	// six-part geometry remains the preview's existing software-rendered model.
@@ -371,9 +375,12 @@ func drawCreativePlayerPreview(fb *Framebuffer, inv *inventory.PlayerInventory, 
 			z := box.center[2] + corner[2]*box.half[2]
 			rx := x*cosYaw + z*sinYaw
 			rz := -x*sinYaw + z*cosYaw
+			relY := y - 0.9
+			ry := relY*cosPitch - rz*sinPitch + 0.9
+			rz = relY*sinPitch + rz*cosPitch
 			projected[i] = ScreenPoint{
 				X:     float32(float64(centerX) + rx*unit),
-				Y:     float32(float64(topY+41*scale) - y*unit + rz*3*float64(scale)),
+				Y:     float32(float64(topY+41*scale) - ry*unit + rz*3*float64(scale)),
 				Depth: float32(rz + 2),
 			}
 		}
@@ -872,3 +879,4 @@ func HitTestCreativeInventory(w, h int, category inventory.CreativeCategory, que
 	}
 	return GUISlotHit{Type: SlotNone, Index: -1}
 }
+
