@@ -158,6 +158,17 @@ func TestCreativeInventoryCatalogAndHitTesting(t *testing.T) {
 	}
 }
 
+func TestCreativeChineseTooltipsUseCJKTextWidth(t *testing.T) {
+	label := "工具与实用物品"
+	want := MeasureText5x7(label, 2) + 16
+	if got := creativeTooltipWidth(label, 2); got != want {
+		t.Fatalf("Chinese creative tooltip width = %d, want %d", got, want)
+	}
+	if MeasureText5x7(label, 1) != 12*len([]rune(label)) {
+		t.Fatal("creative tooltip text metrics do not account for 12-pixel CJK glyphs")
+	}
+}
+
 func TestCreativeInventoryFitsMinimumGUIResolution(t *testing.T) {
 	w, h := 320, 240
 	scale := CalculateGUIScaleFromDimensions(w, h)

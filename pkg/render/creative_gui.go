@@ -10,7 +10,7 @@ const (
 
 // Icon order follows the compact tab strip used by the Java creative screen.
 var creativeTabIcons = [...]int32{345, 1, 35, 6, 54, 331, 270, 268, 260, 296, 383}
-var creativeTabNames = [...]string{"Search Items", "Building Blocks", "Colored Blocks", "Natural Blocks", "Functional Blocks", "Redstone Blocks", "Tools & Utilities", "Combat", "Food & Drinks", "Ingredients", "Spawn Eggs"}
+var creativeTabNames = [...]string{"搜索物品", "建筑方块", "有色方块", "自然方块", "功能方块", "红石方块", "工具与实用物品", "战斗", "食物与饮料", "材料", "刷怪蛋"}
 
 // DrawCreativeInventoryGUI draws a paged item catalog above the player's
 // inventory. The player inventory remains interactive so items can be moved
@@ -102,7 +102,7 @@ func (fb *Framebuffer) DrawCreativeInventoryGUI(inv *inventory.PlayerInventory, 
 	}
 
 	if category == inventory.CreativeAll {
-		searchLabel := "Search Items"
+		searchLabel := "搜索物品"
 		if query != "" {
 			searchLabel = query
 		}
@@ -177,7 +177,7 @@ func drawCreativeTooltip(fb *Framebuffer, label string, mouseX, mouseY, scale in
 	if label == "" {
 		return
 	}
-	width := len([]rune(label))*6*scale + 8*scale
+	width := creativeTooltipWidth(label, scale)
 	x, y := mouseX+10*scale, mouseY+10*scale
 	if x+width > fb.Width {
 		x = mouseX - width - 8*scale
@@ -188,6 +188,10 @@ func drawCreativeTooltip(fb *Framebuffer, label string, mouseX, mouseY, scale in
 	fb.DrawRect(x, y, width, 13*scale, 0xF0100010)
 	fb.DrawRect(x+scale, y+scale, width-2*scale, 11*scale, 0xF0100010)
 	fb.DrawText5x7(x+4*scale, y+3*scale, label, 0xFFFFFFFF, scale)
+}
+
+func creativeTooltipWidth(label string, scale int) int {
+	return MeasureText5x7(label, scale) + 8*scale
 }
 
 // HitTestCreativeInventory maps mouse coordinates to a tab, catalog item,
