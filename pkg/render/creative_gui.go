@@ -1,9 +1,13 @@
 package render
 
 import (
+	"fmt"
 	"math"
+	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
+	"sync"
 
 	"github.com/HUA503/minecraft-go/pkg/inventory"
 )
@@ -177,7 +181,7 @@ func (fb *Framebuffer) DrawCreativeInventoryGUI(inv *inventory.PlayerInventory, 
 	if category == inventory.CreativeInventory {
 		previewX := px + 81*scale
 		previewTop := py + 8*scale
-		drawCreativePlayerPreview(fb, previewX, previewTop, scale, mouseX, mouseY)
+		drawCreativePlayerPreview(fb, inv, previewX, previewTop, scale, mouseX, mouseY)
 		for slot := 0; slot < 4; slot++ {
 			x := px + (54+(slot/2)*54)*scale
 			y := py + (6+(slot%2)*27)*scale
@@ -234,11 +238,75 @@ type creativePreviewFace struct {
 	texture *RawImage
 }
 
+type creativePreviewBox struct {
+	center [3]float64
+	half   [3]float64
+	colors [6]uint32
+	uvs    [6][4][2]float32
+}
+
+var creativePlayerSkinCache struct {
+	sync.Once
+	texture *RawImage
+}
+
+func creativePlayerSkinTexture() *RawImage {
+	creativePlayerSkinCache.Do(func() {
+		if configDir, err := os.UserConfigDir(); err == nil {
+			if texture, err := loadCreativePlayerSkinFromConfig(configDir); err == nil {
+				creativePlayerSkinCache.texture = texture
+				return
+			}
+		}
+		creativePlayerSkinCache.texture, _ = GetOfficialImage("entity/player/steve.png")
+	})
+	return creativePlayerSkinCache.texture
+}
+
+func loadCreativePlayerSkinFromConfig(configDir string) (*RawImage, error) {
+	file, err := os.Open(filepath.Join(configDir, "minecraft-go", "skin.png"))
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	texture, err := LoadRawImage(file)
+	if err != nil {
+		return nil, err
+	}
+	if texture.Width == 64 && texture.Height == 32 {
+		return expandLegacyCreativeSkin(texture), nil
+	}
+	if texture.Width != 64 || texture.Height != 64 {
+		return nil, fmt.Errorf("player skin must be 64x64 or legacy 64x32 pixels, got %dx%d", texture.Width, texture.Height)
+	}
+	return texture, nil
+}
+
+func expandLegacyCreativeSkin(texture *RawImage) *RawImage {
+	if texture == nil || texture.Width != 64 || texture.Height != 32 || len(texture.Pixels) != 64*32 {
+		return texture
+	}
+	expanded := &RawImage{Width: 64, Height: 64, Pixels: make([]uint32, 64*64)}
+	copy(expanded.Pixels[:64*32], texture.Pixels)
+	copyRegion := func(srcX, srcY, dstX, dstY, width, height int) {
+		for y := 0; y < height; y++ {
+			src := (srcY+y)*texture.Width + srcX
+			dst := (dstY+y)*expanded.Width + dstX
+			copy(expanded.Pixels[dst:dst+width], texture.Pixels[src:src+width])
+		}
+	}
+	// Legacy skins contain only the right limbs. Mirror those UV islands into
+	// the modern left-arm and left-leg regions used by the preview model.
+	copyRegion(40, 16, 32, 48, 16, 16)
+	copyRegion(0, 16, 16, 48, 16, 16)
+	return expanded
+}
+
 // drawCreativePlayerPreview draws the same six-part block model used by the
 // in-world player renderer into the open player-inventory viewport. The mouse
 // position controls the model's yaw, matching the original inventory preview
 // interaction while keeping the preview inside the inventory panel.
-func drawCreativePlayerPreview(fb *Framebuffer, centerX, topY, scale, mouseX, mouseY int) {
+func drawCreativePlayerPreview(fb *Framebuffer, inv *inventory.PlayerInventory, centerX, topY, scale, mouseX, mouseY int) {
 	if fb == nil || scale <= 0 {
 		return
 	}
@@ -251,7 +319,7 @@ func drawCreativePlayerPreview(fb *Framebuffer, centerX, topY, scale, mouseX, mo
 
 	// The model uses the official classic Steve skin as the local default. The
 	// six-part geometry remains the preview's existing software-rendered model.
-	skin, _ := GetOfficialImage("entity/player/steve.png")
+	skin := creativePlayerSkinTexture()
 	const (
 		headSkin = uint32(0xFFD6A07E)
 		headHair = uint32(0xFF4D3B26)
@@ -259,12 +327,7 @@ func drawCreativePlayerPreview(fb *Framebuffer, centerX, topY, scale, mouseX, mo
 		pants    = uint32(0xFF2A3663)
 		shoes    = uint32(0xFF555555)
 	)
-	boxes := []struct {
-		center [3]float64
-		half   [3]float64
-		colors [6]uint32
-		uvs    [6][4][2]float32
-	}{
+	boxes := []creativePreviewBox{
 		{[3]float64{0, 1.67, 0}, [3]float64{.25, .25, .25}, [6]uint32{headHair, headSkin, headHair, headSkin, headSkin, headSkin}, creativeSkinBoxUV([4]int{8, 8, 16, 16}, [4]int{24, 8, 32, 16}, [4]int{0, 8, 8, 16}, [4]int{16, 8, 24, 16}, [4]int{8, 0, 16, 8}, [4]int{16, 0, 24, 8})},
 		{[3]float64{0, 1.125, 0}, [3]float64{.25, .375, .125}, [6]uint32{shirt, shirt, shirt, shirt, shirt, shirt}, creativeSkinBoxUV([4]int{20, 20, 28, 32}, [4]int{32, 20, 40, 32}, [4]int{28, 20, 32, 32}, [4]int{16, 20, 20, 32}, [4]int{20, 16, 28, 20}, [4]int{28, 16, 36, 20})},
 		{[3]float64{-.375, 1.125, 0}, [3]float64{.125, .375, .125}, [6]uint32{shirt, headSkin, shirt, headSkin, shirt, shirt}, creativeSkinBoxUV([4]int{44, 20, 48, 32}, [4]int{52, 20, 56, 32}, [4]int{48, 20, 52, 32}, [4]int{40, 20, 44, 32}, [4]int{44, 16, 48, 20}, [4]int{48, 16, 52, 20})},
@@ -272,6 +335,24 @@ func drawCreativePlayerPreview(fb *Framebuffer, centerX, topY, scale, mouseX, mo
 		{[3]float64{-.125, .375, 0}, [3]float64{.125, .375, .125}, [6]uint32{pants, shoes, pants, pants, pants, pants}, creativeSkinBoxUV([4]int{4, 20, 8, 32}, [4]int{12, 20, 16, 32}, [4]int{8, 20, 12, 32}, [4]int{0, 20, 4, 32}, [4]int{4, 16, 8, 20}, [4]int{8, 16, 12, 20})},
 		{[3]float64{.125, .375, 0}, [3]float64{.125, .375, .125}, [6]uint32{pants, shoes, pants, pants, pants, pants}, creativeSkinBoxUV([4]int{20, 52, 24, 64}, [4]int{28, 52, 32, 64}, [4]int{24, 52, 28, 64}, [4]int{16, 52, 20, 64}, [4]int{20, 48, 24, 52}, [4]int{24, 48, 28, 52})},
 	}
+	// Minecraft skins have a separate transparent outer layer for the hat,
+	// jacket, sleeves, and pant cuffs. Keep it just outside the base mesh so the
+	// alpha texture draws only the player's configured clothing pixels.
+	boxes = append(boxes,
+		creativePreviewBox{[3]float64{0, 1.67, 0}, [3]float64{.257, .257, .257}, [6]uint32{headHair, headSkin, headHair, headSkin, headSkin, headSkin}, creativeSkinBoxUV([4]int{40, 8, 48, 16}, [4]int{56, 8, 64, 16}, [4]int{32, 8, 40, 16}, [4]int{48, 8, 56, 16}, [4]int{40, 0, 48, 8}, [4]int{48, 0, 56, 8})},
+		creativePreviewBox{[3]float64{0, 1.125, 0}, [3]float64{.257, .377, .132}, [6]uint32{shirt, shirt, shirt, shirt, shirt, shirt}, creativeSkinBoxUV([4]int{20, 36, 28, 48}, [4]int{32, 36, 40, 48}, [4]int{28, 36, 32, 48}, [4]int{16, 36, 20, 48}, [4]int{20, 32, 28, 36}, [4]int{28, 32, 36, 36})},
+		creativePreviewBox{[3]float64{-.375, 1.125, 0}, [3]float64{.127, .377, .132}, [6]uint32{shirt, headSkin, shirt, headSkin, shirt, shirt}, creativeSkinBoxUV([4]int{44, 36, 48, 48}, [4]int{52, 36, 56, 48}, [4]int{48, 36, 52, 48}, [4]int{40, 36, 44, 48}, [4]int{44, 32, 48, 36}, [4]int{48, 32, 52, 36})},
+		creativePreviewBox{[3]float64{.375, 1.125, 0}, [3]float64{.127, .377, .132}, [6]uint32{shirt, headSkin, shirt, headSkin, shirt, shirt}, creativeSkinBoxUV([4]int{52, 52, 56, 64}, [4]int{60, 52, 64, 64}, [4]int{56, 52, 60, 64}, [4]int{48, 52, 52, 64}, [4]int{52, 48, 56, 52}, [4]int{56, 48, 60, 52})},
+		creativePreviewBox{[3]float64{-.125, .375, 0}, [3]float64{.127, .377, .132}, [6]uint32{pants, shoes, pants, pants, pants, pants}, creativeSkinBoxUV([4]int{4, 36, 8, 48}, [4]int{12, 36, 16, 48}, [4]int{8, 36, 12, 48}, [4]int{0, 36, 4, 48}, [4]int{4, 32, 8, 36}, [4]int{8, 32, 12, 36})},
+		creativePreviewBox{[3]float64{.125, .375, 0}, [3]float64{.127, .377, .132}, [6]uint32{pants, shoes, pants, pants, pants, pants}, creativeSkinBoxUV([4]int{4, 52, 8, 64}, [4]int{12, 52, 16, 64}, [4]int{8, 52, 12, 64}, [4]int{0, 52, 4, 64}, [4]int{4, 48, 8, 52}, [4]int{8, 48, 12, 52})},
+	)
+	boxTextures := make([]*RawImage, len(boxes))
+	for i := range boxTextures {
+		boxTextures[i] = skin
+	}
+	armorBoxes, armorTextures := creativeArmorPreviewBoxes(inv)
+	boxes = append(boxes, armorBoxes...)
+	boxTextures = append(boxTextures, armorTextures...)
 	corners := [8][3]float64{
 		{-1, -1, -1}, {1, -1, -1}, {1, 1, -1}, {-1, 1, -1},
 		{-1, -1, 1}, {1, -1, 1}, {1, 1, 1}, {-1, 1, 1},
@@ -282,7 +363,7 @@ func drawCreativePlayerPreview(fb *Framebuffer, centerX, topY, scale, mouseX, mo
 	}
 	faces := make([]creativePreviewFace, 0, len(boxes)*6)
 	unit := float64(18 * scale)
-	for _, box := range boxes {
+	for boxIndex, box := range boxes {
 		var projected [8]ScreenPoint
 		for i, corner := range corners {
 			x := box.center[0] + corner[0]*box.half[0]
@@ -304,7 +385,7 @@ func drawCreativePlayerPreview(fb *Framebuffer, centerX, topY, scale, mouseX, mo
 				depth += float64(projected[index].Depth)
 			}
 			color := shadeCreativePreviewFace(box.colors[face], face)
-			faces = append(faces, creativePreviewFace{points: points, uvs: box.uvs[face], depth: depth / 4, face: face, color: color, texture: skin})
+			faces = append(faces, creativePreviewFace{points: points, uvs: box.uvs[face], depth: depth / 4, face: face, color: color, texture: boxTextures[boxIndex]})
 		}
 	}
 	sort.SliceStable(faces, func(i, j int) bool { return faces[i].depth < faces[j].depth })
@@ -320,11 +401,15 @@ func drawCreativePlayerPreview(fb *Framebuffer, centerX, topY, scale, mouseX, mo
 }
 
 func creativeSkinBoxUV(front, back, left, right, top, bottom [4]int) [6][4][2]float32 {
+	return creativeBoxUV(front, back, left, right, top, bottom, 64, 64)
+}
+
+func creativeBoxUV(front, back, left, right, top, bottom [4]int, width, height int) [6][4][2]float32 {
 	tlbr := func(rect [4]int, order [4]int) [4][2]float32 {
 		x0, y0, x1, y1 := rect[0], rect[1], rect[2]-1, rect[3]-1
 		corners := [4][2]float32{
-			{float32(x0) / 63, float32(y0) / 63}, {float32(x1) / 63, float32(y0) / 63},
-			{float32(x1) / 63, float32(y1) / 63}, {float32(x0) / 63, float32(y1) / 63},
+			{float32(x0) / float32(width-1), float32(y0) / float32(height-1)}, {float32(x1) / float32(width-1), float32(y0) / float32(height-1)},
+			{float32(x1) / float32(width-1), float32(y1) / float32(height-1)}, {float32(x0) / float32(width-1), float32(y1) / float32(height-1)},
 		}
 		var uv [4][2]float32
 		for i, corner := range order {
@@ -339,6 +424,88 @@ func creativeSkinBoxUV(front, back, left, right, top, bottom [4]int) [6][4][2]fl
 		tlbr(front, [4]int{3, 2, 1, 0}),
 		tlbr(left, [4]int{1, 0, 3, 2}),
 		tlbr(right, [4]int{0, 1, 2, 3}),
+	}
+}
+
+func creativeArmorPreviewBoxes(inv *inventory.PlayerInventory) ([]creativePreviewBox, []*RawImage) {
+	if inv == nil {
+		return nil, nil
+	}
+	var boxes []creativePreviewBox
+	var textures []*RawImage
+	appendBox := func(material string, leggings bool, box creativePreviewBox) {
+		kind := "humanoid"
+		if leggings {
+			kind = "humanoid_leggings"
+		}
+		texture, ok := GetOfficialImage("entity/equipment/" + kind + "/" + material + ".png")
+		if !ok || texture.Width != 64 || texture.Height != 32 {
+			return
+		}
+		boxes = append(boxes, box)
+		textures = append(textures, texture)
+	}
+	for slot, stack := range inv.Armor {
+		if stack.IsEmpty() {
+			continue
+		}
+		material := creativeArmorMaterial(stack.ItemID)
+		if material == "" {
+			continue
+		}
+		white := [6]uint32{0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF}
+		switch slot {
+		case 3: // helmet
+			appendBox(material, false, creativePreviewBox{[3]float64{0, 1.67, 0}, [3]float64{.267, .267, .267}, white, creativeBoxUV([4]int{8, 8, 16, 16}, [4]int{24, 8, 32, 16}, [4]int{0, 8, 8, 16}, [4]int{16, 8, 24, 16}, [4]int{8, 0, 16, 8}, [4]int{16, 0, 24, 8}, 64, 32)})
+		case 2: // chestplate and sleeves
+			appendBox(material, false, creativePreviewBox{[3]float64{0, 1.125, 0}, [3]float64{.267, .387, .142}, white, creativeBoxUV([4]int{20, 20, 28, 32}, [4]int{32, 20, 40, 32}, [4]int{28, 20, 32, 32}, [4]int{16, 20, 20, 32}, [4]int{20, 16, 28, 20}, [4]int{28, 16, 36, 20}, 64, 32)})
+			for _, side := range []float64{-1, 1} {
+				x := side * .375
+				uv := creativeBoxUV([4]int{44, 20, 48, 32}, [4]int{52, 20, 56, 32}, [4]int{48, 20, 52, 32}, [4]int{40, 20, 44, 32}, [4]int{44, 16, 48, 20}, [4]int{48, 16, 52, 20}, 64, 32)
+				appendBox(material, false, creativePreviewBox{[3]float64{x, 1.125, 0}, [3]float64{.142, .387, .142}, white, uv})
+			}
+		case 1: // leggings: waist and both legs
+			appendBox(material, true, creativePreviewBox{[3]float64{0, .94, 0}, [3]float64{.267, .19, .142}, white, creativeBoxUV([4]int{20, 4, 28, 16}, [4]int{32, 4, 40, 16}, [4]int{28, 4, 32, 16}, [4]int{16, 4, 20, 16}, [4]int{20, 0, 28, 4}, [4]int{28, 0, 36, 4}, 64, 32)})
+			for index, side := range []float64{-.125, .125} {
+				x0 := 0
+				if index == 1 {
+					x0 = 16
+				}
+				uv := creativeBoxUV([4]int{x0 + 4, 20, x0 + 8, 32}, [4]int{x0 + 12, 20, x0 + 16, 32}, [4]int{x0 + 8, 20, x0 + 12, 32}, [4]int{x0, 20, x0 + 4, 32}, [4]int{x0 + 4, 16, x0 + 8, 20}, [4]int{x0 + 8, 16, x0 + 12, 20}, 64, 32)
+				appendBox(material, true, creativePreviewBox{[3]float64{side, .375, 0}, [3]float64{.142, .387, .142}, white, uv})
+			}
+		case 0: // boots cover the lower part of each leg
+			for index, side := range []float64{-.125, .125} {
+				x0 := 0
+				if index == 1 {
+					x0 = 16
+				}
+				uv := creativeBoxUV([4]int{x0 + 4, 27, x0 + 8, 32}, [4]int{x0 + 12, 27, x0 + 16, 32}, [4]int{x0 + 8, 27, x0 + 12, 32}, [4]int{x0, 27, x0 + 4, 32}, [4]int{x0 + 4, 24, x0 + 8, 27}, [4]int{x0 + 8, 24, x0 + 12, 27}, 64, 32)
+				appendBox(material, false, creativePreviewBox{[3]float64{side, .105, 0}, [3]float64{.142, .117, .142}, white, uv})
+			}
+		}
+	}
+	return boxes, textures
+}
+
+func creativeArmorMaterial(itemID int32) string {
+	switch itemID {
+	case 298, 299, 300, 301:
+		return "leather"
+	case 302, 303, 304, 305:
+		return "chainmail"
+	case 306, 307, 308, 309:
+		return "iron"
+	case 310, 311, 312, 313:
+		return "diamond"
+	case 314, 315, 316, 317:
+		return "gold"
+	case inventory.ItemCopperHelmet, inventory.ItemCopperChestplate, inventory.ItemCopperLeggings, inventory.ItemCopperBoots:
+		return "copper"
+	case inventory.ItemNetheriteHelmet, inventory.ItemNetheriteChestplate, inventory.ItemNetheriteLeggings, inventory.ItemNetheriteBoots:
+		return "netherite"
+	default:
+		return ""
 	}
 }
 

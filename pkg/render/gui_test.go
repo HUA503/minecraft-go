@@ -1,6 +1,11 @@
 package render
 
 import (
+	"image"
+	"image/color"
+	"image/png"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -323,8 +328,8 @@ func TestCreativePlayerInventoryPreviewRendersAndTracksMouse(t *testing.T) {
 	const centerX, topY, scale = 80, 20, 1
 	left := NewFramebuffer(width, height)
 	right := NewFramebuffer(width, height)
-	drawCreativePlayerPreview(left, centerX, topY, scale, centerX-20, topY+22)
-	drawCreativePlayerPreview(right, centerX, topY, scale, centerX+20, topY+22)
+	drawCreativePlayerPreview(left, nil, centerX, topY, scale, centerX-20, topY+22)
+	drawCreativePlayerPreview(right, nil, centerX, topY, scale, centerX+20, topY+22)
 
 	colored := 0
 	different := false
@@ -347,6 +352,100 @@ func TestCreativePlayerInventoryPreviewRendersAndTracksMouse(t *testing.T) {
 	}
 	if !different {
 		t.Fatal("player preview did not rotate with the mouse position")
+	}
+}
+
+func TestCreativePlayerPreviewRendersOfficialArmorMaterials(t *testing.T) {
+	for _, material := range []string{"chainmail", "copper", "diamond", "gold", "iron", "leather", "netherite"} {
+		for _, layer := range []string{"humanoid", "humanoid_leggings"} {
+			texture, ok := GetOfficialImage("entity/equipment/" + layer + "/" + material + ".png")
+			if !ok || texture.Width != 64 || texture.Height != 32 {
+				t.Errorf("official %s %s texture = (%v,%t), want 64x32", material, layer, texture, ok)
+			}
+		}
+	}
+	const width, height = 160, 120
+	const centerX, topY, scale = 80, 20, 1
+	naked := NewFramebuffer(width, height)
+	armored := NewFramebuffer(width, height)
+	drawCreativePlayerPreview(naked, nil, centerX, topY, scale, centerX, topY+22)
+	inv := &inventory.PlayerInventory{}
+	for slot, itemID := range []int32{313, 312, 311, 310} { // boots, leggings, chestplate, helmet
+		inv.Armor[slot] = inventory.ItemStack{ItemID: itemID, Count: 1}
+	}
+	drawCreativePlayerPreview(armored, inv, centerX, topY, scale, centerX, topY+22)
+	different := false
+	for i := range naked.Color {
+		if naked.Color[i] != armored.Color[i] {
+			different = true
+			break
+		}
+	}
+	if !different {
+		t.Fatal("equipped diamond armor did not change the player inventory preview")
+	}
+}
+
+func TestCreativePlayerSkinLoadsUserConfigAndNormalizesLegacyDimensions(t *testing.T) {
+	configDir := t.TempDir()
+	skinPath := filepath.Join(configDir, "minecraft-go", "skin.png")
+	if err := os.MkdirAll(filepath.Dir(skinPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	img := image.NewRGBA(image.Rect(0, 0, 64, 64))
+	img.SetRGBA(12, 12, color.RGBA{R: 20, G: 90, B: 180, A: 255})
+	file, err := os.Create(skinPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := png.Encode(file, img); err != nil {
+		file.Close()
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	texture, err := loadCreativePlayerSkinFromConfig(configDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := texture.Sample(12.0/63, 12.0/63); got != 0xFF145AB4 {
+		t.Fatalf("custom skin pixel = %#08x, want %#08x", got, uint32(0xFF145AB4))
+	}
+	legacy := image.NewRGBA(image.Rect(0, 0, 64, 32))
+	legacy.SetRGBA(42, 18, color.RGBA{R: 220, G: 40, B: 60, A: 255})
+	file, err = os.Create(skinPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := png.Encode(file, legacy); err != nil {
+		file.Close()
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	legacyTexture, err := loadCreativePlayerSkinFromConfig(configDir)
+	if err != nil || legacyTexture.Width != 64 || legacyTexture.Height != 64 {
+		t.Fatalf("legacy skin normalization = (%v,%v), want 64x64", legacyTexture, err)
+	}
+	if got := legacyTexture.Sample(34.0/63, 50.0/63); got != 0xFFDC283C {
+		t.Fatalf("mirrored left arm skin pixel = %#08x, want %#08x", got, uint32(0xFFDC283C))
+	}
+	invalid := image.NewRGBA(image.Rect(0, 0, 64, 30))
+	file, err = os.Create(skinPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := png.Encode(file, invalid); err != nil {
+		file.Close()
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadCreativePlayerSkinFromConfig(configDir); err == nil {
+		t.Fatal("accepted a skin with unsupported dimensions")
 	}
 }
 
