@@ -218,7 +218,8 @@ func (s ItemStack) String() string {
 type PlayerInventory struct {
 	Slots          [36]ItemStack // 0..8 Hotbar, 9..35 Main Inventory
 	Armor          [4]ItemStack  // boots, leggings, chestplate, helmet
-	SelectedHotbar int           // 0..8
+	Offhand        ItemStack
+	SelectedHotbar int // 0..8
 }
 
 // ArmorProtection summarizes the physical protection carried by equipped armor.
@@ -320,6 +321,16 @@ func (inv *PlayerInventory) GetSelectedItem() ItemStack {
 		return ItemStack{}
 	}
 	return inv.Slots[inv.SelectedHotbar]
+}
+
+// SwapSelectedWithOffhand performs the Java F-key main-hand/offhand swap.
+func (inv *PlayerInventory) SwapSelectedWithOffhand() bool {
+	if inv == nil || inv.SelectedHotbar < 0 || inv.SelectedHotbar >= 9 {
+		return false
+	}
+	selected := &inv.Slots[inv.SelectedHotbar]
+	*selected, inv.Offhand = inv.Offhand, *selected
+	return true
 }
 
 // GetMaxStackSize returns the canonical maximum stack size for the given item.

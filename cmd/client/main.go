@@ -492,6 +492,13 @@ func restoreSavedInventory(target *inventory.PlayerInventory, saved []world.Save
 		return
 	}
 	for _, item := range saved {
+		if item.Slot == world.PlayerOffhandInventorySlot {
+			if target.Offhand.IsEmpty() && item.ItemID > 0 && item.Count > 0 {
+				count := min(item.Count, inventory.GetMaxStackSize(item.ItemID))
+				target.Offhand = inventory.ItemStack{ItemID: item.ItemID, Count: count, Damage: max(0, item.Damage)}
+			}
+			continue
+		}
 		if item.Slot < 0 || item.Slot >= len(target.Slots) || item.ItemID <= 0 || item.Count <= 0 {
 			continue
 		}
@@ -1028,12 +1035,16 @@ func (c *Client) snapshotLevelData() *world.LevelData {
 	if c.genOverworld != nil {
 		seed = c.genOverworld.Seed
 	}
-	inventory := make([]world.SavedItemStack, 0, len(c.player.Inventory.Slots))
+	inventory := make([]world.SavedItemStack, 0, len(c.player.Inventory.Slots)+1)
 	for slot, stack := range c.player.Inventory.Slots {
 		if stack.IsEmpty() {
 			continue
 		}
 		inventory = append(inventory, world.SavedItemStack{Slot: slot, ItemID: stack.ItemID, Count: stack.Count, Damage: stack.Damage})
+	}
+	if !c.player.Inventory.Offhand.IsEmpty() {
+		stack := c.player.Inventory.Offhand
+		inventory = append(inventory, world.SavedItemStack{Slot: world.PlayerOffhandInventorySlot, ItemID: stack.ItemID, Count: stack.Count, Damage: stack.Damage})
 	}
 	ticks, dayTime := c.engine.GetWorldClock()
 	position := c.player.Position
@@ -5394,8 +5405,10 @@ func runGraphicalWindow(c *Client, w, h int) {
 			}
 		}
 		switch vkCode {
-		case 0x46: // F: Mine
-			c.MineTargetedBlock()
+		case 0x46: // F: Swap main hand and offhand
+			if c.screenState == ScreenPlaying && !c.showPauseMenu && !c.showInventoryGUI && !c.isFurnaceOpen && c.player != nil && c.player.Inventory != nil {
+				c.player.Inventory.SwapSelectedWithOffhand()
+			}
 		case 0x52: // R: Place
 			c.PlaceBlockInFront()
 		case 0x45: // E: Toggle Inventory & Crafting GUI
@@ -5778,6 +5791,7 @@ func runGraphicalWindow(c *Client, w, h int) {
 							for i := range c.player.Inventory.Armor {
 								c.player.Inventory.Armor[i] = inventory.ItemStack{}
 							}
+							c.player.Inventory.Offhand = inventory.ItemStack{}
 							c.syncPlayerArmorProtection()
 						}
 					}

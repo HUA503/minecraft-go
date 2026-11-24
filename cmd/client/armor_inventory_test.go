@@ -29,3 +29,19 @@ func TestSavedArmorRestoresOnlyMatchingEquipmentSlots(t *testing.T) {
 		t.Fatalf("saved armor stacks = %+v", saved)
 	}
 }
+
+func TestSavedOffhandRestoresFromLegacyPlayerSlot(t *testing.T) {
+	inv := inventory.NewPlayerInventory()
+	restoreSavedInventory(inv, []world.SavedItemStack{
+		{Slot: world.PlayerOffhandInventorySlot, ItemID: inventory.ItemTorch, Count: 80, Damage: 3},
+		{Slot: world.PlayerOffhandInventorySlot, ItemID: inventory.ItemDiamond, Count: 1},
+	})
+	if got := inv.Offhand; got.ItemID != inventory.ItemTorch || got.Count != 64 || got.Damage != 3 {
+		t.Fatalf("offhand restore = %+v, want first valid item clamped to 64", got)
+	}
+	inv = inventory.NewPlayerInventory()
+	restoreSavedInventory(inv, []world.SavedItemStack{{Slot: world.PlayerOffhandInventorySlot, ItemID: inventory.ItemTorch, Count: 2}})
+	if got := inv.Slots[0]; !got.IsEmpty() {
+		t.Fatalf("offhand item was incorrectly restored to hotbar: %+v", got)
+	}
+}

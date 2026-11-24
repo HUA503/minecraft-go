@@ -211,6 +211,23 @@ func TestCreativeCatalogClickStackSizes(t *testing.T) {
 	}
 }
 
+func TestSwapSelectedWithOffhand(t *testing.T) {
+	inv := NewPlayerInventory()
+	inv.SelectedHotbar = 4
+	inv.Slots[4] = ItemStack{ItemID: ItemTorch, Count: 12}
+	inv.Offhand = ItemStack{ItemID: ItemDiamond, Count: 1}
+	if !inv.SwapSelectedWithOffhand() {
+		t.Fatal("valid selected slot did not swap")
+	}
+	if inv.Slots[4] != (ItemStack{ItemID: ItemDiamond, Count: 1}) || inv.Offhand != (ItemStack{ItemID: ItemTorch, Count: 12}) {
+		t.Fatalf("main/offhand swap result: main=%+v offhand=%+v", inv.Slots[4], inv.Offhand)
+	}
+	inv.SelectedHotbar = 9
+	if inv.SwapSelectedWithOffhand() {
+		t.Fatal("invalid selected slot was accepted")
+	}
+}
+
 func TestInventoryStackingAndRemoval(t *testing.T) {
 	inv := NewPlayerInventory()
 

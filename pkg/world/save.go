@@ -19,6 +19,9 @@ type SavedItemStack struct {
 	Damage int
 }
 
+// PlayerOffhandInventorySlot is the signed byte slot used by Java player NBT.
+const PlayerOffhandInventorySlot = -106
+
 // PlayerSaveData holds persistent player information matching vanilla Minecraft level.dat.
 type PlayerSaveData struct {
 	X, Y, Z      float64
