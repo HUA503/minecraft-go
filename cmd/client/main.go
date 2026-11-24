@@ -541,6 +541,13 @@ func savedArmorStacks(inv *inventory.PlayerInventory) []world.SavedItemStack {
 	return saved
 }
 
+func (c *Client) syncPlayerArmorProtection() {
+	if c == nil || c.engine == nil || c.player == nil || c.player.Inventory == nil {
+		return
+	}
+	c.engine.SetPlayerArmorProtection(c.player.ID, inventory.CalculateArmorProtection(c.player.Inventory.Armor))
+}
+
 func createUniqueWorldDirectory(dirName string) (string, error) {
 	name := filepath.Base(filepath.Clean(dirName))
 	if name == "." || name == string(filepath.Separator) || name == "" {
@@ -772,6 +779,7 @@ func (c *Client) StartSingleplayerWorld(worldDirName string, isNew bool, newSeed
 			}
 			restoreSavedInventory(c.player.Inventory, savedPlayer.Inventory)
 			restoreSavedArmor(c.player.Inventory, savedPlayer.Armor)
+			c.syncPlayerArmorProtection()
 		}
 		c.UnlockAdvancement("minecraft:story/root", "进入世界")
 	}
@@ -5770,6 +5778,7 @@ func runGraphicalWindow(c *Client, w, h int) {
 							for i := range c.player.Inventory.Armor {
 								c.player.Inventory.Armor[i] = inventory.ItemStack{}
 							}
+							c.syncPlayerArmorProtection()
 						}
 					}
 				case render.SlotCreativeArmor:
@@ -5786,6 +5795,7 @@ func runGraphicalWindow(c *Client, w, h int) {
 						} else {
 							inventory.HandleArmorSlotClick(&c.cursorItem, slot, hit.Index, btn)
 						}
+						c.syncPlayerArmorProtection()
 					}
 				case render.SlotNone:
 					if btn == 1 || btn == 2 {

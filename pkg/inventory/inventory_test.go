@@ -448,7 +448,7 @@ func TestArmorSlotMappingAndCreativeClickRules(t *testing.T) {
 	for _, tc := range []struct {
 		itemID int32
 		slot   int
-	}{{301, 0}, {305, 0}, {300, 1}, {304, 1}, {299, 2}, {303, 2}, {298, 3}, {302, 3}, {317, 0}, {314, 3}} {
+	}{{301, 0}, {305, 0}, {300, 1}, {304, 1}, {299, 2}, {303, 2}, {298, 3}, {302, 3}, {317, 0}, {314, 3}, {ItemCopperBoots, 0}, {ItemCopperLeggings, 1}, {ItemCopperChestplate, 2}, {ItemCopperHelmet, 3}} {
 		if slot, ok := ArmorSlotForItem(tc.itemID); !ok || slot != tc.slot {
 			t.Errorf("ArmorSlotForItem(%d) = (%d, %v), want (%d, true)", tc.itemID, slot, ok, tc.slot)
 		}
@@ -471,5 +471,44 @@ func TestArmorSlotMappingAndCreativeClickRules(t *testing.T) {
 	HandleArmorSlotClick(&cursor, &helmet, 3, 3)
 	if cursor.ItemID != ItemDiamondHelmet || helmet.ItemID != ItemDiamondHelmet {
 		t.Fatalf("middle click did not clone the equipped armor: cursor=%+v helmet=%+v", cursor, helmet)
+	}
+}
+
+func TestArmorProtectionTotalsMatchArmorMaterials(t *testing.T) {
+	var armor [4]ItemStack
+	armor[0] = ItemStack{ItemID: ItemDiamondBoots, Count: 1}
+	armor[1] = ItemStack{ItemID: ItemDiamondLeggings, Count: 1}
+	armor[2] = ItemStack{ItemID: ItemDiamondChestplate, Count: 1}
+	armor[3] = ItemStack{ItemID: ItemDiamondHelmet, Count: 1}
+	if got := CalculateArmorProtection(armor); got.Defense != 20 || got.Toughness != 8 {
+		t.Fatalf("full diamond protection = %+v, want 20 defense and 8 toughness", got)
+	}
+	armor[3] = ItemStack{ItemID: ItemIronHelmet, Count: 1}
+	if got := CalculateArmorProtection(armor); got.Defense != 19 || got.Toughness != 6 {
+		t.Fatalf("mixed armor protection = %+v, want 19 defense and 6 toughness", got)
+	}
+	armor[0] = ItemStack{ItemID: ItemDiamondHelmet, Count: 1} // invalid boots slot
+	if got := CalculateArmorProtection(armor); got.Defense != 16 || got.Toughness != 4 {
+		t.Fatalf("wrong-slot item contributed protection: %+v", got)
+	}
+}
+
+func TestCopperArmorIsSearchableAndHasVanillaProtection(t *testing.T) {
+	items := SearchCreativeCatalog(CreativeCombat, "copper_helmet")
+	if len(items) != 1 || items[0].ID != ItemCopperHelmet {
+		t.Fatalf("copper armor registry-name search = %+v", items)
+	}
+	var armor [4]ItemStack
+	armor[0] = ItemStack{ItemID: ItemCopperBoots, Count: 1}
+	armor[1] = ItemStack{ItemID: ItemCopperLeggings, Count: 1}
+	armor[2] = ItemStack{ItemID: ItemCopperChestplate, Count: 1}
+	armor[3] = ItemStack{ItemID: ItemCopperHelmet, Count: 1}
+	if got := CalculateArmorProtection(armor); got.Defense != 10 || got.Toughness != 0 {
+		t.Fatalf("full copper protection = %+v, want 10 defense and no toughness", got)
+	}
+	for _, id := range []int32{ItemCopperHelmet, ItemCopperChestplate, ItemCopperLeggings, ItemCopperBoots} {
+		if GetMaxStackSize(id) != 1 {
+			t.Errorf("copper armor %d max stack size = %d, want 1", id, GetMaxStackSize(id))
+		}
 	}
 }

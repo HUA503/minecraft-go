@@ -105,6 +105,13 @@ const (
 	ItemGoldenLeggings   int32 = 316
 	ItemGoldenBoots      int32 = 317
 
+	// Copper armor uses project-local IDs because the legacy item-ID space is
+	// occupied by the existing compatibility catalog.
+	ItemCopperHelmet     int32 = 13000
+	ItemCopperChestplate int32 = 13001
+	ItemCopperLeggings   int32 = 13002
+	ItemCopperBoots      int32 = 13003
+
 	// Utility, materials, and blocks
 	ItemBucket        int32 = 325
 	ItemWaterBucket   int32 = 326
@@ -214,17 +221,82 @@ type PlayerInventory struct {
 	SelectedHotbar int           // 0..8
 }
 
+// ArmorProtection summarizes the physical protection carried by equipped armor.
+type ArmorProtection struct {
+	Defense   int
+	Toughness float32
+}
+
+// CalculateArmorProtection returns the summed vanilla armor and toughness values.
+func CalculateArmorProtection(armor [4]ItemStack) ArmorProtection {
+	var protection ArmorProtection
+	for slot, stack := range armor {
+		if stack.IsEmpty() || !CanEquipArmor(slot, stack.ItemID) {
+			continue
+		}
+		switch stack.ItemID {
+		case 301, 305, 317, 298:
+			protection.Defense += 1 // leather boots, chain boots, gold boots, leather helmet
+		case 313:
+			protection.Defense += 3 // diamond boots
+			protection.Toughness += 2
+		case 309:
+			protection.Defense += 2 // iron boots
+		case 300:
+			protection.Defense += 2 // leather leggings
+		case 304:
+			protection.Defense += 4 // chain leggings
+		case 308:
+			protection.Defense += 5 // iron leggings
+		case 312:
+			protection.Defense += 6 // diamond leggings
+			protection.Toughness += 2
+		case 316:
+			protection.Defense += 3 // gold leggings
+		case 299:
+			protection.Defense += 3 // leather chestplate
+		case 303:
+			protection.Defense += 5 // chain chestplate
+		case 307:
+			protection.Defense += 6 // iron chestplate
+		case 311:
+			protection.Defense += 8 // diamond chestplate
+			protection.Toughness += 2
+		case 315:
+			protection.Defense += 5 // gold chestplate
+		case 302:
+			protection.Defense += 2 // chain helmet
+		case 306:
+			protection.Defense += 2 // iron helmet
+		case 310:
+			protection.Defense += 3 // diamond helmet
+			protection.Toughness += 2
+		case 314:
+			protection.Defense += 2 // gold helmet
+		case ItemCopperBoots:
+			protection.Defense += 2
+		case ItemCopperLeggings:
+			protection.Defense += 4
+		case ItemCopperChestplate:
+			protection.Defense += 3
+		case ItemCopperHelmet:
+			protection.Defense += 1
+		}
+	}
+	return protection
+}
+
 // ArmorSlotForItem maps the supported legacy armor IDs to vanilla equipment slots.
 // Slot order is boots, leggings, chestplate, helmet.
 func ArmorSlotForItem(itemID int32) (int, bool) {
 	switch itemID {
-	case 301, 305, 309, 313, 317:
+	case 301, 305, 309, 313, 317, ItemCopperBoots:
 		return 0, true
-	case 300, 304, 308, 312, 316:
+	case 300, 304, 308, 312, 316, ItemCopperLeggings:
 		return 1, true
-	case 299, 303, 307, 311, 315:
+	case 299, 303, 307, 311, 315, ItemCopperChestplate:
 		return 2, true
-	case 298, 302, 306, 310, 314:
+	case 298, 302, 306, 310, 314, ItemCopperHelmet:
 		return 3, true
 	default:
 		return 0, false
@@ -256,7 +328,7 @@ func GetMaxStackSize(itemID int32) int {
 		return 1
 	}
 	// Armor (Leather 298-301, Chainmail 302-305, Iron 306-309, Diamond 310-313, Gold 314-317)
-	if itemID >= 298 && itemID <= 317 {
+	if (itemID >= 298 && itemID <= 317) || (itemID >= ItemCopperHelmet && itemID <= ItemCopperBoots) {
 		return 1
 	}
 	// Non-stackable tools, weapons, and accessories

@@ -778,6 +778,20 @@ func TestCreativeSpawnEggsHaveOfficialTextures(t *testing.T) {
 	}
 }
 
+func TestCopperArmorHasOfficialCreativeTextures(t *testing.T) {
+	for _, tc := range []struct {
+		id   int32
+		name string
+	}{{inventory.ItemCopperHelmet, "copper_helmet"}, {inventory.ItemCopperChestplate, "copper_chestplate"}, {inventory.ItemCopperLeggings, "copper_leggings"}, {inventory.ItemCopperBoots, "copper_boots"}} {
+		if got := GetOfficialItemTextureName(tc.id); got != tc.name {
+			t.Errorf("copper armor %d texture = %q, want %q", tc.id, got, tc.name)
+		}
+		if _, ok := GetOfficialItemSprite(tc.id); !ok {
+			t.Errorf("copper armor %d has no official icon", tc.id)
+		}
+	}
+}
+
 func TestDrawCloudsAestheticsAndDepth(t *testing.T) {
 	fb := NewFramebuffer(160, 120)
 	fb.ClearSky()

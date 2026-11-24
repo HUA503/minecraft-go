@@ -400,6 +400,24 @@ func TestFallDamageAndDeathRespawn(t *testing.T) {
 	}
 }
 
+func TestArmorReducesPhysicalDamageButNotFallDamage(t *testing.T) {
+	eng := NewEngine()
+	player := eng.AddPlayer("Armored", [16]byte{0xA1}, Vec3{X: 1, Y: 64, Z: 1})
+	protection := inventory.ArmorProtection{Defense: 20, Toughness: 8}
+	eng.SetPlayerArmorProtection(player.ID, protection)
+	eng.DamagePlayer(player.ID, 10, "explosion")
+	if player.Health != 17 {
+		t.Fatalf("full diamond armor took 10 explosion damage down to %v HP, want 17", player.Health)
+	}
+
+	falling := eng.AddPlayer("Falling", [16]byte{0xA2}, Vec3{X: 4, Y: 64, Z: 4})
+	eng.SetPlayerArmorProtection(falling.ID, protection)
+	eng.DamagePlayer(falling.ID, 10, "fall")
+	if falling.Health != 10 {
+		t.Fatalf("armor reduced fall damage: health=%v, want 10", falling.Health)
+	}
+}
+
 func TestZombieAIAndPlayerCombat(t *testing.T) {
 	eng := NewEngine()
 	player := eng.AddPlayer("Player", [16]byte{2}, Vec3{X: 10, Y: 64, Z: 10})

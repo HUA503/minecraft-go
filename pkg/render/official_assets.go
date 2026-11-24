@@ -516,6 +516,14 @@ func GetOfficialItemTextureName(itemID int32) string {
 		return "golden_leggings"
 	case 317:
 		return "golden_boots"
+	case inventory.ItemCopperHelmet:
+		return "copper_helmet"
+	case inventory.ItemCopperChestplate:
+		return "copper_chestplate"
+	case inventory.ItemCopperLeggings:
+		return "copper_leggings"
+	case inventory.ItemCopperBoots:
+		return "copper_boots"
 
 	// --- Other Essentials ---
 	case 322:

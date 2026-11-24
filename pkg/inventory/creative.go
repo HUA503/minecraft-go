@@ -104,6 +104,16 @@ func creativeItemRegistryName(itemID int32) string {
 	if itemID == ItemBoneMeal {
 		return "minecraft:bone_meal"
 	}
+	switch itemID {
+	case ItemCopperHelmet:
+		return "minecraft:copper_helmet"
+	case ItemCopperChestplate:
+		return "minecraft:copper_chestplate"
+	case ItemCopperLeggings:
+		return "minecraft:copper_leggings"
+	case ItemCopperBoots:
+		return "minecraft:copper_boots"
+	}
 	return ""
 }
 
@@ -138,6 +148,7 @@ var creativeCatalog = []CreativeItem{
 	{310, "钻石头盔", CreativeCombat}, {311, "钻石胸甲", CreativeCombat}, {312, "钻石护腿", CreativeCombat}, {313, "钻石靴子", CreativeCombat},
 	{302, "锁链头盔", CreativeCombat}, {303, "锁链胸甲", CreativeCombat}, {304, "锁链护腿", CreativeCombat}, {305, "锁链靴子", CreativeCombat},
 	{314, "金头盔", CreativeCombat}, {315, "金胸甲", CreativeCombat}, {316, "金护腿", CreativeCombat}, {317, "金靴子", CreativeCombat},
+	{ItemCopperHelmet, "铜头盔", CreativeCombat}, {ItemCopperChestplate, "铜胸甲", CreativeCombat}, {ItemCopperLeggings, "铜护腿", CreativeCombat}, {ItemCopperBoots, "铜靴子", CreativeCombat},
 
 	{262, "箭", CreativeMaterials}, {263, "煤炭", CreativeMaterials}, {264, "钻石", CreativeMaterials}, {265, "铁锭", CreativeMaterials}, {266, "金锭", CreativeMaterials},
 	{280, "木棍", CreativeMaterials}, {331, "红石粉", CreativeRedstone}, {352, "骨头", CreativeMaterials}, {351, "骨粉", CreativeMaterials}, {288, "羽毛", CreativeMaterials},

@@ -17,30 +17,32 @@ import (
 
 // PlayerEntity represents an active player within the simulation.
 type PlayerEntity struct {
-	ID           int32
-	Username     string
-	UUID         [16]byte
-	Position     Vec3
-	SpawnPos     Vec3
-	Velocity     Vec3
-	Yaw          float32
-	Pitch        float32
-	OnGround     bool
-	Health       float32 // 0.0 to 20.0
-	Hunger       int     // 0 to 20
-	Saturation   float32 // 0.0 to 20.0 (canonical vanilla saturation)
-	Exhaustion   float32 // 0.0 to 4.0
-	RegenTimer   int     // Tick counter for natural regeneration
-	StarveTimer  int     // Tick counter for starvation damage
-	Level        int     // Experience level (e.g. 0, 1, 30)
-	ExpProgress  float32 // Progress to next level: 0.0 to 1.0
-	ExpTotal     int     // Total experience points collected in current level
-	FallDistance float32
-	HurtTimer    int // Damage immunity cooldown (10 ticks / 0.5s in Minecraft Java Edition)
-	IsAlive      bool
-	ClientDriven bool
-	GameMode     int // 0: Survival, 1: Creative, 2: Adventure, 3: Spectator
-	Inventory    *inventory.PlayerInventory
+	ID             int32
+	Username       string
+	UUID           [16]byte
+	Position       Vec3
+	SpawnPos       Vec3
+	Velocity       Vec3
+	Yaw            float32
+	Pitch          float32
+	OnGround       bool
+	Health         float32 // 0.0 to 20.0
+	Hunger         int     // 0 to 20
+	Saturation     float32 // 0.0 to 20.0 (canonical vanilla saturation)
+	Exhaustion     float32 // 0.0 to 4.0
+	RegenTimer     int     // Tick counter for natural regeneration
+	StarveTimer    int     // Tick counter for starvation damage
+	Level          int     // Experience level (e.g. 0, 1, 30)
+	ExpProgress    float32 // Progress to next level: 0.0 to 1.0
+	ExpTotal       int     // Total experience points collected in current level
+	FallDistance   float32
+	HurtTimer      int // Damage immunity cooldown (10 ticks / 0.5s in Minecraft Java Edition)
+	IsAlive        bool
+	ClientDriven   bool
+	GameMode       int // 0: Survival, 1: Creative, 2: Adventure, 3: Spectator
+	Inventory      *inventory.PlayerInventory
+	ArmorDefense   int
+	ArmorToughness float32
 }
 
 // AddExp adds canonical Minecraft experience points and levels up accordingly.
@@ -1199,45 +1201,76 @@ func (e *Engine) RemovePlayer(id int32) {
 	}
 }
 
+// SetPlayerArmorProtection updates the simulation snapshot used by damage
+// calculations. The caller supplies a value so the engine never reads mutable
+// inventory slots while another thread is drawing or editing the GUI.
+func (e *Engine) SetPlayerArmorProtection(id int32, protection inventory.ArmorProtection) {
+	e.mu.Lock()
+	if player, ok := e.Players[id]; ok {
+		player.ArmorDefense = max(0, min(20, protection.Defense))
+		player.ArmorToughness = float32(math.Max(0, math.Min(20, float64(protection.Toughness))))
+	}
+	e.mu.Unlock()
+}
+
+func armorMitigatesDamage(reason string) bool {
+	switch reason {
+	case "fall", "starvation", "void", "command", "fatal", "magic", "poison", "wither", "drowning", "suffocation":
+		return false
+	default:
+		return true
+	}
+}
+
+func mitigatedDamage(amount float32, defense int, toughness float32) float32 {
+	if amount <= 0 || defense <= 0 {
+		return amount
+	}
+	effective := float32(defense) - amount/(2+toughness/4)
+	minimum := float32(defense) * 0.2
+	if effective < minimum {
+		effective = minimum
+	}
+	if effective > 20 {
+		effective = 20
+	}
+	return amount * (1 - effective/25)
+}
+
+func (e *Engine) applyPlayerDamageLocked(player *PlayerEntity, amount float32, reason string) bool {
+	if player == nil || !player.IsAlive || amount <= 0 || math.IsNaN(float64(amount)) || math.IsInf(float64(amount), 0) {
+		return false
+	}
+	if player.GameMode == 1 && reason != "void" && reason != "command" {
+		return false
+	}
+	if player.HurtTimer > 0 && reason != "void" && reason != "command" && reason != "fatal" {
+		return false
+	}
+	if armorMitigatesDamage(reason) {
+		amount = mitigatedDamage(amount, player.ArmorDefense, player.ArmorToughness)
+	}
+	player.Health -= amount
+	player.HurtTimer = 10
+	if player.Health > 0 {
+		return true
+	}
+	player.Health = 0
+	player.IsAlive = false
+	if snapshot, ok := e.clientPlayers[player.ID]; ok {
+		snapshot.IsAlive = false
+		e.clientPlayers[player.ID] = snapshot
+	}
+	select {
+	case e.Events <- WorldEvent{Type: "player_death", PlayerID: player.ID}:
+	default:
+	}
+	return true
+}
+
 func (e *Engine) DamagePlayer(id int32, amount float32, reason string) {
 	e.mu.Lock()
-	p, ok := e.Players[id]
-	if !ok || !p.IsAlive {
-		e.mu.Unlock()
-		return
-	}
-
-	// Creative mode (GameMode == 1) is immune to all damage except void and command
-	if p.GameMode == 1 && reason != "void" && reason != "command" {
-		e.mu.Unlock()
-		return
-	}
-
-	// Damage immunity cooldown (10 ticks / 0.5s in Minecraft Java Edition)
-	if p.HurtTimer > 0 && reason != "void" && reason != "command" && reason != "fatal" {
-		e.mu.Unlock()
-		return
-	}
-
-	p.Health -= amount
-	p.HurtTimer = 10
-	if p.Health <= 0 {
-		p.Health = 0
-		p.IsAlive = false
-		if snapshot, ok := e.clientPlayers[id]; ok {
-			snapshot.IsAlive = false
-			e.clientPlayers[id] = snapshot
-		}
-		e.mu.Unlock()
-		select {
-		case e.Events <- WorldEvent{
-			Type:     "player_death",
-			PlayerID: id,
-		}:
-		default:
-		}
-		return
-	}
+	e.applyPlayerDamageLocked(e.Players[id], amount, reason)
 	e.mu.Unlock()
 }
 
@@ -2011,11 +2044,7 @@ func (e *Engine) attackEndCrystalLocked(crystalID int32) bool {
 	// Detonate in 4.0 block radius
 	for _, p := range e.Players {
 		if p.IsAlive && p.Position.DistanceTo(c.Position) < 6.0 {
-			p.Health -= 8.0
-			if p.Health <= 0 {
-				p.Health = 0
-				p.IsAlive = false
-			}
+			e.applyPlayerDamageLocked(p, 8.0, "explosion")
 		}
 	}
 	return true
@@ -2132,11 +2161,7 @@ func (e *Engine) tickEnderDragon() {
 				targetHeight = p.Position.Y + 2.0
 				dist := dragon.Position.DistanceTo(p.Position)
 				if dist < 4.0 {
-					p.Health -= 6.0
-					if p.Health <= 0 {
-						p.Health = 0
-						p.IsAlive = false
-					}
+					e.applyPlayerDamageLocked(p, 6.0, "ender_dragon")
 					dragon.DiveCooldown = 300 // 15s between dives
 				}
 				break
