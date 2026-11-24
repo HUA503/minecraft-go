@@ -5407,6 +5407,19 @@ func runGraphicalWindow(c *Client, w, h int) {
 				return
 			}
 		}
+		if c.isCreative && c.showInventoryGUI && !c.isCraftingTableOpen &&
+			vkCode >= 0x31 && vkCode <= 0x39 && c.player != nil && c.player.Inventory != nil && c.framebuf != nil {
+			mx, my := wnd.GetCursorClientPos(c.framebuf.Width, c.framebuf.Height)
+			hit := render.HitTestCreativeInventory(c.framebuf.Width, c.framebuf.Height, c.creativeTab, c.creativeSearch, c.creativeScrollRow, mx, my, c.creativeHotbars)
+			items := inventory.SearchCreativeCatalog(c.creativeTab, c.creativeSearch)
+			if c.creativeTab == inventory.CreativeHotbar {
+				if applyCreativeHotbarKey(c.player.Inventory, hit, items, vkCode-0x31, c.creativeHotbars) {
+					return
+				}
+			} else if applyCreativeHotbarKey(c.player.Inventory, hit, items, vkCode-0x31) {
+				return
+			}
+		}
 		if c.showAdvancementsGUI && (vkCode == 0x1B || vkCode == 0x4C) {
 			c.showAdvancementsGUI = false
 			wnd.SetMouseCaptured(true)
@@ -5774,8 +5787,12 @@ func runGraphicalWindow(c *Client, w, h int) {
 				case render.SlotCreativeSearch:
 					c.creativeSearchActive = true
 				case render.SlotCreativeTab:
-					c.creativeSearchActive = false
+					previousTab := c.creativeTab
 					c.creativeTab = inventory.CreativeCategory(hit.Index)
+					if previousTab != c.creativeTab {
+						c.creativeSearch = ""
+					}
+					c.creativeSearchActive = c.creativeTab == inventory.CreativeAll
 					c.creativeScrollRow = 0
 				case render.SlotCreativeScroll:
 					c.creativeSearchActive = false
