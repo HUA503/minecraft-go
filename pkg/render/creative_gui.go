@@ -1,6 +1,8 @@
 package render
 
 import (
+	"math"
+	"sort"
 	"strconv"
 
 	"github.com/HUA503/minecraft-go/pkg/inventory"
@@ -173,6 +175,9 @@ func (fb *Framebuffer) DrawCreativeInventoryGUI(inv *inventory.PlayerInventory, 
 	invX, invY := px+9*scale, py+creativeHotbarY*scale
 	hoveredInventoryName := ""
 	if category == inventory.CreativeInventory {
+		previewX := px + 81*scale
+		previewTop := py + 8*scale
+		drawCreativePlayerPreview(fb, previewX, previewTop, scale, mouseX, mouseY)
 		for slot := 0; slot < 4; slot++ {
 			x := px + (54+(slot/2)*54)*scale
 			y := py + (6+(slot%2)*27)*scale
@@ -216,6 +221,125 @@ func (fb *Framebuffer) DrawCreativeInventoryGUI(inv *inventory.PlayerInventory, 
 		fb.DrawItemIconScaled(mouseX-8*scale, mouseY-8*scale, cursor.ItemID, scale)
 		if cursor.Count > 1 {
 			fb.DrawNumberScaled(mouseX+8*scale, mouseY+3*scale, cursor.Count, 0xFFFFFFFF, scale)
+		}
+	}
+}
+
+type creativePreviewFace struct {
+	points [4]ScreenPoint
+	depth  float64
+	color  uint32
+}
+
+// drawCreativePlayerPreview draws the same six-part block model used by the
+// in-world player renderer into the open player-inventory viewport. The mouse
+// position controls the model's yaw, matching the original inventory preview
+// interaction while keeping the preview inside the inventory panel.
+func drawCreativePlayerPreview(fb *Framebuffer, centerX, topY, scale, mouseX, mouseY int) {
+	if fb == nil || scale <= 0 {
+		return
+	}
+	viewport := [4]int{centerX - 24*scale, topY, centerX + 24*scale, topY + 45*scale}
+	if mouseX < 0 || mouseY < 0 {
+		mouseX, mouseY = centerX, topY+22*scale
+	}
+	yaw := math.Atan2(float64(mouseX-centerX), float64(48*scale)) * 0.9
+	cosYaw, sinYaw := math.Cos(yaw), math.Sin(yaw)
+
+	// Palette is shared with the existing player renderer until account skins
+	// are available to the client model pipeline.
+	const (
+		headSkin = uint32(0xFFD6A07E)
+		headHair = uint32(0xFF4D3B26)
+		shirt    = uint32(0xFF2E8690)
+		pants    = uint32(0xFF2A3663)
+		shoes    = uint32(0xFF555555)
+	)
+	boxes := []struct {
+		center [3]float64
+		half   [3]float64
+		colors [6]uint32
+	}{
+		{[3]float64{0, 1.67, 0}, [3]float64{.25, .25, .25}, [6]uint32{headHair, headSkin, headHair, headSkin, headSkin, headSkin}},
+		{[3]float64{0, 1.125, 0}, [3]float64{.25, .375, .125}, [6]uint32{shirt, shirt, shirt, shirt, shirt, shirt}},
+		{[3]float64{-.375, 1.125, 0}, [3]float64{.125, .375, .125}, [6]uint32{shirt, headSkin, shirt, headSkin, shirt, shirt}},
+		{[3]float64{.375, 1.125, 0}, [3]float64{.125, .375, .125}, [6]uint32{shirt, headSkin, shirt, headSkin, shirt, shirt}},
+		{[3]float64{-.125, .375, 0}, [3]float64{.125, .375, .125}, [6]uint32{pants, shoes, pants, pants, pants, pants}},
+		{[3]float64{.125, .375, 0}, [3]float64{.125, .375, .125}, [6]uint32{pants, shoes, pants, pants, pants, pants}},
+	}
+	corners := [8][3]float64{
+		{-1, -1, -1}, {1, -1, -1}, {1, 1, -1}, {-1, 1, -1},
+		{-1, -1, 1}, {1, -1, 1}, {1, 1, 1}, {-1, 1, 1},
+	}
+	faceIndices := [6][4]int{
+		{3, 2, 6, 7}, {4, 5, 1, 0}, {2, 3, 0, 1},
+		{7, 6, 5, 4}, {3, 7, 4, 0}, {6, 2, 1, 5},
+	}
+	faces := make([]creativePreviewFace, 0, len(boxes)*6)
+	unit := float64(18 * scale)
+	for _, box := range boxes {
+		var projected [8]ScreenPoint
+		for i, corner := range corners {
+			x := box.center[0] + corner[0]*box.half[0]
+			y := box.center[1] + corner[1]*box.half[1]
+			z := box.center[2] + corner[2]*box.half[2]
+			rx := x*cosYaw + z*sinYaw
+			rz := -x*sinYaw + z*cosYaw
+			projected[i] = ScreenPoint{
+				X:     float32(float64(centerX) + rx*unit),
+				Y:     float32(float64(topY+41*scale) - y*unit + rz*3*float64(scale)),
+				Depth: float32(rz + 2),
+			}
+		}
+		for face, indices := range faceIndices {
+			var points [4]ScreenPoint
+			depth := 0.0
+			for i, index := range indices {
+				points[i] = projected[index]
+				depth += float64(projected[index].Depth)
+			}
+			color := shadeCreativePreviewFace(box.colors[face], face)
+			faces = append(faces, creativePreviewFace{points: points, depth: depth / 4, color: color})
+		}
+	}
+	sort.SliceStable(faces, func(i, j int) bool { return faces[i].depth < faces[j].depth })
+	for _, face := range faces {
+		drawCreativePreviewTriangle(fb, face.points[0], face.points[1], face.points[2], face.color, viewport)
+		drawCreativePreviewTriangle(fb, face.points[0], face.points[2], face.points[3], face.color, viewport)
+	}
+}
+
+func shadeCreativePreviewFace(color uint32, face int) uint32 {
+	factor := [...]float64{1.12, .62, .78, 1, .78, .86}[face]
+	r := uint32(math.Min(255, float64((color>>16)&0xFF)*factor))
+	g := uint32(math.Min(255, float64((color>>8)&0xFF)*factor))
+	b := uint32(math.Min(255, float64(color&0xFF)*factor))
+	return color&0xFF000000 | r<<16 | g<<8 | b
+}
+
+func drawCreativePreviewTriangle(fb *Framebuffer, a, b, c ScreenPoint, color uint32, clip [4]int) {
+	minX := max(clip[0], int(math.Floor(math.Min(float64(a.X), math.Min(float64(b.X), float64(c.X))))))
+	maxX := min(clip[2]-1, int(math.Ceil(math.Max(float64(a.X), math.Max(float64(b.X), float64(c.X))))))
+	minY := max(clip[1], int(math.Floor(math.Min(float64(a.Y), math.Min(float64(b.Y), float64(c.Y))))))
+	maxY := min(clip[3]-1, int(math.Ceil(math.Max(float64(a.Y), math.Max(float64(b.Y), float64(c.Y))))))
+	if minX < 0 || minY < 0 || maxX >= fb.Width || maxY >= fb.Height {
+		minX, maxX = max(0, minX), min(fb.Width-1, maxX)
+		minY, maxY = max(0, minY), min(fb.Height-1, maxY)
+	}
+	edge := func(p, q ScreenPoint, x, y float64) float64 {
+		return (x-float64(p.X))*(float64(q.Y)-float64(p.Y)) - (y-float64(p.Y))*(float64(q.X)-float64(p.X))
+	}
+	area := edge(a, b, float64(c.X), float64(c.Y))
+	if area == 0 || minX > maxX || minY > maxY {
+		return
+	}
+	for y := minY; y <= maxY; y++ {
+		for x := minX; x <= maxX; x++ {
+			px, py := float64(x)+.5, float64(y)+.5
+			w0, w1, w2 := edge(b, c, px, py), edge(c, a, px, py), edge(a, b, px, py)
+			if (w0 >= 0 && w1 >= 0 && w2 >= 0) || (w0 <= 0 && w1 <= 0 && w2 <= 0) {
+				fb.Color[y*fb.Width+x] = color
+			}
 		}
 	}
 }

@@ -314,6 +314,38 @@ func TestCreativeInventoryUsesEmbeddedVanillaGUITextures(t *testing.T) {
 	}
 }
 
+func TestCreativePlayerInventoryPreviewRendersAndTracksMouse(t *testing.T) {
+	const width, height = 160, 120
+	const centerX, topY, scale = 80, 20, 1
+	left := NewFramebuffer(width, height)
+	right := NewFramebuffer(width, height)
+	drawCreativePlayerPreview(left, centerX, topY, scale, centerX-20, topY+22)
+	drawCreativePlayerPreview(right, centerX, topY, scale, centerX+20, topY+22)
+
+	colored := 0
+	different := false
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			index := y*width + x
+			if left.Color[index] != 0 {
+				if x < centerX-24*scale || x >= centerX+24*scale || y < topY || y >= topY+45*scale {
+					t.Fatalf("preview painted outside its viewport at (%d,%d)", x, y)
+				}
+				colored++
+			}
+			if left.Color[index] != right.Color[index] {
+				different = true
+			}
+		}
+	}
+	if colored < 80 {
+		t.Fatalf("player preview rendered only %d pixels", colored)
+	}
+	if !different {
+		t.Fatal("player preview did not rotate with the mouse position")
+	}
+}
+
 func TestCreativeSpecialTabsRenderAndHitPlayerInventory(t *testing.T) {
 	const width, height = 400, 300
 	scale, px, py := creativeGUIOrigin(width, height)
