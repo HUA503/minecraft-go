@@ -328,11 +328,14 @@ func TestCreativePlayerInventoryPreviewRendersAndTracksMouse(t *testing.T) {
 	const centerX, topY, scale = 80, 20, 1
 	left := NewFramebuffer(width, height)
 	right := NewFramebuffer(width, height)
+	vertical := NewFramebuffer(width, height)
 	drawCreativePlayerPreview(left, nil, centerX, topY, scale, centerX-20, topY+22)
 	drawCreativePlayerPreview(right, nil, centerX, topY, scale, centerX+20, topY+22)
+	drawCreativePlayerPreview(vertical, nil, centerX, topY, scale, centerX, topY+40)
 
 	colored := 0
 	different := false
+	verticalDifferent := false
 	for y := 0; y < height; y++ {
 		for x := 0; x < width; x++ {
 			index := y*width + x
@@ -345,6 +348,9 @@ func TestCreativePlayerInventoryPreviewRendersAndTracksMouse(t *testing.T) {
 			if left.Color[index] != right.Color[index] {
 				different = true
 			}
+			if left.Color[index] != vertical.Color[index] {
+				verticalDifferent = true
+			}
 		}
 	}
 	if colored < 80 {
@@ -352,6 +358,9 @@ func TestCreativePlayerInventoryPreviewRendersAndTracksMouse(t *testing.T) {
 	}
 	if !different {
 		t.Fatal("player preview did not rotate with the mouse position")
+	}
+	if !verticalDifferent {
+		t.Fatal("player preview did not pitch with the vertical mouse position")
 	}
 }
 
@@ -547,3 +556,4 @@ func TestVisualScreenRenders(t *testing.T) {
 		t.Fatalf("new world screen framebuffer has too few rendered pixels: %d", nonZeroNew)
 	}
 }
+
