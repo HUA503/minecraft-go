@@ -90,6 +90,12 @@ func TestCreativeCatalogSearch(t *testing.T) {
 	if len(diamonds) < 3 {
 		t.Fatalf("search for diamond items returned only %d entries", len(diamonds))
 	}
+	if got := SearchCreativeCatalog(CreativeAll, "minecraft:polished_deepslate"); len(got) != 1 || got[0].ID == 0 {
+		t.Fatalf("registry-name search returned %+v, want polished deepslate", got)
+	}
+	if got := SearchCreativeCatalog(CreativeSpawnEggs, "zombie"); len(got) != 1 || got[0].Name != "僵尸刷怪蛋" {
+		t.Fatalf("spawn-egg entity-name search returned %+v, want zombie egg", got)
+	}
 	if got := SearchCreativeCatalog(CreativeAll, "不存在的物品"); len(got) != 0 {
 		t.Fatalf("unknown query returned %d entries", len(got))
 	}

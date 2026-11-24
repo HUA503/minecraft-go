@@ -53,17 +53,33 @@ func CreativeCatalog(category CreativeCategory) []CreativeItem {
 // SearchCreativeCatalog filters the selected category by its localized item name.
 func SearchCreativeCatalog(category CreativeCategory, query string) []CreativeItem {
 	items := CreativeCatalog(category)
-	query = strings.TrimSpace(strings.ToLower(query))
+	query = normalizeCreativeSearch(query)
 	if query == "" {
 		return items
 	}
 	filtered := make([]CreativeItem, 0, len(items))
 	for _, item := range items {
-		if strings.Contains(strings.ToLower(item.Name), query) {
+		if strings.Contains(normalizeCreativeSearch(item.Name), query) || strings.Contains(normalizeCreativeSearch(creativeItemRegistryName(item.ID)), query) {
 			filtered = append(filtered, item)
 		}
 	}
 	return filtered
+}
+
+func normalizeCreativeSearch(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	value = strings.TrimPrefix(value, "minecraft:")
+	return strings.ReplaceAll(value, "_", " ")
+}
+
+func creativeItemRegistryName(itemID int32) string {
+	if block, ok := ExtendedBlockByID(itemID); ok {
+		return block.Name
+	}
+	if egg, ok := SpawnEggByID(itemID); ok {
+		return egg.EntityName
+	}
+	return ""
 }
 
 var creativeCatalog = []CreativeItem{
