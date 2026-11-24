@@ -149,11 +149,8 @@ func (fb *Framebuffer) DrawCreativeInventoryGUI(inv *inventory.PlayerInventory, 
 	}
 	drawCreativeTooltip(fb, hoveredName, mouseX, mouseY, scale)
 	if category != inventory.CreativeInventory {
-		trackX, trackY, trackH := px+175*scale, py+18*scale, 112*scale
-		thumbY := trackY
-		if maxScroll > 0 {
-			thumbY += (trackH - 17*scale) * scrollRow / maxScroll
-		}
+		trackX := px + 175*scale
+		thumbY := CreativeScrollThumbY(fb.Width, fb.Height, scrollRow, maxScroll)
 		thumbName := "scroller_disabled.png"
 		if maxScroll > 0 {
 			thumbName = "scroller.png"
@@ -228,6 +225,38 @@ func (fb *Framebuffer) DrawCreativeInventoryGUI(inv *inventory.PlayerInventory, 
 // wheel, and hit testing always agree about the final reachable item.
 func CreativeCatalogMaxScroll(itemCount int) int {
 	return max(0, (itemCount+creativeColumns-1)/creativeColumns-creativeRows)
+}
+
+// CreativeScrollThumbY returns the scrollbar thumb's top edge in framebuffer pixels.
+func CreativeScrollThumbY(w, h, scrollRow, maxScroll int) int {
+	scale, _, py := creativeGUIOrigin(w, h)
+	trackY, trackH := py+18*scale, 112*scale
+	thumbH := 17 * scale
+	if maxScroll <= 0 {
+		return trackY
+	}
+	scrollRow = max(0, min(maxScroll, scrollRow))
+	return trackY + (trackH-thumbH)*scrollRow/maxScroll
+}
+
+// CreativeScrollRowAtPointer maps a scrollbar pointer position to the catalog row.
+// thumbOffset is the pointer's vertical offset from the thumb's top edge.
+func CreativeScrollRowAtPointer(w, h, mouseY, maxScroll, thumbOffset int) int {
+	if maxScroll <= 0 {
+		return 0
+	}
+	scale, _, py := creativeGUIOrigin(w, h)
+	trackY, trackH := py+18*scale, 112*scale
+	thumbH := 17 * scale
+	travel := trackH - thumbH
+	if travel <= 0 {
+		return 0
+	}
+	thumbOffset = max(0, min(thumbH, thumbOffset))
+	thumbTop := mouseY - thumbOffset
+	thumbTop = max(trackY, min(trackY+travel, thumbTop))
+	offset := thumbTop - trackY
+	return (offset*maxScroll + travel/2) / travel
 }
 
 func creativeHotbarItems(presets inventory.CreativeHotbarPresets) []inventory.CreativeItem {

@@ -169,6 +169,7 @@ type Window struct {
 	mu            sync.Mutex
 	OnKeyClick    func(vkCode int)
 	OnMouseClick  func(btn int)
+	OnMouseMove   func()
 	OnMouseWheel  func(delta int)
 	OnCharInput   func(ch rune)
 	OnPanic       func(message string, recovered any, stack []byte)
@@ -265,6 +266,12 @@ func wndProc(hwnd, msg, wparam, lparam uintptr) (result uintptr) {
 			globalWnd.OnMouseWheel(delta)
 		}
 		return 0
+	case 0x0200: // WM_MOUSEMOVE
+		if globalWnd != nil && globalWnd.OnMouseMove != nil {
+			globalWnd.OnMouseMove()
+		}
+		ret, _, _ := procDefWindowProcW.Call(hwnd, msg, wparam, lparam)
+		return ret
 	case WM_KEYDOWN:
 		vk := int(wparam)
 		isRepeat := (lparam & (1 << 30)) != 0

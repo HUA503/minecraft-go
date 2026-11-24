@@ -252,6 +252,22 @@ func TestCreativeInventoryScrollUsesRowsAndReachesLastCatalogItem(t *testing.T) 
 	}
 }
 
+func TestCreativeScrollbarThumbDragMapsEveryRow(t *testing.T) {
+	for _, size := range [][2]int{{320, 240}, {400, 300}, {1280, 720}, {1920, 1080}} {
+		const maxScroll = 37
+		width, height := size[0], size[1]
+		scale := CalculateGUIScaleFromDimensions(width, height)
+		offset := 8 * scale
+		for row := 0; row <= maxScroll; row++ {
+			mouseY := CreativeScrollThumbY(width, height, row, maxScroll) + offset
+			got := CreativeScrollRowAtPointer(width, height, mouseY, maxScroll, offset)
+			if got != row {
+				t.Fatalf("size %dx%d: dragging thumb at row %d returned %d", width, height, row, got)
+			}
+		}
+	}
+}
+
 func TestCreativeInventoryShowsPlayerItemTooltipAndDurability(t *testing.T) {
 	const width, height = 400, 300
 	scale, px, py := creativeGUIOrigin(width, height)

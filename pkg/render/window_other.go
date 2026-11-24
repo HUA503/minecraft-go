@@ -11,6 +11,7 @@ type Window struct {
 	Height        int
 	OnKeyClick    func(vkCode int)
 	OnMouseClick  func(btn int)
+	OnMouseMove   func()
 	OnMouseWheel  func(delta int)
 	OnCharInput   func(ch rune)
 	OnPanic       func(message string, recovered any, stack []byte)

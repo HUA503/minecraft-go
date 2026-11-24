@@ -192,6 +192,8 @@ type Client struct {
 	creativeSearch       string
 	creativeSearchActive bool
 	creativeScrollRow    int
+	creativeScrollDrag   bool
+	creativeScrollOffset int
 	creativeHotbars      inventory.CreativeHotbarPresets
 	showAdvancementsGUI  bool
 	showPauseMenu        bool
@@ -5523,6 +5525,19 @@ func runGraphicalWindow(c *Client, w, h int) {
 			c.player.Inventory.SelectedHotbar = (c.player.Inventory.SelectedHotbar + 1) % 9
 		}
 	}
+	wnd.OnMouseMove = func() {
+		if !c.creativeScrollDrag {
+			return
+		}
+		if !wnd.IsMouseDown(1) || !c.showInventoryGUI || !c.isCreative || c.isCraftingTableOpen || c.framebuf == nil {
+			c.creativeScrollDrag = false
+			return
+		}
+		items := inventory.SearchCreativeCatalog(c.creativeTab, c.creativeSearch)
+		maxScroll := render.CreativeCatalogMaxScroll(len(items))
+		_, my := wnd.GetCursorClientPos(c.framebuf.Width, c.framebuf.Height)
+		c.creativeScrollRow = render.CreativeScrollRowAtPointer(c.framebuf.Width, c.framebuf.Height, my, maxScroll, c.creativeScrollOffset)
+	}
 
 	// Character input
 	wnd.OnCharInput = func(ch rune) {
@@ -5611,6 +5626,9 @@ func runGraphicalWindow(c *Client, w, h int) {
 
 	// Mouse button clicks
 	wnd.OnMouseClick = func(btn int) {
+		if btn == 1 {
+			c.creativeScrollDrag = false
+		}
 		if c.quitSaving.Load() || c.worldStarting.Load() {
 			return
 		}
@@ -5764,7 +5782,16 @@ func runGraphicalWindow(c *Client, w, h int) {
 					items := inventory.SearchCreativeCatalog(c.creativeTab, c.creativeSearch)
 					maxScroll := render.CreativeCatalogMaxScroll(len(items))
 					if maxScroll > 0 {
-						c.creativeScrollRow = hit.Index * maxScroll / 100
+						thumbY := render.CreativeScrollThumbY(c.framebuf.Width, c.framebuf.Height, c.creativeScrollRow, maxScroll)
+						scale := render.CalculateGUIScaleFromDimensions(c.framebuf.Width, c.framebuf.Height)
+						thumbHeight := 17 * scale
+						if my >= thumbY && my < thumbY+thumbHeight {
+							c.creativeScrollOffset = my - thumbY
+						} else {
+							c.creativeScrollOffset = thumbHeight / 2
+						}
+						c.creativeScrollRow = render.CreativeScrollRowAtPointer(c.framebuf.Width, c.framebuf.Height, my, maxScroll, c.creativeScrollOffset)
+						c.creativeScrollDrag = true
 					}
 				case render.SlotCreativeItem:
 					c.creativeSearchActive = false
