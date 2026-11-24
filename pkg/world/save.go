@@ -27,6 +27,7 @@ type PlayerSaveData struct {
 	Hunger       int
 	GameMode     int // 0: Survival, 1: Creative
 	Inventory    []SavedItemStack
+	Armor        []SavedItemStack
 	Advancements []string
 }
 
@@ -233,6 +234,18 @@ func (sm *SaveManager) SaveLevel(data *LevelData) error {
 			}
 		}
 		pTag.Put("Inventory", invList)
+		armorList := &nbt.ListTag{ElementType: nbt.TagCompound}
+		for _, it := range data.Player.Armor {
+			if it.Count > 0 && it.ItemID > 0 && it.Slot >= 0 && it.Slot < 4 {
+				itemTag := nbt.NewCompound()
+				itemTag.Put("Slot", &nbt.ByteTag{Value: int8(it.Slot)})
+				itemTag.Put("id", &nbt.IntTag{Value: it.ItemID})
+				itemTag.Put("Count", &nbt.ByteTag{Value: int8(it.Count)})
+				itemTag.Put("Damage", &nbt.ShortTag{Value: int16(it.Damage)})
+				armorList.Elements = append(armorList.Elements, itemTag)
+			}
+		}
+		pTag.Put("ArmorItems", armorList)
 		advancements := &nbt.ListTag{ElementType: nbt.TagString}
 		for _, id := range data.Player.Advancements {
 			if id != "" {
@@ -354,6 +367,16 @@ func (sm *SaveManager) LoadLevel() (*LevelData, error) {
 				}
 			}
 		}
+		if armorList, ok := pTag.Get("ArmorItems").(*nbt.ListTag); ok {
+			for _, itemRaw := range armorList.Elements {
+				if itemComp, ok := itemRaw.(*nbt.CompoundTag); ok {
+					pd.Armor = append(pd.Armor, SavedItemStack{
+						Slot: int(itemComp.GetByte("Slot")), ItemID: itemComp.GetInt("id"),
+						Count: int(itemComp.GetByte("Count")), Damage: int(itemComp.GetShort("Damage")),
+					})
+				}
+			}
+		}
 		if advancements, ok := pTag.Get("Advancements").(*nbt.ListTag); ok {
 			for _, raw := range advancements.Elements {
 				if id, ok := raw.(*nbt.StringTag); ok && id.Value != "" {
@@ -385,4 +408,3 @@ func (sm *SaveManager) Close() error {
 	sm.regions = make(map[string]*Region)
 	return firstErr
 }
-

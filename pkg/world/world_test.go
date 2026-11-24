@@ -584,6 +584,10 @@ func TestSaveAndLoadLevelWithPlayer(t *testing.T) {
 				{Slot: 1, ItemID: 4, Count: 64, Damage: 0},
 				{Slot: 9, ItemID: 265, Count: 12, Damage: 0},
 			},
+			Armor: []SavedItemStack{
+				{Slot: 0, ItemID: 313, Count: 1, Damage: 7},
+				{Slot: 3, ItemID: 310, Count: 1, Damage: 2},
+			},
 		},
 	}
 
@@ -613,5 +617,8 @@ func TestSaveAndLoadLevelWithPlayer(t *testing.T) {
 	}
 	if loaded.Player.Inventory[2].ItemID != 265 || loaded.Player.Inventory[2].Count != 12 {
 		t.Errorf("Player inventory item mismatch: %+v", loaded.Player.Inventory[2])
+	}
+	if len(loaded.Player.Armor) != 2 || loaded.Player.Armor[0].Slot != 0 || loaded.Player.Armor[0].ItemID != 313 || loaded.Player.Armor[0].Damage != 7 || loaded.Player.Armor[1].Slot != 3 || loaded.Player.Armor[1].ItemID != 310 {
+		t.Errorf("Player armor round trip mismatch: %+v", loaded.Player.Armor)
 	}
 }

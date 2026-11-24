@@ -513,6 +513,34 @@ func restoreSavedInventory(target *inventory.PlayerInventory, saved []world.Save
 	}
 }
 
+func restoreSavedArmor(target *inventory.PlayerInventory, saved []world.SavedItemStack) {
+	if target == nil {
+		return
+	}
+	for _, item := range saved {
+		if item.Slot < 0 || item.Slot >= len(target.Armor) || item.ItemID <= 0 || item.Count <= 0 || !inventory.CanEquipArmor(item.Slot, item.ItemID) {
+			continue
+		}
+		if target.Armor[item.Slot].IsEmpty() {
+			damage := max(0, item.Damage)
+			target.Armor[item.Slot] = inventory.ItemStack{ItemID: item.ItemID, Count: 1, Damage: damage}
+		}
+	}
+}
+
+func savedArmorStacks(inv *inventory.PlayerInventory) []world.SavedItemStack {
+	if inv == nil {
+		return nil
+	}
+	saved := make([]world.SavedItemStack, 0, len(inv.Armor))
+	for slot, item := range inv.Armor {
+		if !item.IsEmpty() {
+			saved = append(saved, world.SavedItemStack{Slot: slot, ItemID: item.ItemID, Count: 1, Damage: item.Damage})
+		}
+	}
+	return saved
+}
+
 func createUniqueWorldDirectory(dirName string) (string, error) {
 	name := filepath.Base(filepath.Clean(dirName))
 	if name == "." || name == string(filepath.Separator) || name == "" {
@@ -743,6 +771,7 @@ func (c *Client) StartSingleplayerWorld(worldDirName string, isNew bool, newSeed
 				c.camera.Pitch = math.Max(-90, math.Min(90, float64(savedPlayer.Pitch)))
 			}
 			restoreSavedInventory(c.player.Inventory, savedPlayer.Inventory)
+			restoreSavedArmor(c.player.Inventory, savedPlayer.Armor)
 		}
 		c.UnlockAdvancement("minecraft:story/root", "进入世界")
 	}
@@ -864,6 +893,7 @@ func (c *Client) SaveAndQuitToTitle() error {
 					})
 				}
 			}
+			savedArmor := savedArmorStacks(c.player.Inventory)
 			gm := 0
 			if c.isCreative {
 				gm = 1
@@ -900,6 +930,7 @@ func (c *Client) SaveAndQuitToTitle() error {
 					Hunger:       c.player.Hunger,
 					GameMode:     gm,
 					Inventory:    savedInv,
+					Armor:        savedArmor,
 					Advancements: c.advancementIDs(),
 				},
 			}
@@ -1008,6 +1039,7 @@ func (c *Client) snapshotLevelData() *world.LevelData {
 			Yaw: float32(c.camera.Yaw), Pitch: float32(c.camera.Pitch),
 			Health: c.player.Health, Hunger: c.player.Hunger, GameMode: gm,
 			Inventory: inventory, Advancements: c.advancementIDs(),
+			Armor: savedArmorStacks(c.player.Inventory),
 		},
 	}
 }
@@ -5708,8 +5740,18 @@ func runGraphicalWindow(c *Client, w, h int) {
 				case render.SlotInventory:
 					if hit.Index >= 0 && hit.Index < len(c.player.Inventory.Slots) {
 						slot := &c.player.Inventory.Slots[hit.Index]
-						if btn == 1 && wnd.IsKeyDown(0x10) {
-							*slot = inventory.ItemStack{}
+						if btn == 1 && wnd.IsKeyDown(0x10) && !slot.IsEmpty() {
+							dstStart, dstEnd := 0, 9
+							if hit.Index < 9 {
+								dstStart, dstEnd = 9, 36
+							}
+							for dst := dstStart; dst < dstEnd; dst++ {
+								if c.player.Inventory.Slots[dst].IsEmpty() {
+									c.player.Inventory.Slots[dst] = *slot
+									*slot = inventory.ItemStack{}
+									break
+								}
+							}
 						} else if btn == 1 {
 							handleSlotLeftClick(&c.cursorItem, slot)
 						} else if btn == 2 {
@@ -5725,6 +5767,24 @@ func runGraphicalWindow(c *Client, w, h int) {
 							for i := range c.player.Inventory.Slots {
 								c.player.Inventory.Slots[i] = inventory.ItemStack{}
 							}
+							for i := range c.player.Inventory.Armor {
+								c.player.Inventory.Armor[i] = inventory.ItemStack{}
+							}
+						}
+					}
+				case render.SlotCreativeArmor:
+					if hit.Index >= 0 && hit.Index < len(c.player.Inventory.Armor) {
+						slot := &c.player.Inventory.Armor[hit.Index]
+						if btn == 1 && wnd.IsKeyDown(0x10) && !slot.IsEmpty() {
+							for dst := range c.player.Inventory.Slots {
+								if c.player.Inventory.Slots[dst].IsEmpty() {
+									c.player.Inventory.Slots[dst] = *slot
+									*slot = inventory.ItemStack{}
+									break
+								}
+							}
+						} else {
+							inventory.HandleArmorSlotClick(&c.cursorItem, slot, hit.Index, btn)
 						}
 					}
 				case render.SlotNone:

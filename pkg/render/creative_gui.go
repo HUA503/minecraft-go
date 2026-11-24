@@ -176,8 +176,14 @@ func (fb *Framebuffer) DrawCreativeInventoryGUI(inv *inventory.PlayerInventory, 
 	invX, invY := px+9*scale, py+creativeHotbarY*scale
 	hoveredInventoryName := ""
 	if category == inventory.CreativeInventory {
-		// The inventory tab exposes the 27 main slots and the hotbar. Armor slots
-		// are drawn empty until armor/equipment data is represented by PlayerInventory.
+		for slot := 0; slot < 4; slot++ {
+			x := px + (54+(slot/2)*54)*scale
+			y := py + (6+(slot%2)*27)*scale
+			name := drawCreativeArmorSlot(fb, inv, slot, x, y, scale, mouseX, mouseY)
+			if name != "" {
+				hoveredInventoryName = name
+			}
+		}
 		for slot := 9; slot < 36; slot++ {
 			col, row := (slot-9)%9, (slot-9)/9
 			name := drawCreativePlayerSlot(fb, inv, slot, px+(9+col*18)*scale, py+(54+row*18)*scale, scale, mouseX, mouseY)
@@ -252,6 +258,27 @@ func drawCreativePlayerSlot(fb *Framebuffer, inv *inventory.PlayerInventory, ind
 		fb.DrawRect(x, y+17*scale, 18*scale, scale, 0xFFFFFFFF)
 		fb.DrawRect(x, y, scale, 18*scale, 0xFFFFFFFF)
 		fb.DrawRect(x+17*scale, y, scale, 18*scale, 0xFFFFFFFF)
+	}
+	if mouseX >= x && mouseX < x+18*scale && mouseY >= y && mouseY < y+18*scale {
+		fb.DrawRect(x+scale, y+scale, 16*scale, 16*scale, 0x50FFFFFF)
+		if !item.IsEmpty() {
+			return inventory.CreativeItemDisplayName(item.ItemID)
+		}
+	}
+	return ""
+}
+
+func drawCreativeArmorSlot(fb *Framebuffer, inv *inventory.PlayerInventory, index, x, y, scale, mouseX, mouseY int) string {
+	if index < 0 || index >= len(inv.Armor) {
+		return ""
+	}
+	item := inv.Armor[index]
+	if !item.IsEmpty() {
+		fb.DrawItemIconScaled(x+scale, y+scale, item.ItemID, scale)
+		if item.Count > 1 {
+			fb.DrawNumberScaled(x+11*scale, y+11*scale, item.Count, 0xFFFFFFFF, scale)
+		}
+		drawCreativeDurabilityBar(fb, item, x, y, scale)
 	}
 	if mouseX >= x && mouseX < x+18*scale && mouseY >= y && mouseY < y+18*scale {
 		fb.DrawRect(x+scale, y+scale, 16*scale, 16*scale, 0x50FFFFFF)
@@ -423,6 +450,13 @@ func HitTestCreativeInventory(w, h int, category inventory.CreativeCategory, que
 		}
 	}
 	if category == inventory.CreativeInventory {
+		for slot := 0; slot < 4; slot++ {
+			sx := px + (54+(slot/2)*54)*scale
+			sy := py + (6+(slot%2)*27)*scale
+			if mouseX >= sx && mouseX < sx+18*scale && mouseY >= sy && mouseY < sy+18*scale {
+				return GUISlotHit{Type: SlotCreativeArmor, Index: slot}
+			}
+		}
 		for slot := 9; slot < 36; slot++ {
 			col, row := (slot-9)%9, (slot-9)/9
 			sx, sy := px+(9+col*18)*scale, py+(54+row*18)*scale

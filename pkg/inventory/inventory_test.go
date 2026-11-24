@@ -443,3 +443,33 @@ func TestSlotLeftAndRightClickLogic(t *testing.T) {
 		t.Fatalf("right click stack 1 failed: cursor=%d, slot=%d", cursor.Count, slotEmpty.Count)
 	}
 }
+
+func TestArmorSlotMappingAndCreativeClickRules(t *testing.T) {
+	for _, tc := range []struct {
+		itemID int32
+		slot   int
+	}{{301, 0}, {305, 0}, {300, 1}, {304, 1}, {299, 2}, {303, 2}, {298, 3}, {302, 3}, {317, 0}, {314, 3}} {
+		if slot, ok := ArmorSlotForItem(tc.itemID); !ok || slot != tc.slot {
+			t.Errorf("ArmorSlotForItem(%d) = (%d, %v), want (%d, true)", tc.itemID, slot, ok, tc.slot)
+		}
+	}
+	if CanEquipArmor(3, ItemDiamondBoots) || CanEquipArmor(0, ItemDiamondHelmet) {
+		t.Fatal("armor item accepted in the wrong equipment slot")
+	}
+
+	var cursor = ItemStack{ItemID: ItemDiamondHelmet, Count: 1}
+	var helmet ItemStack
+	HandleArmorSlotClick(&cursor, &helmet, 3, 1)
+	if !cursor.IsEmpty() || helmet.ItemID != ItemDiamondHelmet || helmet.Count != 1 {
+		t.Fatalf("valid helmet was not equipped: cursor=%+v helmet=%+v", cursor, helmet)
+	}
+	cursor = ItemStack{ItemID: ItemDiamondBoots, Count: 1}
+	HandleArmorSlotClick(&cursor, &helmet, 3, 1)
+	if cursor.ItemID != ItemDiamondBoots || helmet.ItemID != ItemDiamondHelmet {
+		t.Fatalf("invalid armor swap changed equipment: cursor=%+v helmet=%+v", cursor, helmet)
+	}
+	HandleArmorSlotClick(&cursor, &helmet, 3, 3)
+	if cursor.ItemID != ItemDiamondHelmet || helmet.ItemID != ItemDiamondHelmet {
+		t.Fatalf("middle click did not clone the equipped armor: cursor=%+v helmet=%+v", cursor, helmet)
+	}
+}

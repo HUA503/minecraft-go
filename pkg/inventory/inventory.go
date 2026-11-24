@@ -210,7 +210,31 @@ func (s ItemStack) String() string {
 // PlayerInventory manages hotbar, main storage, armor, and active slot.
 type PlayerInventory struct {
 	Slots          [36]ItemStack // 0..8 Hotbar, 9..35 Main Inventory
+	Armor          [4]ItemStack  // boots, leggings, chestplate, helmet
 	SelectedHotbar int           // 0..8
+}
+
+// ArmorSlotForItem maps the supported legacy armor IDs to vanilla equipment slots.
+// Slot order is boots, leggings, chestplate, helmet.
+func ArmorSlotForItem(itemID int32) (int, bool) {
+	switch itemID {
+	case 301, 305, 309, 313, 317:
+		return 0, true
+	case 300, 304, 308, 312, 316:
+		return 1, true
+	case 299, 303, 307, 311, 315:
+		return 2, true
+	case 298, 302, 306, 310, 314:
+		return 3, true
+	default:
+		return 0, false
+	}
+}
+
+// CanEquipArmor reports whether an item belongs in the specified equipment slot.
+func CanEquipArmor(slot int, itemID int32) bool {
+	itemSlot, ok := ArmorSlotForItem(itemID)
+	return ok && slot == itemSlot
 }
 
 func NewPlayerInventory() *PlayerInventory {
@@ -398,5 +422,33 @@ func HandleSlotRightClick(cursor *ItemStack, slot *ItemStack) {
 		if cursor.Count <= 0 {
 			*cursor = ItemStack{}
 		}
+	}
+}
+
+// HandleArmorSlotClick applies creative inventory mouse clicks to one armor slot.
+// Armor types are restricted to their vanilla equipment position.
+func HandleArmorSlotClick(cursor, slot *ItemStack, armorSlot, button int) {
+	if cursor == nil || slot == nil || armorSlot < 0 || armorSlot >= 4 {
+		return
+	}
+	if button == 3 {
+		if !slot.IsEmpty() {
+			*cursor = CreativeItemStack(slot.ItemID, 1)
+		}
+		return
+	}
+	if button == 2 {
+		if cursor.IsEmpty() {
+			HandleSlotRightClick(cursor, slot)
+		} else if slot.IsEmpty() && CanEquipArmor(armorSlot, cursor.ItemID) {
+			HandleSlotRightClick(cursor, slot)
+		}
+		return
+	}
+	if button != 1 {
+		return
+	}
+	if cursor.IsEmpty() || CanEquipArmor(armorSlot, cursor.ItemID) {
+		HandleSlotLeftClick(cursor, slot)
 	}
 }

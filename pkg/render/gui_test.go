@@ -326,6 +326,10 @@ func TestCreativeSpecialTabsRenderAndHitPlayerInventory(t *testing.T) {
 	if hit.Type != SlotInventory || hit.Index != 9 {
 		t.Fatalf("first main inventory slot hit = %+v, want slot 9", hit)
 	}
+	hit = HitTestCreativeInventory(width, height, inventory.CreativeInventory, "", 0, px+55*scale, py+7*scale)
+	if hit.Type != SlotCreativeArmor || hit.Index != 0 {
+		t.Fatalf("boots armor slot hit = %+v", hit)
+	}
 	hit = HitTestCreativeInventory(width, height, inventory.CreativeInventory, "", 0, px+174*scale, py+113*scale)
 	if hit.Type != SlotCreativeTrash {
 		t.Fatalf("trash slot hit = %+v", hit)
