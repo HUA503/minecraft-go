@@ -29,6 +29,9 @@ type PlayerEntity struct {
 	Health         float32 // 0.0 to 20.0
 	Hunger         int     // 0 to 20
 	Saturation     float32 // 0.0 to 20.0 (canonical vanilla saturation)
+	Absorption     float32
+	ActiveEffects  [16]world.PlayerStatusEffect
+	EffectCount    int
 	Exhaustion     float32 // 0.0 to 4.0
 	RegenTimer     int     // Tick counter for natural regeneration
 	StarveTimer    int     // Tick counter for starvation damage
@@ -1250,6 +1253,21 @@ func (e *Engine) applyPlayerDamageLocked(player *PlayerEntity, amount float32, r
 	if armorMitigatesDamage(reason) {
 		amount = mitigatedDamage(amount, player.ArmorDefense, player.ArmorToughness)
 	}
+	if reason != "void" && reason != "command" && reason != "fatal" {
+		if index := activeEffectIndex(player, inventory.EffectResistance); index >= 0 {
+			resistance := float32(min(1.0, 0.2*float64(player.ActiveEffects[index].Amplifier+1)))
+			amount *= 1 - resistance
+		}
+		if player.Absorption > 0 {
+			absorbed := min(player.Absorption, amount)
+			player.Absorption -= absorbed
+			amount -= absorbed
+		}
+		if amount <= 0 {
+			player.HurtTimer = 10
+			return true
+		}
+	}
 	player.Health -= amount
 	player.HurtTimer = 10
 	if player.Health > 0 {
@@ -1290,6 +1308,9 @@ func (e *Engine) RespawnPlayer(id int32, spawnPos Vec3) {
 		p.Velocity = Vec3{}
 		p.FallDistance = 0
 		p.OnGround = true
+		p.Absorption = 0
+		p.ActiveEffects = [16]world.PlayerStatusEffect{}
+		p.EffectCount = 0
 		if snapshot, ok := e.clientPlayers[id]; ok {
 			snapshot.Position = spawnPos
 			snapshot.IsAlive = true
@@ -1569,6 +1590,7 @@ func (e *Engine) Tick() {
 		if !p.IsAlive {
 			continue
 		}
+		e.tickPlayerStatusEffectsLocked(p)
 
 		// In Creative mode (GameMode == 1), health, hunger, saturation remain pristine
 		if p.HurtTimer > 0 {
@@ -1924,6 +1946,7 @@ func (e *Engine) ConsumeFood(playerID int32, slotIdx int) (bool, int) {
 	if p.Hunger >= 20 && !food.AlwaysEdible {
 		return false, 0 // Full stomach
 	}
+	e.consumeFoodEffectsLocked(p, food)
 
 	p.Hunger += food.HungerRestored
 	if p.Hunger > 20 {

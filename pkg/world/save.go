@@ -19,6 +19,13 @@ type SavedItemStack struct {
 	Damage int
 }
 
+// PlayerStatusEffect is a persistent active effect on the local player.
+type PlayerStatusEffect struct {
+	ID            string
+	DurationTicks int
+	Amplifier     int
+}
+
 // PlayerOffhandInventorySlot is the signed byte slot used by Java player NBT.
 const PlayerOffhandInventorySlot = -106
 
@@ -28,6 +35,9 @@ type PlayerSaveData struct {
 	Yaw, Pitch   float32
 	Health       float32
 	Hunger       int
+	Saturation   float32
+	Absorption   float32
+	Effects      []PlayerStatusEffect
 	GameMode     int // 0: Survival, 1: Creative
 	Inventory    []SavedItemStack
 	Armor        []SavedItemStack
@@ -223,7 +233,23 @@ func (sm *SaveManager) SaveLevel(data *LevelData) error {
 		pTag.Put("Rotation", rotList)
 		pTag.Put("Health", &nbt.FloatTag{Value: data.Player.Health})
 		pTag.Put("foodLevel", &nbt.IntTag{Value: int32(data.Player.Hunger)})
+		pTag.Put("foodSaturationLevel", &nbt.FloatTag{Value: data.Player.Saturation})
+		pTag.Put("AbsorptionAmount", &nbt.FloatTag{Value: data.Player.Absorption})
 		pTag.Put("playerGameType", &nbt.IntTag{Value: int32(data.Player.GameMode)})
+		effectsList := &nbt.ListTag{ElementType: nbt.TagCompound}
+		for _, effect := range data.Player.Effects {
+			if effect.ID == "" || effect.DurationTicks <= 0 || effect.Amplifier < 0 {
+				continue
+			}
+			effectTag := nbt.NewCompound()
+			effectTag.Put("id", &nbt.StringTag{Value: effect.ID})
+			effectTag.Put("duration", &nbt.IntTag{Value: int32(effect.DurationTicks)})
+			effectTag.Put("amplifier", &nbt.ByteTag{Value: int8(effect.Amplifier)})
+			effectsList.Elements = append(effectsList.Elements, effectTag)
+		}
+		if len(effectsList.Elements) > 0 {
+			pTag.Put("ActiveEffects", effectsList)
+		}
 
 		invList := &nbt.ListTag{ElementType: nbt.TagCompound}
 		for _, it := range data.Player.Inventory {
@@ -322,15 +348,37 @@ func (sm *SaveManager) LoadLevel() (*LevelData, error) {
 
 	if pTag, ok := dataTag.Get("Player").(*nbt.CompoundTag); ok && pTag != nil {
 		pd := &PlayerSaveData{
-			Health:   20.0,
-			Hunger:   20,
-			GameMode: int(pTag.GetInt("playerGameType")),
+			Health:     20.0,
+			Hunger:     20,
+			Saturation: 5.0,
+			GameMode:   int(pTag.GetInt("playerGameType")),
 		}
 		if hTag, hasH := pTag.Get("Health").(*nbt.FloatTag); hasH {
 			pd.Health = hTag.Value
 		}
 		if fTag, hasF := pTag.Get("foodLevel").(*nbt.IntTag); hasF {
 			pd.Hunger = int(fTag.Value)
+		}
+		if saturationTag, ok := pTag.Get("foodSaturationLevel").(*nbt.FloatTag); ok {
+			pd.Saturation = saturationTag.Value
+		}
+		if absorptionTag, ok := pTag.Get("AbsorptionAmount").(*nbt.FloatTag); ok {
+			pd.Absorption = absorptionTag.Value
+		}
+		if effects, ok := pTag.Get("ActiveEffects").(*nbt.ListTag); ok {
+			for _, raw := range effects.Elements {
+				effectTag, ok := raw.(*nbt.CompoundTag)
+				if !ok || effectTag == nil {
+					continue
+				}
+				id := effectTag.GetString("id")
+				duration := int(effectTag.GetInt("duration"))
+				amplifier := int(effectTag.GetByte("amplifier"))
+				if id == "" || len(id) > 128 || duration <= 0 || amplifier < 0 || amplifier > 255 {
+					continue
+				}
+				pd.Effects = append(pd.Effects, PlayerStatusEffect{ID: id, DurationTicks: duration, Amplifier: amplifier})
+			}
 		}
 
 		if posList, ok := pTag.Get("Pos").(*nbt.ListTag); ok && len(posList.Elements) >= 3 {

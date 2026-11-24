@@ -742,6 +742,46 @@ drained:
 	}
 }
 
+func TestModernFoodStatusEffectsAndMilkClear(t *testing.T) {
+	eng := NewEngine()
+	player := eng.AddPlayer("EffectTester", [16]byte{18}, Vec3{X: 8, Y: 64, Z: 8})
+	player.Health = 10
+	player.Hunger = 10
+	player.Inventory.Slots[0] = inventory.ItemStack{ItemID: inventory.ItemGoldenApple, Count: 1}
+	if ok, _ := eng.ConsumeFood(player.ID, 0); !ok {
+		t.Fatal("golden apple was not consumed")
+	}
+	if player.Absorption != 4 || activeEffectIndex(player, inventory.EffectRegeneration) < 0 {
+		t.Fatalf("golden apple effects missing: absorption=%v effects=%+v", player.Absorption, player.ActiveEffects[:player.EffectCount])
+	}
+	for range 25 {
+		eng.Tick()
+	}
+	if player.Health != 11 {
+		t.Fatalf("Regeneration II did not heal at the vanilla 25-tick interval: health=%v", player.Health)
+	}
+
+	player.Inventory.Slots[1] = inventory.ItemStack{ItemID: inventory.ItemSpiderEye, Count: 1}
+	if ok, _ := eng.ConsumeFood(player.ID, 1); !ok || activeEffectIndex(player, inventory.EffectPoison) < 0 {
+		t.Fatal("spider eye did not apply poison")
+	}
+	player.Inventory.Slots[2] = inventory.ItemStack{ItemID: inventory.ItemHoneyBottle, Count: 1}
+	if ok, _ := eng.ConsumeFood(player.ID, 2); !ok || activeEffectIndex(player, inventory.EffectPoison) >= 0 {
+		t.Fatal("honey bottle did not remove poison")
+	}
+	if got := player.Inventory.Slots[2]; got.ItemID != 374 || got.Count != 1 {
+		t.Fatalf("honey bottle remainder = %+v, want glass bottle", got)
+	}
+
+	player.Inventory.Slots[3] = inventory.ItemStack{ItemID: inventory.ItemMilkBucket, Count: 1}
+	if ok, _ := eng.ConsumeFood(player.ID, 3); !ok || player.EffectCount != 0 || player.Absorption != 0 {
+		t.Fatalf("milk did not clear active effects: ok=%v absorption=%v effects=%+v", ok, player.Absorption, player.ActiveEffects[:player.EffectCount])
+	}
+	if got := player.Inventory.Slots[3]; got.ItemID != 325 || got.Count != 1 {
+		t.Fatalf("milk bucket remainder = %+v, want empty bucket", got)
+	}
+}
+
 func TestMobWanderingAndObstacleJump(t *testing.T) {
 	eng := NewEngine()
 	// Place flat floor at Y=64, with 1-block step at X=6, Y=65, Z=5

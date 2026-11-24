@@ -778,6 +778,19 @@ func (c *Client) StartSingleplayerWorld(worldDirName string, isNew bool, newSeed
 				c.player.Health = float32(math.Max(0, math.Min(20, float64(savedPlayer.Health))))
 			}
 			c.player.Hunger = max(0, min(20, savedPlayer.Hunger))
+			if !math.IsNaN(float64(savedPlayer.Saturation)) && !math.IsInf(float64(savedPlayer.Saturation), 0) {
+				c.player.Saturation = float32(math.Max(0, math.Min(float64(c.player.Hunger), float64(savedPlayer.Saturation))))
+			}
+			if !math.IsNaN(float64(savedPlayer.Absorption)) && !math.IsInf(float64(savedPlayer.Absorption), 0) {
+				c.player.Absorption = float32(math.Max(0, math.Min(20, float64(savedPlayer.Absorption))))
+			}
+			for _, effect := range savedPlayer.Effects {
+				if c.player.EffectCount >= len(c.player.ActiveEffects) || effect.ID == "" || effect.DurationTicks <= 0 || effect.Amplifier < 0 {
+					continue
+				}
+				c.player.ActiveEffects[c.player.EffectCount] = effect
+				c.player.EffectCount++
+			}
 			if !math.IsNaN(float64(savedPlayer.Yaw)) && !math.IsInf(float64(savedPlayer.Yaw), 0) {
 				c.camera.Yaw = float64(savedPlayer.Yaw)
 			}
@@ -943,6 +956,9 @@ func (c *Client) SaveAndQuitToTitle() error {
 					Pitch:        float32(c.camera.Pitch),
 					Health:       saveHealth,
 					Hunger:       c.player.Hunger,
+					Saturation:   c.player.Saturation,
+					Absorption:   c.player.Absorption,
+					Effects:      append([]world.PlayerStatusEffect(nil), c.player.ActiveEffects[:c.player.EffectCount]...),
 					GameMode:     gm,
 					Inventory:    savedInv,
 					Armor:        savedArmor,
@@ -1057,6 +1073,8 @@ func (c *Client) snapshotLevelData() *world.LevelData {
 			X: position.X, Y: position.Y, Z: position.Z,
 			Yaw: float32(c.camera.Yaw), Pitch: float32(c.camera.Pitch),
 			Health: c.player.Health, Hunger: c.player.Hunger, GameMode: gm,
+			Saturation: c.player.Saturation, Absorption: c.player.Absorption,
+			Effects:   append([]world.PlayerStatusEffect(nil), c.player.ActiveEffects[:c.player.EffectCount]...),
 			Inventory: inventory, Advancements: c.advancementIDs(),
 			Armor: savedArmorStacks(c.player.Inventory),
 		},
@@ -3802,6 +3820,12 @@ func (c *Client) processLocalWorldEvents() {
 	for {
 		select {
 		case event := <-c.engine.Events:
+			if event.Type == "player_teleport" && event.PlayerID == c.player.ID {
+				c.camera.X = event.Position.X
+				c.camera.Y = event.Position.Y + 1.62
+				c.camera.Z = event.Position.Z
+				c.publishPlayerSnapshot()
+			}
 			if event.Type == "item_pickup" && event.PlayerID == c.player.ID {
 				switch {
 				case event.BlockID == inventory.ItemDiamond:

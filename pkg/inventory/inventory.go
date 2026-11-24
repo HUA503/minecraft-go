@@ -168,11 +168,33 @@ func IsReplaceableBlock(blockID int32) bool {
 
 // FoodProperties defines nutrition restored by edible items.
 type FoodProperties struct {
-	HungerRestored  int
-	Saturation      float32
-	RemainderItemID int32
-	AlwaysEdible    bool
+	HungerRestored   int
+	Saturation       float32
+	RemainderItemID  int32
+	AlwaysEdible     bool
+	Effects          []FoodStatusEffect
+	RemoveEffects    []string
+	ClearAllEffects  bool
+	TeleportRandomly bool
 }
+
+// FoodStatusEffect describes an effect added by a consumed item.
+type FoodStatusEffect struct {
+	ID            string
+	DurationTicks int
+	Amplifier     int
+	Chance        float64
+}
+
+const (
+	EffectHunger         = "minecraft:hunger"
+	EffectPoison         = "minecraft:poison"
+	EffectRegeneration   = "minecraft:regeneration"
+	EffectResistance     = "minecraft:resistance"
+	EffectFireResistance = "minecraft:fire_resistance"
+	EffectAbsorption     = "minecraft:absorption"
+	EffectNausea         = "minecraft:nausea"
+)
 
 // FoodRegistry defines vanilla Minecraft Java food nutrition and saturation parameters.
 var FoodRegistry = map[int32]FoodProperties{
@@ -182,14 +204,15 @@ var FoodRegistry = map[int32]FoodProperties{
 	ItemCookedPorkchop: {HungerRestored: 8, Saturation: 12.8},
 	ItemRawBeef:        {HungerRestored: 3, Saturation: 1.8},
 	ItemSteak:          {HungerRestored: 8, Saturation: 12.8},
-	ItemRottenFlesh:    {HungerRestored: 4, Saturation: 0.8},
+	ItemRottenFlesh:    {HungerRestored: 4, Saturation: 0.8, Effects: []FoodStatusEffect{{ID: EffectHunger, DurationTicks: 600, Chance: 0.8}}},
 	360:                {HungerRestored: 2, Saturation: 1.2},
-	ItemRawChicken:     {HungerRestored: 2, Saturation: 1.2},
+	ItemRawChicken:     {HungerRestored: 2, Saturation: 1.2, Effects: []FoodStatusEffect{{ID: EffectHunger, DurationTicks: 600, Chance: 0.3}}},
 	ItemCookedChicken:  {HungerRestored: 6, Saturation: 7.2},
 	ItemRawMutton:      {HungerRestored: 2, Saturation: 1.2},
 	ItemCookedMutton:   {HungerRestored: 6, Saturation: 9.6},
-	ItemGoldenApple:    {HungerRestored: 4, Saturation: 9.6, AlwaysEdible: true},
+	ItemGoldenApple:    {HungerRestored: 4, Saturation: 9.6, AlwaysEdible: true, Effects: []FoodStatusEffect{{ID: EffectRegeneration, DurationTicks: 100, Amplifier: 1}, {ID: EffectAbsorption, DurationTicks: 2400}}},
 	ItemMelon:          {HungerRestored: 2, Saturation: 1.2},
+	ItemSpiderEye:      {HungerRestored: 2, Saturation: 3.2, Effects: []FoodStatusEffect{{ID: EffectPoison, DurationTicks: 100}}},
 }
 
 func init() {
@@ -205,6 +228,30 @@ func init() {
 			RemainderItemID: item.RemainderItemID,
 			AlwaysEdible:    item.AlwaysEdible,
 		}
+	}
+	FoodRegistry[ItemEnchantedGoldenApple] = FoodProperties{
+		HungerRestored: 4, Saturation: 9.6, AlwaysEdible: true,
+		Effects: []FoodStatusEffect{
+			{ID: EffectRegeneration, DurationTicks: 400, Amplifier: 1},
+			{ID: EffectResistance, DurationTicks: 6000},
+			{ID: EffectFireResistance, DurationTicks: 6000},
+			{ID: EffectAbsorption, DurationTicks: 2400, Amplifier: 3},
+		},
+	}
+	FoodRegistry[ItemChorusFruit] = FoodProperties{HungerRestored: 4, Saturation: 2.4, AlwaysEdible: true, TeleportRandomly: true}
+	FoodRegistry[ItemPoisonousPotato] = FoodProperties{HungerRestored: 2, Saturation: 1.2, Effects: []FoodStatusEffect{{ID: EffectPoison, DurationTicks: 100, Chance: 0.6}}}
+	FoodRegistry[ItemPufferfish] = FoodProperties{
+		HungerRestored: 1, Saturation: 0.2,
+		Effects: []FoodStatusEffect{
+			{ID: EffectPoison, DurationTicks: 1200, Amplifier: 1},
+			{ID: EffectHunger, DurationTicks: 300, Amplifier: 2},
+			{ID: EffectNausea, DurationTicks: 300},
+		},
+	}
+	FoodRegistry[ItemMilkBucket] = FoodProperties{RemainderItemID: 325, AlwaysEdible: true, ClearAllEffects: true}
+	FoodRegistry[ItemHoneyBottle] = FoodProperties{
+		HungerRestored: 6, Saturation: 1.2, RemainderItemID: 374, AlwaysEdible: true,
+		RemoveEffects: []string{EffectPoison},
 	}
 }
 

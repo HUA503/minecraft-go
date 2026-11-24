@@ -571,14 +571,17 @@ func TestSaveAndLoadLevelWithPlayer(t *testing.T) {
 		LevelName: "Test World",
 		GameMode:  0,
 		Player: &PlayerSaveData{
-			X:        12.5,
-			Y:        65.0,
-			Z:        -18.3,
-			Yaw:      45.0,
-			Pitch:    10.0,
-			Health:   18.5,
-			Hunger:   16,
-			GameMode: 0,
+			X:          12.5,
+			Y:          65.0,
+			Z:          -18.3,
+			Yaw:        45.0,
+			Pitch:      10.0,
+			Health:     18.5,
+			Hunger:     16,
+			Saturation: 3.25,
+			Absorption: 4,
+			Effects:    []PlayerStatusEffect{{ID: "minecraft:regeneration", DurationTicks: 80, Amplifier: 1}},
+			GameMode:   0,
 			Inventory: []SavedItemStack{
 				{Slot: 0, ItemID: 270, Count: 1, Damage: 5},
 				{Slot: 1, ItemID: 4, Count: 64, Damage: 0},
@@ -612,6 +615,12 @@ func TestSaveAndLoadLevelWithPlayer(t *testing.T) {
 	}
 	if loaded.Player.X != original.Player.X || loaded.Player.Health != original.Player.Health {
 		t.Errorf("Player pos/health mismatch: got X=%.1f, Health=%.1f", loaded.Player.X, loaded.Player.Health)
+	}
+	if loaded.Player.Hunger != original.Player.Hunger || loaded.Player.Saturation != original.Player.Saturation || loaded.Player.Absorption != original.Player.Absorption {
+		t.Errorf("Player food/absorption round trip mismatch: hunger=%d saturation=%v absorption=%v", loaded.Player.Hunger, loaded.Player.Saturation, loaded.Player.Absorption)
+	}
+	if len(loaded.Player.Effects) != 1 || loaded.Player.Effects[0] != original.Player.Effects[0] {
+		t.Errorf("Player active effects round trip mismatch: %+v", loaded.Player.Effects)
 	}
 	if len(loaded.Player.Inventory) != len(original.Player.Inventory) {
 		t.Fatalf("Player inventory length mismatch: got %d, want %d", len(loaded.Player.Inventory), len(original.Player.Inventory))
