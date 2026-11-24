@@ -5,6 +5,32 @@ import (
 	"github.com/HUA503/minecraft-go/pkg/render"
 )
 
+type creativeInventoryDrag struct {
+	Active      bool
+	Button      int
+	StartIndex  int
+	TargetSlots []int
+}
+
+func (drag *creativeInventoryDrag) addTarget(index int) {
+	if drag == nil || index < 0 {
+		return
+	}
+	for _, existing := range drag.TargetSlots {
+		if existing == index {
+			return
+		}
+	}
+	drag.TargetSlots = append(drag.TargetSlots, index)
+}
+
+func (drag *creativeInventoryDrag) reset() {
+	if drag == nil {
+		return
+	}
+	*drag = creativeInventoryDrag{}
+}
+
 // applyCreativeHotbarKey applies the creative inventory number-key shortcut to
 // the hovered catalog item or player inventory slot.
 func applyCreativeHotbarKey(inv *inventory.PlayerInventory, hit render.GUISlotHit, items []inventory.CreativeItem, hotbarSlot int, presets ...inventory.CreativeHotbarPresets) bool {
@@ -40,4 +66,67 @@ func applyCreativeHotbarKey(inv *inventory.PlayerInventory, hit render.GUISlotHi
 	default:
 		return false
 	}
+}
+
+// distributeCreativeCursor applies the vanilla creative quick-craft modes:
+// left-drag divides the cursor stack evenly; right-drag places one per slot.
+func distributeCreativeCursor(inv *inventory.PlayerInventory, cursor *inventory.ItemStack, targets []int, button int) int {
+	if inv == nil || cursor == nil || cursor.IsEmpty() || (button != 1 && button != 2) {
+		return 0
+	}
+	maxStack := inventory.GetMaxStackSize(cursor.ItemID)
+	if maxStack <= 0 {
+		return 0
+	}
+	eligible := make([]int, 0, len(targets))
+	seen := make(map[int]struct{}, len(targets))
+	for _, index := range targets {
+		if index < 0 || index >= len(inv.Slots) {
+			continue
+		}
+		if _, exists := seen[index]; exists {
+			continue
+		}
+		seen[index] = struct{}{}
+		slot := inv.Slots[index]
+		if !slot.IsEmpty() && (slot.ItemID != cursor.ItemID || slot.Damage != cursor.Damage) {
+			continue
+		}
+		if slot.Count >= maxStack {
+			continue
+		}
+		eligible = append(eligible, index)
+	}
+	if len(eligible) > cursor.Count {
+		eligible = eligible[:cursor.Count]
+	}
+	if len(eligible) == 0 {
+		return 0
+	}
+	perSlot := 1
+	if button == 1 {
+		perSlot = cursor.Count / len(eligible)
+		if perSlot == 0 {
+			return 0
+		}
+	}
+	placed := 0
+	for _, index := range eligible {
+		slot := &inv.Slots[index]
+		room := maxStack - slot.Count
+		add := min(perSlot, room, cursor.Count-placed)
+		if add <= 0 {
+			continue
+		}
+		if slot.IsEmpty() {
+			*slot = inventory.ItemStack{ItemID: cursor.ItemID, Damage: cursor.Damage}
+		}
+		slot.Count += add
+		placed += add
+	}
+	cursor.Count -= placed
+	if cursor.Count <= 0 {
+		*cursor = inventory.ItemStack{}
+	}
+	return placed
 }

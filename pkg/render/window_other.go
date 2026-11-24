@@ -6,17 +6,19 @@ import "fmt"
 
 // Window represents a window stub on non-Windows platforms.
 type Window struct {
-	Closed        bool
-	Width         int
-	Height        int
-	OnKeyClick    func(vkCode int)
-	OnMouseClick  func(btn int)
-	OnMouseMove   func()
-	OnMouseWheel  func(delta int)
-	OnCharInput   func(ch rune)
-	OnPanic       func(message string, recovered any, stack []byte)
-	MouseCaptured bool
-	IsFullscreen  bool
+	Closed         bool
+	Width          int
+	Height         int
+	OnKeyClick     func(vkCode int)
+	OnMouseClick   func(btn int)
+	OnMouseRelease func(btn int)
+	OnMouseCancel  func()
+	OnMouseMove    func()
+	OnMouseWheel   func(delta int)
+	OnCharInput    func(ch rune)
+	OnPanic        func(message string, recovered any, stack []byte)
+	MouseCaptured  bool
+	IsFullscreen   bool
 }
 
 // NewNativeWindow returns an error on non-Windows platforms advising users to use CLI mode.

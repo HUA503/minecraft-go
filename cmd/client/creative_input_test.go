@@ -58,3 +58,54 @@ func TestCreativeHotbarNumberKeyRejectsInvalidTargets(t *testing.T) {
 		t.Fatalf("invalid shortcut changed inventory: %+v", inv.Slots[:2])
 	}
 }
+
+func TestCreativeCursorDragLeftDistributesEvenly(t *testing.T) {
+	inv := inventory.NewPlayerInventory()
+	cursor := inventory.ItemStack{ItemID: inventory.ItemStone, Count: 12}
+	placed := distributeCreativeCursor(inv, &cursor, []int{0, 1, 2}, 1)
+	if placed != 12 || !cursor.IsEmpty() {
+		t.Fatalf("placed=%d cursor=%+v, want all 12 placed", placed, cursor)
+	}
+	for i := 0; i < 3; i++ {
+		if got := inv.Slots[i]; got.ItemID != inventory.ItemStone || got.Count != 4 {
+			t.Fatalf("slot %d = %+v, want 4 stone", i, got)
+		}
+	}
+}
+
+func TestCreativeCursorDragRightPlacesOnePerSlot(t *testing.T) {
+	inv := inventory.NewPlayerInventory()
+	cursor := inventory.ItemStack{ItemID: inventory.ItemStone, Count: 3}
+	placed := distributeCreativeCursor(inv, &cursor, []int{0, 1, 2, 3}, 2)
+	if placed != 3 || cursor.Count != 0 || !cursor.IsEmpty() {
+		t.Fatalf("placed=%d cursor=%+v, want 3 placed and empty cursor", placed, cursor)
+	}
+	for i := 0; i < 3; i++ {
+		if got := inv.Slots[i]; got.ItemID != inventory.ItemStone || got.Count != 1 {
+			t.Fatalf("slot %d = %+v, want 1 stone", i, got)
+		}
+	}
+	if !inv.Slots[3].IsEmpty() {
+		t.Fatalf("fourth target should stay empty: %+v", inv.Slots[3])
+	}
+}
+
+func TestCreativeCursorDragMergesCompatibleStacksAndCapsSlots(t *testing.T) {
+	inv := inventory.NewPlayerInventory()
+	inv.Slots[0] = inventory.ItemStack{ItemID: inventory.ItemStone, Count: 63}
+	cursor := inventory.ItemStack{ItemID: inventory.ItemStone, Count: 5}
+	placed := distributeCreativeCursor(inv, &cursor, []int{0, 1}, 2)
+	if placed != 2 || cursor.Count != 3 || inv.Slots[0].Count != 64 || inv.Slots[1].Count != 1 {
+		t.Fatalf("placed=%d cursor=%+v slots=%+v", placed, cursor, inv.Slots[:2])
+	}
+}
+
+func TestCreativeCursorDragSkipsIncompatibleAndInvalidTargets(t *testing.T) {
+	inv := inventory.NewPlayerInventory()
+	inv.Slots[0] = inventory.ItemStack{ItemID: inventory.ItemDiamond, Count: 4}
+	cursor := inventory.ItemStack{ItemID: inventory.ItemStone, Count: 2}
+	placed := distributeCreativeCursor(inv, &cursor, []int{0, -1, 1, 1, len(inv.Slots)}, 2)
+	if placed != 1 || cursor.Count != 1 || inv.Slots[0].Count != 4 || inv.Slots[1].Count != 1 {
+		t.Fatalf("placed=%d cursor=%+v slots=%+v", placed, cursor, inv.Slots[:2])
+	}
+}

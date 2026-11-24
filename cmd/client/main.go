@@ -194,6 +194,7 @@ type Client struct {
 	creativeScrollRow    int
 	creativeScrollDrag   bool
 	creativeScrollOffset int
+	creativeDrag         creativeInventoryDrag
 	creativeHotbars      inventory.CreativeHotbarPresets
 	showAdvancementsGUI  bool
 	showPauseMenu        bool
@@ -5539,6 +5540,17 @@ func runGraphicalWindow(c *Client, w, h int) {
 		}
 	}
 	wnd.OnMouseMove = func() {
+		if c.creativeDrag.Active {
+			if !c.showInventoryGUI || !c.isCreative || c.isCraftingTableOpen || c.framebuf == nil {
+				c.creativeDrag.reset()
+			} else {
+				mx, my := wnd.GetCursorClientPos(c.framebuf.Width, c.framebuf.Height)
+				hit := render.HitTestCreativeInventory(c.framebuf.Width, c.framebuf.Height, c.creativeTab, c.creativeSearch, c.creativeScrollRow, mx, my, c.creativeHotbars)
+				if hit.Type == render.SlotInventory {
+					c.creativeDrag.addTarget(hit.Index)
+				}
+			}
+		}
 		if !c.creativeScrollDrag {
 			return
 		}
@@ -5550,6 +5562,10 @@ func runGraphicalWindow(c *Client, w, h int) {
 		maxScroll := render.CreativeCatalogMaxScroll(len(items))
 		_, my := wnd.GetCursorClientPos(c.framebuf.Width, c.framebuf.Height)
 		c.creativeScrollRow = render.CreativeScrollRowAtPointer(c.framebuf.Width, c.framebuf.Height, my, maxScroll, c.creativeScrollOffset)
+	}
+	wnd.OnMouseCancel = func() {
+		c.creativeDrag.reset()
+		c.creativeScrollDrag = false
 	}
 
 	// Character input
@@ -5828,6 +5844,10 @@ func runGraphicalWindow(c *Client, w, h int) {
 					}
 				case render.SlotInventory:
 					if hit.Index >= 0 && hit.Index < len(c.player.Inventory.Slots) {
+						if (btn == 1 || btn == 2) && !c.cursorItem.IsEmpty() && !wnd.IsKeyDown(0x10) {
+							c.creativeDrag = creativeInventoryDrag{Active: true, Button: btn, StartIndex: hit.Index, TargetSlots: []int{hit.Index}}
+							return
+						}
 						slot := &c.player.Inventory.Slots[hit.Index]
 						if btn == 1 && wnd.IsKeyDown(0x10) && !slot.IsEmpty() {
 							dstStart, dstEnd := 0, 9
@@ -6069,6 +6089,40 @@ func runGraphicalWindow(c *Client, w, h int) {
 					c.placeCooldown = 0.25
 				}
 			}
+		}
+	}
+	wnd.OnMouseRelease = func(btn int) {
+		if btn == 1 {
+			c.creativeScrollDrag = false
+		}
+		if !c.creativeDrag.Active || btn != c.creativeDrag.Button {
+			return
+		}
+		drag := c.creativeDrag
+		c.creativeDrag.reset()
+		if c.player == nil || c.player.Inventory == nil || c.framebuf == nil || !c.showInventoryGUI || !c.isCreative || c.isCraftingTableOpen {
+			return
+		}
+		mx, my := wnd.GetCursorClientPos(c.framebuf.Width, c.framebuf.Height)
+		hit := render.HitTestCreativeInventory(c.framebuf.Width, c.framebuf.Height, c.creativeTab, c.creativeSearch, c.creativeScrollRow, mx, my, c.creativeHotbars)
+		if hit.Type == render.SlotInventory {
+			drag.addTarget(hit.Index)
+		}
+		if len(drag.TargetSlots) >= 2 && distributeCreativeCursor(c.player.Inventory, &c.cursorItem, drag.TargetSlots, btn) > 0 {
+			return
+		}
+		index := drag.StartIndex
+		if len(drag.TargetSlots) == 1 {
+			index = drag.TargetSlots[0]
+		}
+		if index < 0 || index >= len(c.player.Inventory.Slots) {
+			return
+		}
+		slot := &c.player.Inventory.Slots[index]
+		if btn == 1 {
+			handleSlotLeftClick(&c.cursorItem, slot)
+		} else if btn == 2 {
+			handleSlotRightClick(&c.cursorItem, slot)
 		}
 	}
 

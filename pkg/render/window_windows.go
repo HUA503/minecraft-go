@@ -158,25 +158,27 @@ type BITMAPINFO struct {
 
 // Window represents a native Win32 graphical game window.
 type Window struct {
-	Hwnd          uintptr
-	Hdc           uintptr
-	closeOnce     sync.Once
-	threadLocked  bool
-	Width         int
-	Height        int
-	Closed        bool
-	KeyDown       [256]bool
-	mu            sync.Mutex
-	OnKeyClick    func(vkCode int)
-	OnMouseClick  func(btn int)
-	OnMouseMove   func()
-	OnMouseWheel  func(delta int)
-	OnCharInput   func(ch rune)
-	OnPanic       func(message string, recovered any, stack []byte)
-	MouseCaptured bool
-	centerScreenX int32
-	centerScreenY int32
-	bmi           BITMAPINFO
+	Hwnd           uintptr
+	Hdc            uintptr
+	closeOnce      sync.Once
+	threadLocked   bool
+	Width          int
+	Height         int
+	Closed         bool
+	KeyDown        [256]bool
+	mu             sync.Mutex
+	OnKeyClick     func(vkCode int)
+	OnMouseClick   func(btn int)
+	OnMouseRelease func(btn int)
+	OnMouseCancel  func()
+	OnMouseMove    func()
+	OnMouseWheel   func(delta int)
+	OnCharInput    func(ch rune)
+	OnPanic        func(message string, recovered any, stack []byte)
+	MouseCaptured  bool
+	centerScreenX  int32
+	centerScreenY  int32
+	bmi            BITMAPINFO
 
 	IsFullscreen   bool
 	savedPlacement WINDOWPLACEMENT
@@ -251,6 +253,9 @@ func wndProc(hwnd, msg, wparam, lparam uintptr) (result uintptr) {
 		active := (wparam & 0xFFFF) != 0
 		if globalWnd != nil {
 			if !active {
+				if globalWnd.OnMouseCancel != nil {
+					globalWnd.OnMouseCancel()
+				}
 				if globalWnd.MouseCaptured {
 					globalWnd.SetMouseCaptured(false)
 				}
@@ -302,14 +307,29 @@ func wndProc(hwnd, msg, wparam, lparam uintptr) (result uintptr) {
 			globalWnd.OnMouseClick(1)
 		}
 		return 0
+	case 0x0202: // WM_LBUTTONUP
+		if globalWnd != nil && globalWnd.OnMouseRelease != nil {
+			globalWnd.OnMouseRelease(1)
+		}
+		return 0
 	case WM_RBUTTONDOWN:
 		if globalWnd != nil && globalWnd.OnMouseClick != nil {
 			globalWnd.OnMouseClick(2)
 		}
 		return 0
+	case 0x0205: // WM_RBUTTONUP
+		if globalWnd != nil && globalWnd.OnMouseRelease != nil {
+			globalWnd.OnMouseRelease(2)
+		}
+		return 0
 	case WM_MBUTTONDOWN:
 		if globalWnd != nil && globalWnd.OnMouseClick != nil {
 			globalWnd.OnMouseClick(3)
+		}
+		return 0
+	case 0x0208: // WM_MBUTTONUP
+		if globalWnd != nil && globalWnd.OnMouseRelease != nil {
+			globalWnd.OnMouseRelease(3)
 		}
 		return 0
 	case WM_ERASEBKGND:
@@ -531,6 +551,8 @@ func (w *Window) IsMouseDown(btn int) bool {
 		vk = 0x01 // VK_LBUTTON
 	} else if btn == 2 {
 		vk = 0x02 // VK_RBUTTON
+	} else if btn == 3 {
+		vk = 0x04 // VK_MBUTTON
 	} else {
 		return false
 	}
