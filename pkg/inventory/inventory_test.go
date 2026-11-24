@@ -31,6 +31,9 @@ func TestCreativeCatalogHasUniqueUsableItems(t *testing.T) {
 	if got := CreativeCatalog(CreativeFood); len(got) == 0 {
 		t.Fatal("food tab is empty")
 	}
+	if got := SearchCreativeCatalog(CreativeNatural, "red shrub"); len(got) != 1 || got[0].ID != 10100 || got[0].Name != "红灌木" {
+		t.Fatalf("26.3 red shrub is missing from the natural creative tab: %+v", got)
+	}
 }
 
 func TestExtendedBlockRegistryIsNamespacedAndExposesColorSets(t *testing.T) {

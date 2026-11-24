@@ -747,6 +747,21 @@ func TestPoplarCreativeItemsHaveOfficialTexturesAndRenderShapes(t *testing.T) {
 	if !IsFoliage(10063) || IsOpaqueCube(10063) {
 		t.Fatal("poplar sapling must render as non-occluding crossed foliage")
 	}
+	if !IsFoliage(10100) || IsOpaqueCube(10100) {
+		t.Fatal("red shrub must render as non-occluding crossed foliage")
+	}
+	mesh := BuildSectionMesh(func(x, y, z int32) int32 {
+		if x == 0 && y == 0 && z == 0 {
+			return 10100
+		}
+		return 0
+	}, 0, 0, 0)
+	if len(mesh.Vertices) != 8 {
+		t.Fatalf("red shrub cross mesh has %d vertices, want 8", len(mesh.Vertices))
+	}
+	if texture, ok := GetOfficialItemSprite(10100); !ok || texture[7][7] == 0 {
+		t.Fatal("26.3 red shrub creative icon is missing its official texture")
+	}
 }
 
 func TestCreativeSpawnEggsHaveOfficialTextures(t *testing.T) {

@@ -1044,10 +1044,11 @@ func (e *Engine) BreakBlock(playerID int32, pos world.BlockPos) int32 {
 // PlaceBlock places a block if it does not intersect the player's bounding box.
 func (e *Engine) PlaceBlock(playerID int32, pos world.BlockPos, blockID int32) bool {
 	existing := e.GetBlock(pos.X, pos.Y, pos.Z)
-	// Air (0), water (8, 9), lava (10, 11), tall grass (31, 32), flowers (37, 38), and torches (50) are replaceable
-	if existing != 0 && existing != 6 && existing != 8 && existing != 9 && existing != 10 && existing != 11 && existing != poplarSaplingID &&
-		existing != 31 && existing != 32 && existing != 37 && existing != 38 && existing != 50 {
+	if !inventory.IsReplaceableBlock(existing) {
 		return false
+	}
+	if blockID == 10100 && (pos.Y <= 0 || !IsSolidBlock(e.GetBlock(pos.X, pos.Y-1, pos.Z))) {
+		return false // Red shrubs need a solid block beneath them.
 	}
 
 	// For solid blocks, prevent placing inside living players

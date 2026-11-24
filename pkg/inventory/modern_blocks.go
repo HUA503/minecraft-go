@@ -35,6 +35,7 @@ var extendedBlockDefinitions = append(append(append([]ExtendedBlockDefinition{
 	baseExtendedBlock(10061, "minecraft:orange_poplar_leaves", "orange_poplar_leaves", "orange_poplar_leaves", "orange_poplar_leaves", CreativeNatural),
 	baseExtendedBlock(10062, "minecraft:yellow_poplar_leaves", "yellow_poplar_leaves", "yellow_poplar_leaves", "yellow_poplar_leaves", CreativeNatural),
 	baseExtendedBlock(10063, "minecraft:poplar_sapling", "poplar_sapling", "poplar_sapling", "poplar_sapling", CreativeNatural),
+	{RuntimeID: 10100, Name: "minecraft:red_shrub", TextureTop: "red_shrub", TextureBottom: "red_shrub", TextureSide: "red_shrub", Category: CreativeNatural, Hardness: 0.1, DropRuntimeID: 10100},
 }, modernFullCubeDefinitions()...), coloredBlockDefinitions()...), glazedTerracottaDefinitions()...)
 
 func baseExtendedBlock(id int32, name, top, bottom, side string, category CreativeCategory) ExtendedBlockDefinition {
@@ -268,7 +269,7 @@ func IsExtendedLeaves(runtimeID int32) bool {
 }
 
 func IsExtendedFoliage(runtimeID int32) bool {
-	return runtimeID == 10063
+	return runtimeID == 10063 || runtimeID == 10100
 }
 
 func ExtendedBlockItemTextureName(runtimeID int32) string {
@@ -281,6 +282,8 @@ func ExtendedBlockItemTextureName(runtimeID int32) string {
 		return "yellow_poplar_leaves"
 	case 10063:
 		return "poplar_sapling"
+	case 10100:
+		return "red_shrub"
 	default:
 		return ""
 	}
@@ -303,4 +306,5 @@ var extendedBlockDisplayNames = map[string]string{
 	"minecraft:orange_poplar_leaves": "橙色杨木树叶",
 	"minecraft:yellow_poplar_leaves": "黄色杨木树叶",
 	"minecraft:poplar_sapling":       "杨木树苗",
+	"minecraft:red_shrub":            "红灌木",
 }

@@ -2,6 +2,8 @@ package sim
 
 import (
 	"math"
+
+	"github.com/HUA503/minecraft-go/pkg/inventory"
 )
 
 // Vec3 represents a 3D double vector for physics calculations.
@@ -68,6 +70,9 @@ func (a AABB) Intersects(b AABB) bool {
 // IsSolidBlock returns whether a block impedes physical player movement.
 // Air (0), liquids (8, 9, 10, 11), foliage (31, 32, 37, 38), and torches (50) are passable.
 func IsSolidBlock(blockID int32) bool {
+	if inventory.IsExtendedFoliage(blockID) {
+		return false
+	}
 	switch blockID {
 	case 0: // Air
 		return false

@@ -40,6 +40,19 @@ func TestChunkBlockAccess(t *testing.T) {
 	}
 }
 
+func Test26xRedShrubRuntimeIDSurvivesChunkNBT(t *testing.T) {
+	chunk := NewChunk(ChunkPos{X: 0, Z: 0})
+	chunk.SetBlock(7, 64, 9, 10100)
+
+	reloaded, err := ChunkFromNBT(chunk.ToNBT())
+	if err != nil {
+		t.Fatalf("decode chunk containing 26.3 red shrub: %v", err)
+	}
+	if got := reloaded.GetBlock(7, 64, 9); got != 10100 {
+		t.Fatalf("red shrub runtime ID after chunk NBT round trip = %d, want 10100", got)
+	}
+}
+
 func TestPalettedContainerPacking(t *testing.T) {
 	pc := NewPalettedContainer(4096, 0)
 	pc.Set(0, 1)

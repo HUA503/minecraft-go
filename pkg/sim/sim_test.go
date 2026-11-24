@@ -270,6 +270,30 @@ func TestCannotPlaceBlockInsidePlayer(t *testing.T) {
 	}
 }
 
+func TestRedShrubPlacementCollisionAndDrop(t *testing.T) {
+	eng := NewEngine()
+	player := eng.AddPlayer("Steve", [16]byte{1}, Vec3{X: 10.5, Y: 64, Z: 10.5})
+	if IsSolidBlock(10100) {
+		t.Fatal("red shrub should not collide with players")
+	}
+	if eng.PlaceBlock(player.ID, world.BlockPos{X: 11, Y: 64, Z: 10}, 10100) {
+		t.Fatal("red shrub should not place without a supporting block")
+	}
+	eng.SetBlock(11, 63, 10, inventory.ItemStone)
+	if !eng.PlaceBlock(player.ID, world.BlockPos{X: 11, Y: 64, Z: 10}, 10100) {
+		t.Fatal("red shrub should place on a solid block")
+	}
+	if got := eng.GetBlock(11, 64, 10); got != 10100 {
+		t.Fatalf("placed red shrub ID = %d, want 10100", got)
+	}
+	if got := eng.BreakBlock(player.ID, world.BlockPos{X: 11, Y: 64, Z: 10}); got != 10100 {
+		t.Fatalf("breaking red shrub dropped item %d, want 10100", got)
+	}
+	if !inventory.IsReplaceableBlock(10100) {
+		t.Fatal("red shrub should be replaceable by another block")
+	}
+}
+
 func TestBlockPlacementAllFacesAndPillaring(t *testing.T) {
 	eng := NewEngine()
 	p := eng.AddPlayer("Steve", [16]byte{1}, Vec3{8.5, 65.0, 8.5})
