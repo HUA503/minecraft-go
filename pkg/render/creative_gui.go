@@ -226,9 +226,12 @@ func (fb *Framebuffer) DrawCreativeInventoryGUI(inv *inventory.PlayerInventory, 
 }
 
 type creativePreviewFace struct {
-	points [4]ScreenPoint
-	depth  float64
-	color  uint32
+	points  [4]ScreenPoint
+	uvs     [4][2]float32
+	depth   float64
+	face    int
+	color   uint32
+	texture *RawImage
 }
 
 // drawCreativePlayerPreview draws the same six-part block model used by the
@@ -246,8 +249,9 @@ func drawCreativePlayerPreview(fb *Framebuffer, centerX, topY, scale, mouseX, mo
 	yaw := math.Atan2(float64(mouseX-centerX), float64(48*scale)) * 0.9
 	cosYaw, sinYaw := math.Cos(yaw), math.Sin(yaw)
 
-	// Palette is shared with the existing player renderer until account skins
-	// are available to the client model pipeline.
+	// The model uses the official classic Steve skin as the local default. The
+	// six-part geometry remains the preview's existing software-rendered model.
+	skin, _ := GetOfficialImage("entity/player/steve.png")
 	const (
 		headSkin = uint32(0xFFD6A07E)
 		headHair = uint32(0xFF4D3B26)
@@ -259,13 +263,14 @@ func drawCreativePlayerPreview(fb *Framebuffer, centerX, topY, scale, mouseX, mo
 		center [3]float64
 		half   [3]float64
 		colors [6]uint32
+		uvs    [6][4][2]float32
 	}{
-		{[3]float64{0, 1.67, 0}, [3]float64{.25, .25, .25}, [6]uint32{headHair, headSkin, headHair, headSkin, headSkin, headSkin}},
-		{[3]float64{0, 1.125, 0}, [3]float64{.25, .375, .125}, [6]uint32{shirt, shirt, shirt, shirt, shirt, shirt}},
-		{[3]float64{-.375, 1.125, 0}, [3]float64{.125, .375, .125}, [6]uint32{shirt, headSkin, shirt, headSkin, shirt, shirt}},
-		{[3]float64{.375, 1.125, 0}, [3]float64{.125, .375, .125}, [6]uint32{shirt, headSkin, shirt, headSkin, shirt, shirt}},
-		{[3]float64{-.125, .375, 0}, [3]float64{.125, .375, .125}, [6]uint32{pants, shoes, pants, pants, pants, pants}},
-		{[3]float64{.125, .375, 0}, [3]float64{.125, .375, .125}, [6]uint32{pants, shoes, pants, pants, pants, pants}},
+		{[3]float64{0, 1.67, 0}, [3]float64{.25, .25, .25}, [6]uint32{headHair, headSkin, headHair, headSkin, headSkin, headSkin}, creativeSkinBoxUV([4]int{8, 8, 16, 16}, [4]int{24, 8, 32, 16}, [4]int{0, 8, 8, 16}, [4]int{16, 8, 24, 16}, [4]int{8, 0, 16, 8}, [4]int{16, 0, 24, 8})},
+		{[3]float64{0, 1.125, 0}, [3]float64{.25, .375, .125}, [6]uint32{shirt, shirt, shirt, shirt, shirt, shirt}, creativeSkinBoxUV([4]int{20, 20, 28, 32}, [4]int{32, 20, 40, 32}, [4]int{28, 20, 32, 32}, [4]int{16, 20, 20, 32}, [4]int{20, 16, 28, 20}, [4]int{28, 16, 36, 20})},
+		{[3]float64{-.375, 1.125, 0}, [3]float64{.125, .375, .125}, [6]uint32{shirt, headSkin, shirt, headSkin, shirt, shirt}, creativeSkinBoxUV([4]int{44, 20, 48, 32}, [4]int{52, 20, 56, 32}, [4]int{48, 20, 52, 32}, [4]int{40, 20, 44, 32}, [4]int{44, 16, 48, 20}, [4]int{48, 16, 52, 20})},
+		{[3]float64{.375, 1.125, 0}, [3]float64{.125, .375, .125}, [6]uint32{shirt, headSkin, shirt, headSkin, shirt, shirt}, creativeSkinBoxUV([4]int{36, 52, 40, 64}, [4]int{44, 52, 48, 64}, [4]int{40, 52, 44, 64}, [4]int{32, 52, 36, 64}, [4]int{36, 48, 40, 52}, [4]int{40, 48, 44, 52})},
+		{[3]float64{-.125, .375, 0}, [3]float64{.125, .375, .125}, [6]uint32{pants, shoes, pants, pants, pants, pants}, creativeSkinBoxUV([4]int{4, 20, 8, 32}, [4]int{12, 20, 16, 32}, [4]int{8, 20, 12, 32}, [4]int{0, 20, 4, 32}, [4]int{4, 16, 8, 20}, [4]int{8, 16, 12, 20})},
+		{[3]float64{.125, .375, 0}, [3]float64{.125, .375, .125}, [6]uint32{pants, shoes, pants, pants, pants, pants}, creativeSkinBoxUV([4]int{20, 52, 24, 64}, [4]int{28, 52, 32, 64}, [4]int{24, 52, 28, 64}, [4]int{16, 52, 20, 64}, [4]int{20, 48, 24, 52}, [4]int{24, 48, 28, 52})},
 	}
 	corners := [8][3]float64{
 		{-1, -1, -1}, {1, -1, -1}, {1, 1, -1}, {-1, 1, -1},
@@ -299,13 +304,82 @@ func drawCreativePlayerPreview(fb *Framebuffer, centerX, topY, scale, mouseX, mo
 				depth += float64(projected[index].Depth)
 			}
 			color := shadeCreativePreviewFace(box.colors[face], face)
-			faces = append(faces, creativePreviewFace{points: points, depth: depth / 4, color: color})
+			faces = append(faces, creativePreviewFace{points: points, uvs: box.uvs[face], depth: depth / 4, face: face, color: color, texture: skin})
 		}
 	}
 	sort.SliceStable(faces, func(i, j int) bool { return faces[i].depth < faces[j].depth })
 	for _, face := range faces {
-		drawCreativePreviewTriangle(fb, face.points[0], face.points[1], face.points[2], face.color, viewport)
-		drawCreativePreviewTriangle(fb, face.points[0], face.points[2], face.points[3], face.color, viewport)
+		if face.texture != nil {
+			drawCreativePreviewTexturedTriangle(fb, face.points[0], face.points[1], face.points[2], face.uvs[0], face.uvs[1], face.uvs[2], face.texture, face.face, viewport)
+			drawCreativePreviewTexturedTriangle(fb, face.points[0], face.points[2], face.points[3], face.uvs[0], face.uvs[2], face.uvs[3], face.texture, face.face, viewport)
+		} else {
+			drawCreativePreviewTriangle(fb, face.points[0], face.points[1], face.points[2], face.color, viewport)
+			drawCreativePreviewTriangle(fb, face.points[0], face.points[2], face.points[3], face.color, viewport)
+		}
+	}
+}
+
+func creativeSkinBoxUV(front, back, left, right, top, bottom [4]int) [6][4][2]float32 {
+	tlbr := func(rect [4]int, order [4]int) [4][2]float32 {
+		x0, y0, x1, y1 := rect[0], rect[1], rect[2]-1, rect[3]-1
+		corners := [4][2]float32{
+			{float32(x0) / 63, float32(y0) / 63}, {float32(x1) / 63, float32(y0) / 63},
+			{float32(x1) / 63, float32(y1) / 63}, {float32(x0) / 63, float32(y1) / 63},
+		}
+		var uv [4][2]float32
+		for i, corner := range order {
+			uv[i] = corners[corner]
+		}
+		return uv
+	}
+	return [6][4][2]float32{
+		tlbr(top, [4]int{0, 1, 2, 3}),
+		tlbr(bottom, [4]int{1, 0, 3, 2}),
+		tlbr(back, [4]int{1, 0, 3, 2}),
+		tlbr(front, [4]int{3, 2, 1, 0}),
+		tlbr(left, [4]int{1, 0, 3, 2}),
+		tlbr(right, [4]int{0, 1, 2, 3}),
+	}
+}
+
+func drawCreativePreviewTexturedTriangle(fb *Framebuffer, a, b, c ScreenPoint, ua, ub, uc [2]float32, texture *RawImage, face int, clip [4]int) {
+	if fb == nil || texture == nil || texture.Width <= 0 || texture.Height <= 0 {
+		return
+	}
+	minX := max(clip[0], int(math.Floor(math.Min(float64(a.X), math.Min(float64(b.X), float64(c.X))))))
+	maxX := min(clip[2]-1, int(math.Ceil(math.Max(float64(a.X), math.Max(float64(b.X), float64(c.X))))))
+	minY := max(clip[1], int(math.Floor(math.Min(float64(a.Y), math.Min(float64(b.Y), float64(c.Y))))))
+	maxY := min(clip[3]-1, int(math.Ceil(math.Max(float64(a.Y), math.Max(float64(b.Y), float64(c.Y))))))
+	if minX < 0 || minY < 0 || maxX >= fb.Width || maxY >= fb.Height || minX > maxX || minY > maxY {
+		return
+	}
+	edge := func(p, q ScreenPoint, x, y float64) float64 {
+		return (x-float64(p.X))*(float64(q.Y)-float64(p.Y)) - (y-float64(p.Y))*(float64(q.X)-float64(p.X))
+	}
+	area := edge(a, b, float64(c.X), float64(c.Y))
+	if area == 0 {
+		return
+	}
+	shade := [...]float64{1.12, .62, .78, 1, .78, .86}[face]
+	for y := minY; y <= maxY; y++ {
+		for x := minX; x <= maxX; x++ {
+			px, py := float64(x)+.5, float64(y)+.5
+			w0, w1, w2 := edge(b, c, px, py), edge(c, a, px, py), edge(a, b, px, py)
+			if !((w0 >= 0 && w1 >= 0 && w2 >= 0) || (w0 <= 0 && w1 <= 0 && w2 <= 0)) {
+				continue
+			}
+			w0, w1, w2 = w0/area, w1/area, w2/area
+			u := w0*float64(ua[0]) + w1*float64(ub[0]) + w2*float64(uc[0])
+			v := w0*float64(ua[1]) + w1*float64(ub[1]) + w2*float64(uc[1])
+			color := texture.Sample(float32(u), float32(v))
+			if color>>24 == 0 {
+				continue
+			}
+			red := uint32(math.Min(255, float64((color>>16)&0xFF)*shade))
+			green := uint32(math.Min(255, float64((color>>8)&0xFF)*shade))
+			blue := uint32(math.Min(255, float64(color&0xFF)*shade))
+			fb.Color[y*fb.Width+x] = color&0xFF000000 | red<<16 | green<<8 | blue
+		}
 	}
 }
 

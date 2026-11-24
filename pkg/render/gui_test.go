@@ -315,6 +315,10 @@ func TestCreativeInventoryUsesEmbeddedVanillaGUITextures(t *testing.T) {
 }
 
 func TestCreativePlayerInventoryPreviewRendersAndTracksMouse(t *testing.T) {
+	skin, ok := GetOfficialImage("entity/player/steve.png")
+	if !ok || skin.Width != 64 || skin.Height != 64 {
+		t.Fatalf("embedded official Steve skin = (%v,%t), want a 64x64 texture", skin, ok)
+	}
 	const width, height = 160, 120
 	const centerX, topY, scale = 80, 20, 1
 	left := NewFramebuffer(width, height)
