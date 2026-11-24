@@ -116,8 +116,7 @@ func TestCreativeInventoryCatalogAndHitTesting(t *testing.T) {
 	}
 
 	w, h := 400, 300
-	scale := CalculateGUIScaleFromDimensions(w, h)
-	px, py := w/2-204*scale/2, h/2-234*scale/2
+	scale, px, py, _ := creativeGUIOrigin(w, h)
 	hitItem := HitTestCreativeInventory(w, h, inventory.CreativeAll, "", 0, px+8*scale, py+17*scale)
 	if hitItem.Type != SlotCreativeItem || hitItem.Index != 0 {
 		t.Fatalf("first creative item slot hit = %+v", hitItem)
@@ -170,14 +169,31 @@ func TestCreativeChineseTooltipsUseCJKTextWidth(t *testing.T) {
 }
 
 func TestCreativeInventoryFitsMinimumGUIResolution(t *testing.T) {
-	w, h := 320, 240
-	scale := CalculateGUIScaleFromDimensions(w, h)
-	panelW, panelH := 204*scale, 234*scale
-	if panelH > h || panelW > w {
-		t.Fatalf("creative inventory size %dx%d exceeds framebuffer %dx%d", panelW, panelH, w, h)
+	for _, size := range [][2]int{{320, 240}, {400, 300}, {1280, 720}, {1920, 1080}} {
+		w, h := size[0], size[1]
+		scale, px, py, inventoryOffsetY := creativeGUIOrigin(w, h)
+		if px < 0 || px+creativePanelW*scale > w {
+			t.Errorf("creative panel exceeds framebuffer horizontally at %dx%d: scale=%d x=%d", w, h, scale, px)
+		}
+		if py-creativeTabsH*scale < 0 {
+			t.Errorf("creative tabs are clipped at %dx%d: scale=%d y=%d", w, h, scale, py-creativeTabsH*scale)
+		}
+		if py+creativeSlotsH*scale+inventoryOffsetY > h {
+			t.Errorf("creative hotbar is clipped at %dx%d: scale=%d y=%d", w, h, scale, py+creativeSlotsH*scale+inventoryOffsetY)
+		}
+		if w == 320 && h == 240 {
+			tab := HitTestCreativeInventory(w, h, inventory.CreativeAll, "", 0, px+8*scale, py-20*scale)
+			if tab.Type != SlotCreativeTab || tab.Index != 0 {
+				t.Errorf("minimum-size visible tab hit = %+v", tab)
+			}
+			hotbar := HitTestCreativeInventory(w, h, inventory.CreativeAll, "", 0, px+8*scale, py+204*scale+inventoryOffsetY)
+			if hotbar.Type != SlotInventory || hotbar.Index != 0 {
+				t.Errorf("minimum-size hotbar hit = %+v", hotbar)
+			}
+		}
+		fb := NewFramebuffer(w, h)
+		fb.DrawCreativeInventoryGUI(inventory.NewPlayerInventory(), inventory.ItemStack{}, inventory.CreativeAll, "", 0, -1, -1)
 	}
-	fb := NewFramebuffer(w, h)
-	fb.DrawCreativeInventoryGUI(inventory.NewPlayerInventory(), inventory.ItemStack{}, inventory.CreativeAll, "", 0, -1, -1)
 }
 
 func TestCreativeInventoryScrollUsesRowsAndReachesLastCatalogItem(t *testing.T) {
@@ -198,8 +214,7 @@ func TestCreativeInventoryScrollUsesRowsAndReachesLastCatalogItem(t *testing.T) 
 	}
 
 	w, h := 400, 300
-	scale := CalculateGUIScaleFromDimensions(w, h)
-	px, py := w/2-204*scale/2, h/2-234*scale/2
+	scale, px, py, _ := creativeGUIOrigin(w, h)
 	visible := last - start
 	row, col := visible/creativeColumns, visible%creativeColumns
 	x := px + (8+col*18)*scale
@@ -212,9 +227,8 @@ func TestCreativeInventoryScrollUsesRowsAndReachesLastCatalogItem(t *testing.T) 
 
 func TestCreativeInventoryShowsPlayerItemTooltipAndDurability(t *testing.T) {
 	const width, height = 400, 300
-	scale := CalculateGUIScaleFromDimensions(width, height)
-	px, py := width/2-204*scale/2, height/2-234*scale/2
-	mouseX, mouseY := px+8*scale, py+204*scale
+	scale, px, py, inventoryOffsetY := creativeGUIOrigin(width, height)
+	mouseX, mouseY := px+8*scale, py+204*scale+inventoryOffsetY
 
 	inv := inventory.NewPlayerInventory()
 	inv.Slots[0] = inventory.ItemStack{ItemID: inventory.ItemStone, Count: 1}
