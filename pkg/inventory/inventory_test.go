@@ -63,7 +63,9 @@ func TestModernFullCubeBlocksDeclareMiningAndDropRules(t *testing.T) {
 		"minecraft:dripstone_block", "minecraft:moss_block", "minecraft:mud",
 		"minecraft:raw_iron_block", "minecraft:copper_block", "minecraft:oxidized_copper",
 		"minecraft:blackstone", "minecraft:basalt", "minecraft:crimson_planks",
-		"minecraft:pale_oak_planks",
+		"minecraft:pale_oak_planks", "minecraft:birch_planks", "minecraft:dark_oak_planks",
+		"minecraft:birch_log", "minecraft:acacia_log", "minecraft:stripped_pale_oak_log",
+		"minecraft:crimson_stem", "minecraft:stripped_bamboo_block",
 	} {
 		definition, ok := byName[name]
 		if !ok {
