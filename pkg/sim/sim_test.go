@@ -207,6 +207,50 @@ func TestModernDeepslateHarvestAndDropRules(t *testing.T) {
 	}
 }
 
+func TestAddedOresRequireTheRightPickaxeAndDropTheirMaterials(t *testing.T) {
+	eng := NewEngine()
+	player := eng.AddPlayer("ore miner", [16]byte{}, Vec3{X: 0.5, Y: 64, Z: 0.5})
+	cases := []struct {
+		name string
+		tool int32
+		drop int32
+	}{
+		{"minecraft:copper_ore", inventory.ItemStonePickaxe, inventory.ItemRawCopper},
+		{"minecraft:deepslate_copper_ore", inventory.ItemStonePickaxe, inventory.ItemRawCopper},
+		{"minecraft:deepslate_coal_ore", inventory.ItemStonePickaxe, inventory.ItemCoal},
+		{"minecraft:deepslate_iron_ore", inventory.ItemStonePickaxe, inventory.ItemRawIron},
+		{"minecraft:deepslate_gold_ore", inventory.ItemIronPickaxe, inventory.ItemRawGold},
+		{"minecraft:deepslate_diamond_ore", inventory.ItemIronPickaxe, inventory.ItemDiamond},
+		{"minecraft:deepslate_emerald_ore", inventory.ItemIronPickaxe, inventory.ItemEmerald},
+		{"minecraft:nether_quartz_ore", inventory.ItemStonePickaxe, inventory.ItemNetherQuartz},
+	}
+	for i, tc := range cases {
+		block, ok := inventory.ExtendedBlockByName(tc.name)
+		if !ok {
+			t.Fatalf("missing %s", tc.name)
+		}
+		pos := world.BlockPos{X: int32(i + 1), Y: 64, Z: 0}
+		eng.SetBlock(pos.X, pos.Y, pos.Z, block.RuntimeID)
+		if got, harvested := eng.BreakBlockWithTool(player.ID, pos, inventory.ItemAir); harvested || got != inventory.ItemAir {
+			t.Fatalf("hand mined %s as (%d, %v), want no drop", tc.name, got, harvested)
+		}
+		eng.SetBlock(pos.X, pos.Y, pos.Z, block.RuntimeID)
+		if got, harvested := eng.BreakBlockWithTool(player.ID, pos, tc.tool); !harvested || got != tc.drop {
+			t.Fatalf("proper pickaxe mined %s as (%d, %v), want drop %d", tc.name, got, harvested, tc.drop)
+		}
+	}
+	ancientDebris, _ := inventory.ExtendedBlockByName("minecraft:ancient_debris")
+	pos := world.BlockPos{X: 20, Y: 64, Z: 0}
+	eng.SetBlock(pos.X, pos.Y, pos.Z, ancientDebris.RuntimeID)
+	if got, harvested := eng.BreakBlockWithTool(player.ID, pos, inventory.ItemIronPickaxe); harvested || got != inventory.ItemAir {
+		t.Fatalf("iron pickaxe mined ancient debris as (%d, %v), want no drop", got, harvested)
+	}
+	eng.SetBlock(pos.X, pos.Y, pos.Z, ancientDebris.RuntimeID)
+	if got, harvested := eng.BreakBlockWithTool(player.ID, pos, inventory.ItemDiamondPickaxe); !harvested || got != ancientDebris.RuntimeID {
+		t.Fatalf("diamond pickaxe mined ancient debris as (%d, %v), want the block item %d", got, harvested, ancientDebris.RuntimeID)
+	}
+}
+
 func TestRaycastHitBlock(t *testing.T) {
 	solidBlocks := map[[3]int32]bool{
 		{5, 64, 0}: true,

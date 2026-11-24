@@ -348,6 +348,18 @@ func GetOfficialItemTextureName(itemID int32) string {
 		return "gold_nugget"
 	case inventory.ItemBoneMeal:
 		return "bone_meal"
+	case inventory.ItemRawCopper:
+		return "raw_copper"
+	case inventory.ItemRawIron:
+		return "raw_iron"
+	case inventory.ItemRawGold:
+		return "raw_gold"
+	case inventory.ItemEmerald:
+		return "emerald"
+	case inventory.ItemCopperIngot:
+		return "copper_ingot"
+	case inventory.ItemNetheriteScrap:
+		return "netherite_scrap"
 	case 375:
 		return "spider_eye"
 	case 381:

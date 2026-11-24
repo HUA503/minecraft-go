@@ -562,3 +562,78 @@ func TestCopperArmorIsSearchableAndHasVanillaProtection(t *testing.T) {
 		}
 	}
 }
+
+func TestAddedOreBlocksAreSearchableAndHaveHarvestDrops(t *testing.T) {
+	want := map[string]struct {
+		drop  int32
+		level int
+		tool  ToolType
+	}{
+		"minecraft:copper_ore":            {ItemRawCopper, 1, ToolPickaxe},
+		"minecraft:deepslate_copper_ore":  {ItemRawCopper, 1, ToolPickaxe},
+		"minecraft:deepslate_coal_ore":    {ItemCoal, 0, ToolPickaxe},
+		"minecraft:deepslate_iron_ore":    {ItemRawIron, 1, ToolPickaxe},
+		"minecraft:deepslate_gold_ore":    {ItemRawGold, 2, ToolPickaxe},
+		"minecraft:deepslate_diamond_ore": {ItemDiamond, 2, ToolPickaxe},
+		"minecraft:deepslate_emerald_ore": {ItemEmerald, 2, ToolPickaxe},
+		"minecraft:nether_quartz_ore":     {ItemNetherQuartz, 0, ToolPickaxe},
+		"minecraft:ancient_debris":        {0, 3, ToolPickaxe},
+	}
+	for name, expected := range want {
+		block, ok := ExtendedBlockByName(name)
+		if !ok {
+			t.Errorf("missing block registration %s", name)
+			continue
+		}
+		if !IsPlaceableBlock(block.RuntimeID) || block.Hardness <= 0 || !block.RequiresHarvestTool || block.HarvestTool != expected.tool || block.RequiredHarvestLevel != expected.level {
+			t.Errorf("%s has incomplete placement/mining metadata: %+v", name, block)
+		}
+		if expected.drop != 0 && block.DropRuntimeID != expected.drop {
+			t.Errorf("%s drop=%d, want %d", name, block.DropRuntimeID, expected.drop)
+		}
+		found := false
+		for _, item := range SearchCreativeCatalog(CreativeAll, name) {
+			if item.ID == block.RuntimeID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("creative search %q did not include block ID %d", name, block.RuntimeID)
+		}
+	}
+}
+
+func TestNewOreMaterialsHaveSmeltingRecipesAndCreativeEntries(t *testing.T) {
+	want := map[int32]int32{
+		ItemRawCopper: ItemCopperIngot,
+		ItemRawIron:   ItemIronIngot,
+		ItemRawGold:   ItemGoldIngot,
+	}
+	for input, output := range want {
+		recipe, ok := MatchSmelting(input)
+		if !ok || recipe.OutputID != output {
+			t.Errorf("smelting recipe for %d = %+v, %t; want output %d", input, recipe, ok, output)
+		}
+		if got := SearchCreativeCatalog(CreativeMaterials, creativeItemRegistryName(input)); len(got) != 1 || got[0].ID != input {
+			t.Errorf("creative material search for %d = %+v", input, got)
+		}
+	}
+	ancientDebris, ok := ExtendedBlockByName("minecraft:ancient_debris")
+	if !ok {
+		t.Fatal("ancient debris block is missing")
+	}
+	recipe, ok := MatchSmelting(ancientDebris.RuntimeID)
+	if !ok || recipe.OutputID != ItemNetheriteScrap {
+		t.Fatalf("ancient debris smelting = %+v, %t; want netherite scrap", recipe, ok)
+	}
+	furnace := NewFurnaceBlockEntity()
+	furnace.InputSlot = ItemStack{ItemID: ItemRawCopper, Count: 1}
+	furnace.FuelSlot = ItemStack{ItemID: ItemCoal, Count: 1}
+	for i := 0; i < furnace.CookTimeTotal; i++ {
+		furnace.Tick()
+	}
+	if got := furnace.OutputSlot; got.ItemID != ItemCopperIngot || got.Count != 1 {
+		t.Fatalf("raw copper smelt output = %+v, want 1 copper ingot", got)
+	}
+}

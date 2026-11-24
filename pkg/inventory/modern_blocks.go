@@ -128,6 +128,15 @@ func modernFullCubeDefinitions() []ExtendedBlockDefinition {
 		{"stripped_warped_stem", "去皮诡异菌柄", "stripped_warped_stem_top", "stripped_warped_stem_top", "stripped_warped_stem", CreativeBlocks, 2.0, ToolAxe, false, 0, ""},
 		{"bamboo_block", "竹块", "bamboo_block_top", "bamboo_block_top", "bamboo_block", CreativeNatural, 2.0, ToolAxe, false, 0, ""},
 		{"stripped_bamboo_block", "去皮竹块", "stripped_bamboo_block_top", "stripped_bamboo_block_top", "stripped_bamboo_block", CreativeBlocks, 2.0, ToolAxe, false, 0, ""},
+		{"copper_ore", "铜矿石", "copper_ore", "copper_ore", "copper_ore", CreativeNatural, 3.0, ToolPickaxe, true, 1, "raw_copper"},
+		{"deepslate_copper_ore", "深层铜矿石", "deepslate_copper_ore", "deepslate_copper_ore", "deepslate_copper_ore", CreativeNatural, 4.5, ToolPickaxe, true, 1, "raw_copper"},
+		{"deepslate_coal_ore", "深层煤矿石", "deepslate_coal_ore", "deepslate_coal_ore", "deepslate_coal_ore", CreativeNatural, 4.5, ToolPickaxe, true, 0, "coal"},
+		{"deepslate_iron_ore", "深层铁矿石", "deepslate_iron_ore", "deepslate_iron_ore", "deepslate_iron_ore", CreativeNatural, 4.5, ToolPickaxe, true, 1, "raw_iron"},
+		{"deepslate_gold_ore", "深层金矿石", "deepslate_gold_ore", "deepslate_gold_ore", "deepslate_gold_ore", CreativeNatural, 4.5, ToolPickaxe, true, 2, "raw_gold"},
+		{"deepslate_diamond_ore", "深层钻石矿石", "deepslate_diamond_ore", "deepslate_diamond_ore", "deepslate_diamond_ore", CreativeNatural, 4.5, ToolPickaxe, true, 2, "diamond"},
+		{"deepslate_emerald_ore", "深层绿宝石矿石", "deepslate_emerald_ore", "deepslate_emerald_ore", "deepslate_emerald_ore", CreativeNatural, 4.5, ToolPickaxe, true, 2, "emerald"},
+		{"nether_quartz_ore", "下界石英矿石", "nether_quartz_ore", "nether_quartz_ore", "nether_quartz_ore", CreativeNatural, 3.0, ToolPickaxe, true, 0, "quartz"},
+		{"ancient_debris", "远古残骸", "ancient_debris_top", "ancient_debris_top", "ancient_debris_side", CreativeNatural, 30.0, ToolPickaxe, true, 3, ""},
 	}
 	definitions := make([]ExtendedBlockDefinition, 0, len(blocks))
 	idsByName := make(map[string]int32, len(blocks))
@@ -143,6 +152,12 @@ func modernFullCubeDefinitions() []ExtendedBlockDefinition {
 		}
 		if block.drop != "" {
 			definition.DropRuntimeID = idsByName[block.drop]
+			if definition.DropRuntimeID == 0 {
+				definition.DropRuntimeID = map[string]int32{
+					"raw_copper": ItemRawCopper, "raw_iron": ItemRawIron, "raw_gold": ItemRawGold,
+					"coal": ItemCoal, "diamond": ItemDiamond, "emerald": ItemEmerald, "quartz": ItemNetherQuartz,
+				}[block.drop]
+			}
 		}
 		definitions = append(definitions, definition)
 		extendedBlockDisplayNames[definition.Name] = block.display
@@ -243,6 +258,12 @@ func ExtendedBlockDefinitions() []ExtendedBlockDefinition {
 // ExtendedBlockByID resolves an internal runtime ID to its namespaced definition.
 func ExtendedBlockByID(runtimeID int32) (ExtendedBlockDefinition, bool) {
 	definition, ok := extendedBlockByID[runtimeID]
+	return definition, ok
+}
+
+// ExtendedBlockByName resolves a namespaced block name to its internal runtime definition.
+func ExtendedBlockByName(name string) (ExtendedBlockDefinition, bool) {
+	definition, ok := extendedBlockByName[name]
 	return definition, ok
 }
 

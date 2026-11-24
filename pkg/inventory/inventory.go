@@ -111,6 +111,12 @@ const (
 	ItemCopperChestplate int32 = 13001
 	ItemCopperLeggings   int32 = 13002
 	ItemCopperBoots      int32 = 13003
+	ItemRawCopper        int32 = 13004
+	ItemRawIron          int32 = 13005
+	ItemRawGold          int32 = 13006
+	ItemEmerald          int32 = 13007
+	ItemCopperIngot      int32 = 13008
+	ItemNetheriteScrap   int32 = 13009
 
 	// Utility, materials, and blocks
 	ItemBucket        int32 = 325

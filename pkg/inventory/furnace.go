@@ -9,13 +9,22 @@ type SmeltingRecipe struct {
 
 // SmeltingRecipes registry for Minecraft standard furnace recipes.
 var SmeltingRecipes = map[int32]SmeltingRecipe{
-	15: {InputID: 15, OutputID: ItemIronIngot, Experience: 0.7},     // Raw Iron / Iron Ore -> Iron Ingot
-	14: {InputID: 14, OutputID: 266, Experience: 1.0},               // Gold Ore -> Gold Ingot (ID 266)
+	15:              {InputID: 15, OutputID: ItemIronIngot, Experience: 0.7},          // Raw Iron / Iron Ore -> Iron Ingot
+	14:              {InputID: 14, OutputID: 266, Experience: 1.0},                    // Gold Ore -> Gold Ingot (ID 266)
 	ItemCobblestone: {InputID: ItemCobblestone, OutputID: ItemStone, Experience: 0.1}, // Cobblestone -> Smooth Stone
-	ItemOakLog:      {InputID: ItemOakLog, OutputID: 263, Experience: 0.15},          // Oak Log -> Charcoal (ID 263)
-	12:              {InputID: 12, OutputID: 20, Experience: 0.1},                   // Sand -> Glass (ID 20)
-	319:             {InputID: 319, OutputID: 320, Experience: 0.35},                 // Raw Porkchop -> Cooked Porkchop
-	363:             {InputID: 363, OutputID: 364, Experience: 0.35},                 // Raw Beef -> Steak
+	ItemOakLog:      {InputID: ItemOakLog, OutputID: 263, Experience: 0.15},           // Oak Log -> Charcoal (ID 263)
+	12:              {InputID: 12, OutputID: 20, Experience: 0.1},                     // Sand -> Glass (ID 20)
+	319:             {InputID: 319, OutputID: 320, Experience: 0.35},                  // Raw Porkchop -> Cooked Porkchop
+	363:             {InputID: 363, OutputID: 364, Experience: 0.35},                  // Raw Beef -> Steak
+}
+
+func init() {
+	SmeltingRecipes[ItemRawIron] = SmeltingRecipe{InputID: ItemRawIron, OutputID: ItemIronIngot, Experience: 0.7}
+	SmeltingRecipes[ItemRawGold] = SmeltingRecipe{InputID: ItemRawGold, OutputID: ItemGoldIngot, Experience: 1.0}
+	SmeltingRecipes[ItemRawCopper] = SmeltingRecipe{InputID: ItemRawCopper, OutputID: ItemCopperIngot, Experience: 0.7}
+	if ancientDebris, ok := ExtendedBlockByName("minecraft:ancient_debris"); ok {
+		SmeltingRecipes[ancientDebris.RuntimeID] = SmeltingRecipe{InputID: ancientDebris.RuntimeID, OutputID: ItemNetheriteScrap, Experience: 2.0}
+	}
 }
 
 // MatchSmelting looks up the smelted output product for an input item ID.
@@ -26,13 +35,13 @@ func MatchSmelting(inputID int32) (SmeltingRecipe, bool) {
 
 // Fuel burn duration in ticks (20 ticks = 1 second)
 var FuelBurnTimes = map[int32]int{
-	ItemCoal:          1600, // Coal / Charcoal: 80 seconds (smelts 8 items)
-	ItemOakLog:        300,  // Wood log: 15 seconds (smelts 1.5 items)
-	ItemOakPlanks:     300,  // Wood plank: 15 seconds (smelts 1.5 items)
-	ItemStick:         100,  // Stick: 5 seconds (smelts 0.5 items)
-	ItemCraftingTable: 300,  // Crafting table: 15 seconds
-	ItemWoodenPickaxe: 200,  // Wooden tools: 10 seconds
-	325:               20000,// Lava Bucket: 1000 seconds (smelts 100 items)
+	ItemCoal:          1600,  // Coal / Charcoal: 80 seconds (smelts 8 items)
+	ItemOakLog:        300,   // Wood log: 15 seconds (smelts 1.5 items)
+	ItemOakPlanks:     300,   // Wood plank: 15 seconds (smelts 1.5 items)
+	ItemStick:         100,   // Stick: 5 seconds (smelts 0.5 items)
+	ItemCraftingTable: 300,   // Crafting table: 15 seconds
+	ItemWoodenPickaxe: 200,   // Wooden tools: 10 seconds
+	325:               20000, // Lava Bucket: 1000 seconds (smelts 100 items)
 }
 
 // GetFuelBurnTime returns how many ticks the fuel burns for.
@@ -42,13 +51,13 @@ func GetFuelBurnTime(fuelID int32) int {
 
 // FurnaceBlockEntity represents a functional Minecraft furnace.
 type FurnaceBlockEntity struct {
-	InputSlot          ItemStack
-	FuelSlot           ItemStack
-	OutputSlot         ItemStack
-	BurnTimeRemaining  int // Ticks left on currently active fuel
-	MaxBurnTime        int // Total ticks of currently active fuel
-	CookTimeProgress   int // Progress towards current smelted item (0..200)
-	CookTimeTotal      int // Standard 200 ticks (10 seconds)
+	InputSlot         ItemStack
+	FuelSlot          ItemStack
+	OutputSlot        ItemStack
+	BurnTimeRemaining int // Ticks left on currently active fuel
+	MaxBurnTime       int // Total ticks of currently active fuel
+	CookTimeProgress  int // Progress towards current smelted item (0..200)
+	CookTimeTotal     int // Standard 200 ticks (10 seconds)
 }
 
 // NewFurnaceBlockEntity initializes an empty furnace block entity.

@@ -670,6 +670,12 @@ func TestOfficialItemAndBlockTextures(t *testing.T) {
 		{inventory.ItemBread, "bread"},
 		{inventory.ItemIronIngot, "iron_ingot"},
 		{inventory.ItemDiamond, "diamond"},
+		{inventory.ItemRawCopper, "raw_copper"},
+		{inventory.ItemRawIron, "raw_iron"},
+		{inventory.ItemRawGold, "raw_gold"},
+		{inventory.ItemEmerald, "emerald"},
+		{inventory.ItemCopperIngot, "copper_ingot"},
+		{inventory.ItemNetheriteScrap, "netherite_scrap"},
 		{inventory.ItemTorch, "torch"},
 	}
 
