@@ -44,7 +44,7 @@ var creativeTabs = [...]creativeTabLayout{
 	{category: inventory.CreativeAll, column: 6, icon: 345, name: "搜索物品"},
 	{category: inventory.CreativeTools, column: 0, bottom: true, icon: 270, name: "工具与实用物品"},
 	{category: inventory.CreativeCombat, column: 1, bottom: true, icon: 268, name: "战斗"},
-	{category: inventory.CreativeFood, column: 2, bottom: true, icon: 260, name: "食物与饮料"},
+	{category: inventory.CreativeFood, column: 2, bottom: true, icon: inventory.ItemGoldenApple, name: "食物与饮料"},
 	{category: inventory.CreativeMaterials, column: 3, bottom: true, icon: 296, name: "材料"},
 	{category: inventory.CreativeSpawnEggs, column: 4, bottom: true, icon: 11002, name: "刷怪蛋"},
 	{category: inventory.CreativeInventory, column: 6, bottom: true, icon: 54, name: "物品栏"},

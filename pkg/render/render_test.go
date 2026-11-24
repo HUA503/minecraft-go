@@ -945,3 +945,20 @@ func TestCrossedQuadsFoliageUprightOrientation(t *testing.T) {
 		}
 	}
 }
+
+func TestJava263FoodTabItemsHaveOfficialSprites(t *testing.T) {
+	items := inventory.CreativeCatalog(inventory.CreativeFood)
+	if len(items) != 42 {
+		t.Fatalf("creative food tab has %d entries, want 42", len(items))
+	}
+	for _, item := range items {
+		textureName := GetOfficialItemTextureName(item.ID)
+		if textureName == "" {
+			t.Errorf("food item %q (%d) has no vanilla texture mapping", item.Name, item.ID)
+			continue
+		}
+		if _, ok := GetOfficialItemSprite(item.ID); !ok {
+			t.Errorf("food item %q (%d) texture %q is missing from embedded assets", item.Name, item.ID, textureName)
+		}
+	}
+}

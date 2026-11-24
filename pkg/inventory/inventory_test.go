@@ -39,6 +39,39 @@ func TestCreativeCatalogHasUniqueUsableItems(t *testing.T) {
 	}
 }
 
+func TestJava263FoodCatalogEntriesAndStackLimits(t *testing.T) {
+	food := CreativeCatalog(CreativeFood)
+	if len(food) != 42 {
+		t.Fatalf("food tab has %d entries, want 42 entries from Java 26.3", len(food))
+	}
+	if got := SearchCreativeCatalog(CreativeFood, "minecraft:glow_berries"); len(got) != 1 || got[0].ID != ItemGlowBerries {
+		t.Fatalf("registry-name food search = %+v, want glow berries", got)
+	}
+	if got := SearchCreativeCatalog(CreativeFood, "兔肉煲"); len(got) != 1 || got[0].ID != ItemRabbitStew {
+		t.Fatalf("localized food search = %+v, want rabbit stew", got)
+	}
+	for itemID, want := range map[int32]int{
+		ItemMushroomStew: 1, ItemBeetrootSoup: 1, ItemRabbitStew: 1,
+		ItemHoneyBottle: 16, ItemCake: 1, ItemCarrot: 64,
+	} {
+		if got := GetMaxStackSize(itemID); got != want {
+			t.Errorf("GetMaxStackSize(%d) = %d, want %d", itemID, got, want)
+		}
+	}
+	if _, ok := FoodRegistry[ItemChorusFruit]; !ok || !FoodRegistry[ItemChorusFruit].AlwaysEdible {
+		t.Fatal("chorus fruit must be edible at full hunger in Java 26.3")
+	}
+	if _, ok := FoodRegistry[ItemGoldenDandelion]; ok {
+		t.Fatal("golden dandelion is used on baby animals; it is not an edible food item")
+	}
+	if _, ok := FoodRegistry[ItemCake]; ok {
+		t.Fatal("cake is consumed as a placed block, not directly from the inventory")
+	}
+	if got := FoodRegistry[ItemHoneyBottle]; got.RemainderItemID != 374 || !got.AlwaysEdible {
+		t.Fatalf("honey bottle consume metadata = %+v, want glass-bottle remainder and always-edible", got)
+	}
+}
+
 func TestCreativeItemDisplayNameResolvesCatalogAndUnknownIDs(t *testing.T) {
 	if got := CreativeItemDisplayName(ItemStone); got != "石头" {
 		t.Fatalf("stone display name = %q, want 石头", got)

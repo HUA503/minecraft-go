@@ -49,6 +49,9 @@ func CreativeCatalog(category CreativeCategory) []CreativeItem {
 	for _, definition := range spawnEggDefinitions {
 		items = append(items, CreativeItem{ID: definition.RuntimeID, Name: definition.DisplayName, Category: CreativeSpawnEggs})
 	}
+	for _, definition := range java263FoodItems {
+		items = append(items, CreativeItem{ID: definition.RuntimeID, Name: definition.DisplayName, Category: CreativeFood})
+	}
 	if category == CreativeAll {
 		return items
 	}
@@ -95,6 +98,9 @@ func normalizeCreativeSearch(value string) string {
 }
 
 func creativeItemRegistryName(itemID int32) string {
+	if item, ok := FoodItemByID(itemID); ok {
+		return item.Name
+	}
 	if block, ok := ExtendedBlockByID(itemID); ok {
 		return block.Name
 	}
@@ -155,7 +161,7 @@ var creativeCatalog = []CreativeItem{
 	{289, "火药", CreativeMaterials}, {287, "线", CreativeMaterials}, {334, "皮革", CreativeMaterials}, {318, "燧石", CreativeMaterials}, {295, "小麦种子", CreativeMaterials}, {296, "小麦", CreativeMaterials},
 	{322, "金苹果", CreativeFood}, {325, "铁桶", CreativeTools}, {326, "水桶", CreativeTools}, {327, "熔岩桶", CreativeTools}, {346, "钓鱼竿", CreativeTools},
 	{332, "雪球", CreativeTools}, {344, "鸡蛋", CreativeTools}, {368, "末影珍珠", CreativeTools}, {324, "橡木门", CreativeFunctional},
-	{330, "铁门", CreativeFunctional}, {336, "砖", CreativeMaterials}, {337, "黏土球", CreativeMaterials}, {340, "书", CreativeTools}, {345, "指南针", CreativeTools}, {371, "金粒", CreativeMaterials}, {375, "蜘蛛眼", CreativeTools}, {381, "末影之眼", CreativeTools}, {406, "下界石英", CreativeMaterials},
+	{330, "铁门", CreativeFunctional}, {336, "砖", CreativeMaterials}, {337, "黏土球", CreativeMaterials}, {340, "书", CreativeTools}, {345, "指南针", CreativeTools}, {371, "金粒", CreativeMaterials}, {375, "蜘蛛眼", CreativeFood}, {381, "末影之眼", CreativeTools}, {406, "下界石英", CreativeMaterials},
 	{328, "矿车", CreativeFunctional}, {333, "橡木船", CreativeFunctional}, {342, "运输矿车", CreativeFunctional}, {343, "熔炉矿车", CreativeFunctional},
 
 	{260, "苹果", CreativeFood}, {297, "面包", CreativeFood}, {319, "生猪排", CreativeFood}, {320, "熟猪排", CreativeFood},

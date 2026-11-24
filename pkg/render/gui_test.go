@@ -98,6 +98,9 @@ func TestGUIHitTestingAndDrawing(t *testing.T) {
 }
 
 func TestCreativeInventoryCatalogAndHitTesting(t *testing.T) {
+	if tab := creativeTabForCategory(inventory.CreativeFood); tab.icon != inventory.ItemGoldenApple {
+		t.Fatalf("Java 26.3 food tab icon = %d, want golden apple (%d)", tab.icon, inventory.ItemGoldenApple)
+	}
 	items := inventory.CreativeCatalog(inventory.CreativeAll)
 	if len(items) < 150 {
 		t.Fatalf("creative catalog unexpectedly small: %d items", len(items))

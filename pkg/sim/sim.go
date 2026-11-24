@@ -1920,7 +1920,8 @@ func (e *Engine) ConsumeFood(playerID int32, slotIdx int) (bool, int) {
 	if !isFood {
 		return false, 0
 	}
-	if p.Hunger >= 20 {
+	consumedItemID := slot.ItemID
+	if p.Hunger >= 20 && !food.AlwaysEdible {
 		return false, 0 // Full stomach
 	}
 
@@ -1937,12 +1938,19 @@ func (e *Engine) ConsumeFood(playerID int32, slotIdx int) (bool, int) {
 	if slot.Count <= 0 {
 		*slot = inventory.ItemStack{}
 	}
+	if food.RemainderItemID != 0 {
+		if slot.IsEmpty() {
+			*slot = inventory.ItemStack{ItemID: food.RemainderItemID, Count: 1}
+		} else if remainder := p.Inventory.AddItem(food.RemainderItemID, 1); remainder > 0 {
+			e.spawnItemDropLocked(food.RemainderItemID, remainder, p.Position, Vec3{}, 0.3)
+		}
+	}
 
 	select {
 	case e.Events <- WorldEvent{
 		Type:     "player_eat",
 		PlayerID: playerID,
-		BlockID:  slot.ItemID,
+		BlockID:  consumedItemID,
 	}:
 	default:
 	}

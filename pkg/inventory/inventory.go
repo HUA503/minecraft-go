@@ -168,8 +168,10 @@ func IsReplaceableBlock(blockID int32) bool {
 
 // FoodProperties defines nutrition restored by edible items.
 type FoodProperties struct {
-	HungerRestored int
-	Saturation     float32
+	HungerRestored  int
+	Saturation      float32
+	RemainderItemID int32
+	AlwaysEdible    bool
 }
 
 // FoodRegistry defines vanilla Minecraft Java food nutrition and saturation parameters.
@@ -186,8 +188,24 @@ var FoodRegistry = map[int32]FoodProperties{
 	ItemCookedChicken:  {HungerRestored: 6, Saturation: 7.2},
 	ItemRawMutton:      {HungerRestored: 2, Saturation: 1.2},
 	ItemCookedMutton:   {HungerRestored: 6, Saturation: 9.6},
-	ItemGoldenApple:    {HungerRestored: 4, Saturation: 9.6},
+	ItemGoldenApple:    {HungerRestored: 4, Saturation: 9.6, AlwaysEdible: true},
 	ItemMelon:          {HungerRestored: 2, Saturation: 1.2},
+}
+
+func init() {
+	for _, item := range java263FoodItems {
+		// Cake is eaten as a placed block and golden dandelion is used on young
+		// animals, so neither is an inventory-consumable food item.
+		if item.Hunger == 0 && item.RuntimeID != ItemMilkBucket {
+			continue
+		}
+		FoodRegistry[item.RuntimeID] = FoodProperties{
+			HungerRestored:  item.Hunger,
+			Saturation:      item.Saturation,
+			RemainderItemID: item.RemainderItemID,
+			AlwaysEdible:    item.AlwaysEdible,
+		}
+	}
 }
 
 // IsFood checks if given item ID is edible.
@@ -335,6 +353,9 @@ func (inv *PlayerInventory) SwapSelectedWithOffhand() bool {
 
 // GetMaxStackSize returns the canonical maximum stack size for the given item.
 func GetMaxStackSize(itemID int32) int {
+	if item, ok := FoodItemByID(itemID); ok {
+		return item.MaxStack
+	}
 	if _, isTool := GetToolProperties(itemID); isTool {
 		return 1
 	}

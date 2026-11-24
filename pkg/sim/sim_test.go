@@ -697,6 +697,51 @@ func TestFoodConsumptionAndRegeneration(t *testing.T) {
 	}
 }
 
+func TestModernFoodRemaindersAndCreativeAppleEating(t *testing.T) {
+	eng := NewEngine()
+	player := eng.AddPlayer("FoodTester", [16]byte{17}, Vec3{X: 8, Y: 64, Z: 8})
+	player.Hunger = 10
+	player.Inventory.Slots[0] = inventory.ItemStack{ItemID: inventory.ItemMushroomStew, Count: 1}
+	for {
+		select {
+		case <-eng.Events:
+		default:
+			goto drained
+		}
+	}
+drained:
+	if ok, hunger := eng.ConsumeFood(player.ID, 0); !ok || hunger != 16 {
+		t.Fatalf("mushroom stew consume = (%v, %d), want (true, 16)", ok, hunger)
+	}
+	if got := player.Inventory.Slots[0]; got.ItemID != 281 || got.Count != 1 {
+		t.Fatalf("consuming the last stew should leave its bowl in the slot, got %+v", got)
+	}
+	select {
+	case event := <-eng.Events:
+		if event.Type != "player_eat" || event.BlockID != inventory.ItemMushroomStew {
+			t.Fatalf("food event after consuming final item = %+v, want original stew ID", event)
+		}
+	default:
+		t.Fatal("food consumption did not emit an event")
+	}
+
+	player.Hunger = 20
+	player.Inventory.Slots[1] = inventory.ItemStack{ItemID: inventory.ItemEnchantedGoldenApple, Count: 1}
+	if ok, hunger := eng.ConsumeFood(player.ID, 1); !ok || hunger != 20 {
+		t.Fatalf("enchanted golden apple at full hunger = (%v, %d), want (true, 20)", ok, hunger)
+	}
+	if got := player.Inventory.Slots[1]; !got.IsEmpty() {
+		t.Fatalf("enchanted golden apple was not consumed at full hunger: %+v", got)
+	}
+	player.Inventory.Slots[2] = inventory.ItemStack{ItemID: inventory.ItemHoneyBottle, Count: 1}
+	if ok, hunger := eng.ConsumeFood(player.ID, 2); !ok || hunger != 20 {
+		t.Fatalf("honey bottle at full hunger = (%v, %d), want (true, 20)", ok, hunger)
+	}
+	if got := player.Inventory.Slots[2]; got.ItemID != 374 || got.Count != 1 {
+		t.Fatalf("honey bottle did not return a glass bottle: %+v", got)
+	}
+}
+
 func TestMobWanderingAndObstacleJump(t *testing.T) {
 	eng := NewEngine()
 	// Place flat floor at Y=64, with 1-block step at X=6, Y=65, Z=5
