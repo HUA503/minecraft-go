@@ -168,3 +168,8 @@
 - GUI 使用隔离临时目录真实启动，新建世界后持续运行约一分钟并正常关窗；检查到 `level.dat` 和 MCA 区域文件已写入。`%APPDATA%\minecraft-go\crash.log` 没有新增记录。此次没有复现用户报告的闪退，不能视为长时间稳定性证明。
 - 独立服务端的模拟 Tick goroutine 此前 panic 时只向控制台输出，然后悄悄退出，服务端还会继续接收连接。现在 Tick 循环 panic 会把全 goroutine 堆栈追加到 `%APPDATA%\minecraft-go\crash.log`（其他平台使用系统用户配置目录），服务端观察到 Tick 循环意外退出后会停服并走存档收尾。
 - `go test ./pkg/sim ./cmd/server`、`go vet ./pkg/sim ./cmd/server`、客户端与服务端 Windows 构建及 `git diff --check` 通过。仍未在真实窗口复现崩溃；专用服务器 panic 自动停服路径尚未通过注入故障的端到端运行验证。
+
+## 2026-11-24 崩溃现场复核
+
+- 本机 `%APPDATA%\minecraft-go\crash.log` 最新条目时间为 2026-11-23 19:00:07，栈显示旧版客户端在 Tick 100 持有 `Engine` 锁时再次调用 `SpawnMob`，与已修复的确定性死锁一致；日志此后没有新条目。当前项目 `client.exe` 与已构建二进制 SHA-256 均为 `E1D18C580392B6CBD56DAC1152B5347ECFCA3D848353913EF0E8C39F6ADA4D84`。
+- `go test -count=25 ./pkg/sim -run '^TestTickDoesNotDeadlockAtHundredthTick$'` 通过。此结果覆盖旧死锁路径的重复回归，不等价于真实窗口长期稳定性验证。当前环境 `CGO_ENABLED=0` 且未发现 C 编译器，因此 `go test -race` 无法运行；仍需有新现场日志才能诊断 2026-11-23 之后的闪退报告。
