@@ -87,6 +87,27 @@ func TestModernFullCubeBlocksDeclareMiningAndDropRules(t *testing.T) {
 	}
 }
 
+func TestColoredGlazedTerracottaIsPlaceableAndSearchable(t *testing.T) {
+	items := CreativeCatalog(CreativeDecoration)
+	count := 0
+	for _, item := range items {
+		if !strings.Contains(item.Name, "带釉陶瓦") {
+			continue
+		}
+		count++
+		block, ok := ExtendedBlockByID(item.ID)
+		if !ok || !IsPlaceableBlock(item.ID) || block.Hardness <= 0 || block.HarvestTool != ToolPickaxe {
+			t.Errorf("glazed terracotta is missing place/mining behavior: %+v, block=%+v", item, block)
+		}
+	}
+	if count != 16 {
+		t.Fatalf("creative catalog has %d glazed terracotta colors, want 16", count)
+	}
+	if got := SearchCreativeCatalog(CreativeDecoration, "cyan_glazed_terracotta"); len(got) != 1 {
+		t.Fatalf("search for cyan glazed terracotta returned %d items, want one", len(got))
+	}
+}
+
 func TestCreativeCatalogSearch(t *testing.T) {
 	diamonds := SearchCreativeCatalog(CreativeAll, "钻石")
 	if len(diamonds) < 3 {

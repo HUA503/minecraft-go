@@ -17,7 +17,7 @@ type ExtendedBlockDefinition struct {
 	DropRuntimeID        int32
 }
 
-var extendedBlockDefinitions = append(append([]ExtendedBlockDefinition{
+var extendedBlockDefinitions = append(append(append([]ExtendedBlockDefinition{
 	baseExtendedBlock(10000, "minecraft:cinnabar", "cinnabar", "cinnabar", "cinnabar", CreativeBlocks),
 	baseExtendedBlock(10001, "minecraft:polished_cinnabar", "polished_cinnabar", "polished_cinnabar", "polished_cinnabar", CreativeBlocks),
 	baseExtendedBlock(10002, "minecraft:chiseled_cinnabar", "chiseled_cinnabar", "chiseled_cinnabar", "chiseled_cinnabar", CreativeBlocks),
@@ -34,7 +34,7 @@ var extendedBlockDefinitions = append(append([]ExtendedBlockDefinition{
 	baseExtendedBlock(10061, "minecraft:orange_poplar_leaves", "orange_poplar_leaves", "orange_poplar_leaves", "orange_poplar_leaves", CreativeNatural),
 	baseExtendedBlock(10062, "minecraft:yellow_poplar_leaves", "yellow_poplar_leaves", "yellow_poplar_leaves", "yellow_poplar_leaves", CreativeNatural),
 	baseExtendedBlock(10063, "minecraft:poplar_sapling", "poplar_sapling", "poplar_sapling", "poplar_sapling", CreativeNatural),
-}, modernFullCubeDefinitions()...), coloredBlockDefinitions()...)
+}, modernFullCubeDefinitions()...), coloredBlockDefinitions()...), glazedTerracottaDefinitions()...)
 
 func baseExtendedBlock(id int32, name, top, bottom, side string, category CreativeCategory) ExtendedBlockDefinition {
 	return ExtendedBlockDefinition{
@@ -174,6 +174,27 @@ func coloredBlockDefinitions() []ExtendedBlockDefinition {
 			extendedBlockDisplayNames[name] = color.name + map[string]string{"wool": "色羊毛", "concrete": "色混凝土", "terracotta": "色陶瓦"}[blockType.suffix]
 			nextID++
 		}
+	}
+	return definitions
+}
+
+func glazedTerracottaDefinitions() []ExtendedBlockDefinition {
+	colors := []struct{ id, name string }{
+		{"white", "白"}, {"orange", "橙"}, {"magenta", "品红"}, {"light_blue", "淡蓝"},
+		{"yellow", "黄"}, {"lime", "黄绿"}, {"pink", "粉红"}, {"gray", "灰"},
+		{"light_gray", "淡灰"}, {"cyan", "青"}, {"purple", "紫"}, {"blue", "蓝"},
+		{"brown", "棕"}, {"green", "绿"}, {"red", "红"}, {"black", "黑"},
+	}
+	definitions := make([]ExtendedBlockDefinition, 0, len(colors))
+	for i, color := range colors {
+		name := "minecraft:" + color.id + "_glazed_terracotta"
+		texture := color.id + "_glazed_terracotta"
+		definitions = append(definitions, ExtendedBlockDefinition{
+			RuntimeID: 10064 + int32(i), Name: name,
+			TextureTop: texture, TextureBottom: texture, TextureSide: texture,
+			Category: CreativeDecoration, Hardness: 1.4, HarvestTool: ToolPickaxe,
+		})
+		extendedBlockDisplayNames[name] = color.name + "色带釉陶瓦"
 	}
 	return definitions
 }
