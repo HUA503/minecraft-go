@@ -673,3 +673,15 @@ func TestEveryCreativeCatalogItemHasSearchableVanillaRegistryName(t *testing.T) 
 		}
 	}
 }
+
+func TestCreativeCatalogDoesNotListNonItemBlockStates(t *testing.T) {
+	// These legacy runtime IDs represent fluid/portal/lit-state blocks or the
+	// double-slab block state. Java's creative item catalog offers the bucket,
+	// portal frame, single slab, or unlit lamp item instead.
+	nonItemStates := map[int32]bool{8: true, 9: true, 10: true, 11: true, 43: true, 90: true, 119: true, 123: true}
+	for _, item := range CreativeCatalog(CreativeAll) {
+		if nonItemStates[item.ID] {
+			t.Errorf("creative catalog exposes non-item block state %q (id %d)", item.Name, item.ID)
+		}
+	}
+}
