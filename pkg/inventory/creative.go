@@ -20,7 +20,12 @@ const (
 	CreativeFood
 	CreativeMaterials
 	CreativeSpawnEggs
+	CreativeHotbar
+	CreativeInventory
 )
+
+// CreativeHotbarPresets stores nine named player hotbars, each containing nine slots.
+type CreativeHotbarPresets [9][9]ItemStack
 
 // CreativeItem describes an item offered by the local creative inventory.
 type CreativeItem struct {
@@ -33,6 +38,9 @@ type CreativeItem struct {
 // stable, vanilla-like order. The catalog is intentionally limited to items
 // with a corresponding local block, item behavior, or sprite implementation.
 func CreativeCatalog(category CreativeCategory) []CreativeItem {
+	if category == CreativeHotbar || category == CreativeInventory {
+		return nil
+	}
 	items := make([]CreativeItem, 0, len(creativeCatalog)+len(extendedBlockDefinitions)+len(spawnEggDefinitions))
 	items = append(items, creativeCatalog...)
 	for _, definition := range extendedBlockDefinitions {

@@ -121,7 +121,8 @@ func TestCreativeInventoryCatalogAndHitTesting(t *testing.T) {
 	if hitItem.Type != SlotCreativeItem || hitItem.Index != 0 {
 		t.Fatalf("first creative item slot hit = %+v", hitItem)
 	}
-	hitTools := HitTestCreativeInventory(w, h, inventory.CreativeAll, "", 0, px+(creativeTabX(creativeTabs[6])+10)*scale, py+140*scale)
+	toolsTab := creativeTabForCategory(inventory.CreativeTools)
+	hitTools := HitTestCreativeInventory(w, h, inventory.CreativeAll, "", 0, px+(creativeTabX(toolsTab)+10)*scale, py+140*scale)
 	if hitTools.Type != SlotCreativeTab || hitTools.Index != int(inventory.CreativeTools) {
 		t.Fatalf("tools tab hit = %+v", hitTools)
 	}
@@ -273,7 +274,8 @@ func TestCreativeInventoryShowsPlayerItemTooltipAndDurability(t *testing.T) {
 }
 
 func TestCreativeInventoryUsesEmbeddedVanillaGUITextures(t *testing.T) {
-	if _, ok := GetOfficialItemSprite(creativeTabs[len(creativeTabs)-1].icon); !ok {
+	spawnTab := creativeTabForCategory(inventory.CreativeSpawnEggs)
+	if _, ok := GetOfficialItemSprite(spawnTab.icon); !ok {
 		t.Fatal("creative Spawn Eggs tab icon has no official creeper spawn egg sprite")
 	}
 	for _, path := range []string{
@@ -291,6 +293,56 @@ func TestCreativeInventoryUsesEmbeddedVanillaGUITextures(t *testing.T) {
 			t.Errorf("missing embedded vanilla GUI texture %s: %v", path, err)
 		}
 	}
+}
+
+func TestCreativeSpecialTabsRenderAndHitPlayerInventory(t *testing.T) {
+	const width, height = 400, 300
+	scale, px, py := creativeGUIOrigin(width, height)
+	inv := inventory.NewPlayerInventory()
+	presets := inventory.CreativeHotbarPresets{}
+	presets[0][0] = inventory.ItemStack{ItemID: inventory.ItemStone, Count: 64}
+
+	hotbarTab := creativeTabForCategory(inventory.CreativeHotbar)
+	hit := HitTestCreativeInventory(width, height, inventory.CreativeAll, "", 0,
+		px+(creativeTabX(hotbarTab)+8)*scale, py+(creativeTabY(hotbarTab)-4+8)*scale)
+	if hit.Type != SlotCreativeTab || hit.Index != int(inventory.CreativeHotbar) {
+		t.Fatalf("hotbar preset tab hit = %+v", hit)
+	}
+	hit = HitTestCreativeInventory(width, height, inventory.CreativeHotbar, "", 0, px+10*scale, py+19*scale, presets)
+	if hit.Type != SlotCreativeItem || hit.Index != 0 {
+		t.Fatalf("first hotbar preset item hit = %+v", hit)
+	}
+	if got := len(creativeHotbarItems(presets)); got != 81 {
+		t.Fatalf("hotbar preset tab has %d cells, want 81", got)
+	}
+
+	invTab := creativeTabForCategory(inventory.CreativeInventory)
+	hit = HitTestCreativeInventory(width, height, inventory.CreativeAll, "", 0,
+		px+(creativeTabX(invTab)+8)*scale, py+(creativeTabY(invTab)-4+8)*scale)
+	if hit.Type != SlotCreativeTab || hit.Index != int(inventory.CreativeInventory) {
+		t.Fatalf("player inventory tab hit = %+v", hit)
+	}
+	hit = HitTestCreativeInventory(width, height, inventory.CreativeInventory, "", 0, px+10*scale, py+55*scale)
+	if hit.Type != SlotInventory || hit.Index != 9 {
+		t.Fatalf("first main inventory slot hit = %+v, want slot 9", hit)
+	}
+	hit = HitTestCreativeInventory(width, height, inventory.CreativeInventory, "", 0, px+174*scale, py+113*scale)
+	if hit.Type != SlotCreativeTrash {
+		t.Fatalf("trash slot hit = %+v", hit)
+	}
+
+	fb := NewFramebuffer(width, height)
+	fb.DrawCreativeInventoryGUI(inv, inventory.ItemStack{}, inventory.CreativeHotbar, "", 0, -1, -1, presets)
+	fb.DrawCreativeInventoryGUI(inv, inventory.ItemStack{}, inventory.CreativeInventory, "", 0, -1, -1, presets)
+}
+
+func creativeTabForCategory(category inventory.CreativeCategory) creativeTabLayout {
+	for _, tab := range creativeTabs {
+		if tab.category == category {
+			return tab
+		}
+	}
+	return creativeTabLayout{}
 }
 
 func TestVisualScreenRenders(t *testing.T) {

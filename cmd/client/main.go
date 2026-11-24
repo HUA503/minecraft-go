@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"crypto/rand"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -191,6 +192,7 @@ type Client struct {
 	creativeSearch       string
 	creativeSearchActive bool
 	creativeScrollRow    int
+	creativeHotbars      inventory.CreativeHotbarPresets
 	showAdvancementsGUI  bool
 	showPauseMenu        bool
 	backBtnRect          [4]int
@@ -1040,6 +1042,7 @@ func NewClient(serverAddr, username string, isSingleplayer bool, width, height i
 		targetFov:         70.0,
 		equipProgress:     1.0,
 		lastSelectedSlot:  1,
+		creativeHotbars:   loadCreativeHotbarPresets(),
 		screenState:       ScreenTitle,
 		newWorldName:      "新世界",
 		newWorldMode:      0,
@@ -1052,6 +1055,71 @@ func NewClient(serverAddr, username string, isSingleplayer bool, width, height i
 	}
 
 	return cli
+}
+
+func creativeHotbarPresetPath() (string, error) {
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(configDir, "minecraft-go", "hotbar-presets.json"), nil
+}
+
+func loadCreativeHotbarPresets() inventory.CreativeHotbarPresets {
+	var presets inventory.CreativeHotbarPresets
+	path, err := creativeHotbarPresetPath()
+	if err != nil {
+		return presets
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return presets
+	}
+	if err := json.Unmarshal(data, &presets); err != nil {
+		log.Printf("[Creative] Ignoring invalid hotbar presets at %q: %v", path, err)
+		return inventory.CreativeHotbarPresets{}
+	}
+	return presets
+}
+
+func saveCreativeHotbarPresets(presets inventory.CreativeHotbarPresets) error {
+	path, err := creativeHotbarPresetPath()
+	if err != nil {
+		return err
+	}
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(presets, "", "  ")
+	if err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(dir, "hotbar-presets-*.json")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpName, path); err == nil {
+		return nil
+	}
+	// Windows does not replace an existing destination with Rename.
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return os.Rename(tmpName, path)
 }
 
 func (c *Client) getGenerator() *gen.Generator {
@@ -3562,7 +3630,7 @@ func (c *Client) RenderFrame() {
 			mx, my = c.wndRef.GetCursorClientPos(c.framebuf.Width, c.framebuf.Height)
 		}
 		if c.isCreative && !c.isCraftingTableOpen {
-			c.framebuf.DrawCreativeInventoryGUI(c.player.Inventory, c.cursorItem, c.creativeTab, c.creativeSearch, c.creativeScrollRow, mx, my)
+			c.framebuf.DrawCreativeInventoryGUI(c.player.Inventory, c.cursorItem, c.creativeTab, c.creativeSearch, c.creativeScrollRow, mx, my, c.creativeHotbars)
 		} else {
 			c.framebuf.DrawCraftingGUI(c.player.Inventory, c.craftGrid[:], c.craftResult, c.isCraftingTableOpen, c.cursorItem, mx, my)
 		}
@@ -5248,6 +5316,20 @@ func runGraphicalWindow(c *Client, w, h int) {
 			}
 			return
 		}
+		if c.isCreative && c.showInventoryGUI && !c.isCraftingTableOpen && c.creativeTab == inventory.CreativeHotbar && vkCode >= 0x31 && vkCode <= 0x39 && c.player != nil && c.player.Inventory != nil {
+			preset := vkCode - 0x31
+			if wnd.IsKeyDown(0x11) { // Ctrl+1..9 saves the current hotbar preset.
+				copy(c.creativeHotbars[preset][:], c.player.Inventory.Slots[:9])
+				if err := saveCreativeHotbarPresets(c.creativeHotbars); err != nil {
+					log.Printf("[Creative] Failed to save hotbar presets: %v", err)
+				}
+				return
+			}
+			if wnd.IsKeyDown(0x10) { // Shift+1..9 loads a saved preset.
+				copy(c.player.Inventory.Slots[:9], c.creativeHotbars[preset][:])
+				return
+			}
+		}
 		if c.showAdvancementsGUI && (vkCode == 0x1B || vkCode == 0x4C) {
 			c.showAdvancementsGUI = false
 			wnd.SetMouseCaptured(true)
@@ -5592,7 +5674,7 @@ func runGraphicalWindow(c *Client, w, h int) {
 
 		if c.showInventoryGUI && c.player != nil && c.player.Inventory != nil {
 			if c.isCreative && !c.isCraftingTableOpen {
-				hit := render.HitTestCreativeInventory(c.framebuf.Width, c.framebuf.Height, c.creativeTab, c.creativeSearch, c.creativeScrollRow, mx, my)
+				hit := render.HitTestCreativeInventory(c.framebuf.Width, c.framebuf.Height, c.creativeTab, c.creativeSearch, c.creativeScrollRow, mx, my, c.creativeHotbars)
 				switch hit.Type {
 				case render.SlotCreativeSearch:
 					c.creativeSearchActive = true
@@ -5610,6 +5692,15 @@ func runGraphicalWindow(c *Client, w, h int) {
 				case render.SlotCreativeItem:
 					c.creativeSearchActive = false
 					items := inventory.SearchCreativeCatalog(c.creativeTab, c.creativeSearch)
+					if c.creativeTab == inventory.CreativeHotbar {
+						if hit.Index >= 0 && hit.Index < 81 {
+							stack := c.creativeHotbars[hit.Index/9][hit.Index%9]
+							if !stack.IsEmpty() {
+								c.cursorItem = inventory.CreativeItemStack(stack.ItemID, btn)
+							}
+						}
+						break
+					}
 					if hit.Index >= 0 && hit.Index < len(items) {
 						item := items[hit.Index]
 						c.cursorItem = inventory.CreativeItemStack(item.ID, btn)
@@ -5617,12 +5708,23 @@ func runGraphicalWindow(c *Client, w, h int) {
 				case render.SlotInventory:
 					if hit.Index >= 0 && hit.Index < len(c.player.Inventory.Slots) {
 						slot := &c.player.Inventory.Slots[hit.Index]
-						if btn == 1 {
+						if btn == 1 && wnd.IsKeyDown(0x10) {
+							*slot = inventory.ItemStack{}
+						} else if btn == 1 {
 							handleSlotLeftClick(&c.cursorItem, slot)
 						} else if btn == 2 {
 							handleSlotRightClick(&c.cursorItem, slot)
 						} else if btn == 3 && !slot.IsEmpty() {
 							c.cursorItem = inventory.CreativeItemStack(slot.ItemID, 3)
+						}
+					}
+				case render.SlotCreativeTrash:
+					if btn == 1 {
+						c.cursorItem = inventory.ItemStack{}
+						if wnd.IsKeyDown(0x10) {
+							for i := range c.player.Inventory.Slots {
+								c.player.Inventory.Slots[i] = inventory.ItemStack{}
+							}
 						}
 					}
 				case render.SlotNone:

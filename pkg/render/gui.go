@@ -23,6 +23,7 @@ const (
 	SlotCreativeTab
 	SlotCreativeScroll
 	SlotCreativeSearch
+	SlotCreativeTrash
 )
 
 // GUISlotHit records the detected slot hit during mouse interactions.
