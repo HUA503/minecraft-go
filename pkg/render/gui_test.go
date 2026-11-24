@@ -210,6 +210,31 @@ func TestCreativeInventoryScrollUsesRowsAndReachesLastCatalogItem(t *testing.T) 
 	}
 }
 
+func TestCreativeInventoryShowsPlayerItemTooltipAndDurability(t *testing.T) {
+	const width, height = 400, 300
+	scale := CalculateGUIScaleFromDimensions(width, height)
+	px, py := width/2-204*scale/2, height/2-234*scale/2
+	mouseX, mouseY := px+8*scale, py+204*scale
+
+	inv := inventory.NewPlayerInventory()
+	inv.Slots[0] = inventory.ItemStack{ItemID: inventory.ItemStone, Count: 1}
+	fb := NewFramebuffer(width, height)
+	fb.DrawCreativeInventoryGUI(inv, inventory.ItemStack{}, inventory.CreativeAll, "", 0, mouseX, mouseY)
+	tooltipX, tooltipY := mouseX+10*scale, mouseY+10*scale
+	if got := fb.Color[tooltipY*width+tooltipX]; got != 0xF0100010 {
+		t.Fatalf("player inventory item tooltip background = %#08x, want %#08x", got, uint32(0xF0100010))
+	}
+
+	bar := NewFramebuffer(20, 20)
+	drawCreativeDurabilityBar(bar, inventory.ItemStack{ItemID: inventory.ItemWoodenPickaxe, Damage: 30}, 0, 0, 1)
+	if got := bar.Color[15*bar.Width+2]; got == 0 || got == 0xFF000000 {
+		t.Fatalf("damaged tool durability fill was not rendered: %#08x", got)
+	}
+	if got := bar.Color[15*bar.Width+12]; got != 0xFF000000 {
+		t.Fatalf("durability track background = %#08x, want black", got)
+	}
+}
+
 func TestCreativeInventoryUsesEmbeddedVanillaGUITextures(t *testing.T) {
 	if _, ok := GetOfficialItemSprite(creativeTabIcons[len(creativeTabIcons)-1]); !ok {
 		t.Fatal("creative Spawn Eggs tab icon has no official creeper spawn egg sprite")

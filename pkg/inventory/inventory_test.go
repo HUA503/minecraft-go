@@ -39,6 +39,18 @@ func TestCreativeCatalogHasUniqueUsableItems(t *testing.T) {
 	}
 }
 
+func TestCreativeItemDisplayNameResolvesCatalogAndUnknownIDs(t *testing.T) {
+	if got := CreativeItemDisplayName(ItemStone); got != "石头" {
+		t.Fatalf("stone display name = %q, want 石头", got)
+	}
+	if got := CreativeItemDisplayName(10100); got != "红灌木" {
+		t.Fatalf("red shrub display name = %q, want 红灌木", got)
+	}
+	if got := CreativeItemDisplayName(987654); got != "物品 #987654" {
+		t.Fatalf("unknown item display name = %q", got)
+	}
+}
+
 func TestExtendedBlockRegistryIsNamespacedAndExposesColorSets(t *testing.T) {
 	definitions := ExtendedBlockDefinitions()
 	if len(definitions) < 60 {

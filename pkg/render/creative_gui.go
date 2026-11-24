@@ -111,13 +111,20 @@ func (fb *Framebuffer) DrawCreativeInventoryGUI(inv *inventory.PlayerInventory, 
 	}
 
 	invX, invY := px+7*scale, py+144*scale
+	hoveredInventoryName := ""
 	for row := 0; row < 3; row++ {
 		for col := 0; col < 9; col++ {
-			drawCreativePlayerSlot(fb, inv, 9+row*9+col, invX+col*18*scale, invY+row*18*scale, scale, mouseX, mouseY)
+			hoveredInventoryName = drawCreativePlayerSlot(fb, inv, 9+row*9+col, invX+col*18*scale, invY+row*18*scale, scale, mouseX, mouseY)
 		}
 	}
 	for col := 0; col < 9; col++ {
-		drawCreativePlayerSlot(fb, inv, col, invX+col*18*scale, py+203*scale, scale, mouseX, mouseY)
+		name := drawCreativePlayerSlot(fb, inv, col, invX+col*18*scale, py+203*scale, scale, mouseX, mouseY)
+		if name != "" {
+			hoveredInventoryName = name
+		}
+	}
+	if hoveredInventoryName != "" {
+		drawCreativeTooltip(fb, hoveredInventoryName, mouseX, mouseY, scale)
 	}
 	for i := range creativeTabIcons {
 		x, y := px+(2+i*18)*scale, py-26*scale
@@ -141,13 +148,14 @@ func CreativeCatalogMaxScroll(itemCount int) int {
 	return max(0, (itemCount+creativeColumns-1)/creativeColumns-creativeRows)
 }
 
-func drawCreativePlayerSlot(fb *Framebuffer, inv *inventory.PlayerInventory, index, x, y, scale, mouseX, mouseY int) {
+func drawCreativePlayerSlot(fb *Framebuffer, inv *inventory.PlayerInventory, index, x, y, scale, mouseX, mouseY int) string {
 	item := inv.Slots[index]
 	if !item.IsEmpty() {
 		fb.DrawItemIconScaled(x+scale, y+scale, item.ItemID, scale)
 		if item.Count > 1 {
 			fb.DrawNumberScaled(x+11*scale, y+11*scale, item.Count, 0xFFFFFFFF, scale)
 		}
+		drawCreativeDurabilityBar(fb, item, x, y, scale)
 	}
 	if index == inv.SelectedHotbar {
 		fb.DrawRect(x, y, 18*scale, scale, 0xFFFFFFFF)
@@ -157,7 +165,31 @@ func drawCreativePlayerSlot(fb *Framebuffer, inv *inventory.PlayerInventory, ind
 	}
 	if mouseX >= x && mouseX < x+18*scale && mouseY >= y && mouseY < y+18*scale {
 		fb.DrawRect(x+scale, y+scale, 16*scale, 16*scale, 0x50FFFFFF)
+		if !item.IsEmpty() {
+			return inventory.CreativeItemDisplayName(item.ItemID)
+		}
 	}
+	return ""
+}
+
+func drawCreativeDurabilityBar(fb *Framebuffer, item inventory.ItemStack, x, y, scale int) {
+	props, ok := inventory.GetToolProperties(item.ItemID)
+	if !ok || item.Damage <= 0 || props.MaxDurability <= 0 || scale <= 0 {
+		return
+	}
+	ratio := float32(props.MaxDurability-item.Damage) / float32(props.MaxDurability)
+	if ratio < 0 {
+		ratio = 0
+	} else if ratio > 1 {
+		ratio = 1
+	}
+	const barWidth = 13
+	fb.DrawRect(x+2*scale, y+15*scale, barWidth*scale, 2*scale, 0xFF000000)
+	fillWidth := int(ratio * barWidth * float32(scale))
+	red := uint32((1 - ratio) * 255)
+	green := uint32(ratio * 255)
+	color := 0xFF000000 | (red << 16) | (green << 8)
+	fb.DrawRect(x+2*scale, y+15*scale, fillWidth, scale, color)
 }
 
 func drawCreativeTextureRegion(fb *Framebuffer, x, y, scale int, image *RawImage, width, height int) {

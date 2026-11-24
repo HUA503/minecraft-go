@@ -1,6 +1,9 @@
 package inventory
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 // CreativeCategory groups the catalog shown by the creative inventory.
 type CreativeCategory int
@@ -64,6 +67,17 @@ func SearchCreativeCatalog(category CreativeCategory, query string) []CreativeIt
 		}
 	}
 	return filtered
+}
+
+// CreativeItemDisplayName returns the localized catalog label for an item.
+// Items outside the implemented creative catalog still receive a stable ID label.
+func CreativeItemDisplayName(itemID int32) string {
+	for _, item := range CreativeCatalog(CreativeAll) {
+		if item.ID == itemID {
+			return item.Name
+		}
+	}
+	return fmt.Sprintf("物品 #%d", itemID)
 }
 
 func normalizeCreativeSearch(value string) string {
