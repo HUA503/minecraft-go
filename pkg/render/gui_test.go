@@ -180,7 +180,40 @@ func TestCreativeInventoryFitsMinimumGUIResolution(t *testing.T) {
 	fb.DrawCreativeInventoryGUI(inventory.NewPlayerInventory(), inventory.ItemStack{}, inventory.CreativeAll, "", 0, -1, -1)
 }
 
+func TestCreativeInventoryScrollUsesRowsAndReachesLastCatalogItem(t *testing.T) {
+	for _, test := range []struct {
+		items, want int
+	}{{0, 0}, {45, 0}, {46, 1}, {54, 1}, {55, 2}} {
+		if got := CreativeCatalogMaxScroll(test.items); got != test.want {
+			t.Errorf("CreativeCatalogMaxScroll(%d) = %d, want %d", test.items, got, test.want)
+		}
+	}
+
+	items := inventory.CreativeCatalog(inventory.CreativeAll)
+	maxRow := CreativeCatalogMaxScroll(len(items))
+	start := maxRow * creativeColumns
+	last := len(items) - 1
+	if last < start || last-start >= creativePerPage {
+		t.Fatalf("last catalog item %d is outside final visible window starting at %d", last, start)
+	}
+
+	w, h := 400, 300
+	scale := CalculateGUIScaleFromDimensions(w, h)
+	px, py := w/2-204*scale/2, h/2-234*scale/2
+	visible := last - start
+	row, col := visible/creativeColumns, visible%creativeColumns
+	x := px + (8+col*18)*scale
+	y := py + (17+row*18)*scale
+	hit := HitTestCreativeInventory(w, h, inventory.CreativeAll, "", maxRow, x, y)
+	if hit.Type != SlotCreativeItem || hit.Index != last {
+		t.Fatalf("last item hit at max scroll = %+v, want catalog index %d", hit, last)
+	}
+}
+
 func TestCreativeInventoryUsesEmbeddedVanillaGUITextures(t *testing.T) {
+	if _, ok := GetOfficialItemSprite(creativeTabIcons[len(creativeTabIcons)-1]); !ok {
+		t.Fatal("creative Spawn Eggs tab icon has no official creeper spawn egg sprite")
+	}
 	for _, path := range []string{
 		"assets/textures/gui/sprites/container/slot.png",
 		"assets/textures/gui/sprites/container/creative_inventory/tab_top_selected_1.png",

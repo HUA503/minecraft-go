@@ -190,7 +190,7 @@ type Client struct {
 	creativeTab          inventory.CreativeCategory
 	creativeSearch       string
 	creativeSearchActive bool
-	creativePage         int
+	creativeScrollRow    int
 	showAdvancementsGUI  bool
 	showPauseMenu        bool
 	backBtnRect          [4]int
@@ -3551,7 +3551,7 @@ func (c *Client) RenderFrame() {
 			mx, my = c.wndRef.GetCursorClientPos(c.framebuf.Width, c.framebuf.Height)
 		}
 		if c.isCreative && !c.isCraftingTableOpen {
-			c.framebuf.DrawCreativeInventoryGUI(c.player.Inventory, c.cursorItem, c.creativeTab, c.creativeSearch, c.creativePage, mx, my)
+			c.framebuf.DrawCreativeInventoryGUI(c.player.Inventory, c.cursorItem, c.creativeTab, c.creativeSearch, c.creativeScrollRow, mx, my)
 		} else {
 			c.framebuf.DrawCraftingGUI(c.player.Inventory, c.craftGrid[:], c.craftResult, c.isCraftingTableOpen, c.cursorItem, mx, my)
 		}
@@ -5248,7 +5248,7 @@ func runGraphicalWindow(c *Client, w, h int) {
 				runes := []rune(c.creativeSearch)
 				if len(runes) > 0 {
 					c.creativeSearch = string(runes[:len(runes)-1])
-					c.creativePage = 0
+					c.creativeScrollRow = 0
 				}
 				return
 			case 0x0D: // Enter ends search editing
@@ -5336,11 +5336,11 @@ func runGraphicalWindow(c *Client, w, h int) {
 		}
 		if c.showInventoryGUI && c.isCreative && !c.isCraftingTableOpen {
 			items := inventory.SearchCreativeCatalog(c.creativeTab, c.creativeSearch)
-			maxScroll := max(0, (len(items)-45+8)/9)
-			if delta > 0 && c.creativePage > 0 {
-				c.creativePage--
-			} else if delta < 0 && c.creativePage < maxScroll {
-				c.creativePage++
+			maxScroll := render.CreativeCatalogMaxScroll(len(items))
+			if delta > 0 && c.creativeScrollRow > 0 {
+				c.creativeScrollRow--
+			} else if delta < 0 && c.creativeScrollRow < maxScroll {
+				c.creativeScrollRow++
 			}
 			return
 		}
@@ -5405,7 +5405,7 @@ func runGraphicalWindow(c *Client, w, h int) {
 		if c.isCreative && c.showInventoryGUI && !c.isCraftingTableOpen && c.creativeSearchActive {
 			if ch >= 32 && ch != 127 && len([]rune(c.creativeSearch)) < 64 {
 				c.creativeSearch += string(ch)
-				c.creativePage = 0
+				c.creativeScrollRow = 0
 			}
 			return
 		}
@@ -5581,20 +5581,20 @@ func runGraphicalWindow(c *Client, w, h int) {
 
 		if c.showInventoryGUI && c.player != nil && c.player.Inventory != nil {
 			if c.isCreative && !c.isCraftingTableOpen {
-				hit := render.HitTestCreativeInventory(c.framebuf.Width, c.framebuf.Height, c.creativeTab, c.creativeSearch, c.creativePage, mx, my)
+				hit := render.HitTestCreativeInventory(c.framebuf.Width, c.framebuf.Height, c.creativeTab, c.creativeSearch, c.creativeScrollRow, mx, my)
 				switch hit.Type {
 				case render.SlotCreativeSearch:
 					c.creativeSearchActive = true
 				case render.SlotCreativeTab:
 					c.creativeSearchActive = false
 					c.creativeTab = inventory.CreativeCategory(hit.Index)
-					c.creativePage = 0
+					c.creativeScrollRow = 0
 				case render.SlotCreativeScroll:
 					c.creativeSearchActive = false
 					items := inventory.SearchCreativeCatalog(c.creativeTab, c.creativeSearch)
-					maxScroll := max(0, (len(items)-45+8)/9)
+					maxScroll := render.CreativeCatalogMaxScroll(len(items))
 					if maxScroll > 0 {
-						c.creativePage = hit.Index * maxScroll / 100
+						c.creativeScrollRow = hit.Index * maxScroll / 100
 					}
 				case render.SlotCreativeItem:
 					c.creativeSearchActive = false

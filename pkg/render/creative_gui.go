@@ -9,13 +9,14 @@ const (
 )
 
 // Icon order follows the compact tab strip used by the Java creative screen.
-var creativeTabIcons = [...]int32{345, 1, 35, 6, 54, 331, 270, 268, 260, 296, 383}
+// Java 26.3 uses a Creeper spawn egg for the Spawn Eggs tab icon.
+var creativeTabIcons = [...]int32{345, 1, 35, 6, 54, 331, 270, 268, 260, 296, 11002}
 var creativeTabNames = [...]string{"搜索物品", "建筑方块", "有色方块", "自然方块", "功能方块", "红石方块", "工具与实用物品", "战斗", "食物与饮料", "材料", "刷怪蛋"}
 
-// DrawCreativeInventoryGUI draws a paged item catalog above the player's
+// DrawCreativeInventoryGUI draws a scrollable item catalog above the player's
 // inventory. The player inventory remains interactive so items can be moved
 // from the catalog to the hotbar using the usual cursor clicks.
-func (fb *Framebuffer) DrawCreativeInventoryGUI(inv *inventory.PlayerInventory, cursor inventory.ItemStack, category inventory.CreativeCategory, query string, page, mouseX, mouseY int) {
+func (fb *Framebuffer) DrawCreativeInventoryGUI(inv *inventory.PlayerInventory, cursor inventory.ItemStack, category inventory.CreativeCategory, query string, scrollRow, mouseX, mouseY int) {
 	if fb == nil || inv == nil {
 		return
 	}
@@ -70,14 +71,14 @@ func (fb *Framebuffer) DrawCreativeInventoryGUI(inv *inventory.PlayerInventory, 
 	}
 
 	items := inventory.SearchCreativeCatalog(category, query)
-	maxScroll := max(0, (len(items)-creativePerPage+creativeColumns-1)/creativeColumns)
-	if page < 0 {
-		page = 0
+	maxScroll := CreativeCatalogMaxScroll(len(items))
+	if scrollRow < 0 {
+		scrollRow = 0
 	}
-	if page > maxScroll {
-		page = maxScroll
+	if scrollRow > maxScroll {
+		scrollRow = maxScroll
 	}
-	start := page * creativeColumns
+	start := scrollRow * creativeColumns
 	hoveredName := ""
 	for i := 0; i < creativePerPage && start+i < len(items); i++ {
 		row, col := i/creativeColumns, i%creativeColumns
@@ -93,7 +94,7 @@ func (fb *Framebuffer) DrawCreativeInventoryGUI(inv *inventory.PlayerInventory, 
 	trackX, trackY, trackH := px+174*scale, py+16*scale, 90*scale
 	thumbY := trackY
 	if maxScroll > 0 {
-		thumbY += (trackH - 15*scale) * page / maxScroll
+		thumbY += (trackH - 15*scale) * scrollRow / maxScroll
 	}
 	if thumb, ok := GetOfficialImage("gui/sprites/container/creative_inventory/scroller.png"); ok {
 		fb.DrawRawImageScaled(trackX, thumbY, scale, thumb)
@@ -131,6 +132,13 @@ func (fb *Framebuffer) DrawCreativeInventoryGUI(inv *inventory.PlayerInventory, 
 			fb.DrawNumberScaled(mouseX+8*scale, mouseY+3*scale, cursor.Count, 0xFFFFFFFF, scale)
 		}
 	}
+}
+
+// CreativeCatalogMaxScroll returns the number of item rows that fit below the
+// last visible row. It is shared by rendering and input so the scrollbar,
+// wheel, and hit testing always agree about the final reachable item.
+func CreativeCatalogMaxScroll(itemCount int) int {
+	return max(0, (itemCount+creativeColumns-1)/creativeColumns-creativeRows)
 }
 
 func drawCreativePlayerSlot(fb *Framebuffer, inv *inventory.PlayerInventory, index, x, y, scale, mouseX, mouseY int) {
@@ -195,8 +203,8 @@ func creativeTooltipWidth(label string, scale int) int {
 }
 
 // HitTestCreativeInventory maps mouse coordinates to a tab, catalog item,
-// page button, or player inventory slot.
-func HitTestCreativeInventory(w, h int, category inventory.CreativeCategory, query string, page, mouseX, mouseY int) GUISlotHit {
+// scrollbar, or player inventory slot.
+func HitTestCreativeInventory(w, h int, category inventory.CreativeCategory, query string, scrollRow, mouseX, mouseY int) GUISlotHit {
 	scale := CalculateGUIScaleFromDimensions(w, h)
 	px, py := w/2-204*scale/2, h/2-234*scale/2
 	if category == inventory.CreativeAll && mouseX >= px+80*scale && mouseX < px+170*scale && mouseY >= py+4*scale && mouseY < py+15*scale {
@@ -213,14 +221,14 @@ func HitTestCreativeInventory(w, h int, category inventory.CreativeCategory, que
 		return GUISlotHit{Type: SlotCreativeScroll, Index: (mouseY - trackY) * 100 / max(1, trackH-1)}
 	}
 	items := inventory.SearchCreativeCatalog(category, query)
-	maxScroll := max(0, (len(items)-creativePerPage+creativeColumns-1)/creativeColumns)
-	if page < 0 {
-		page = 0
+	maxScroll := CreativeCatalogMaxScroll(len(items))
+	if scrollRow < 0 {
+		scrollRow = 0
 	}
-	if page > maxScroll {
-		page = maxScroll
+	if scrollRow > maxScroll {
+		scrollRow = maxScroll
 	}
-	start := page * creativeColumns
+	start := scrollRow * creativeColumns
 	for i := 0; i < creativePerPage; i++ {
 		row, col := i/creativeColumns, i%creativeColumns
 		sx, sy := px+(7+col*18)*scale, py+(16+row*18)*scale
