@@ -84,13 +84,13 @@ func GetToolProperties(itemID int32) (ToolProperties, bool) {
 
 // BlockRequiredHarvestLevel specifies the minimum tool tier needed to harvest item drops.
 var BlockRequiredHarvestLevel = map[int32]int{
-	ItemStone:         0, // Any pickaxe
-	ItemCobblestone:   0, // Any pickaxe
-	16:                0, // Coal ore: Any pickaxe
-	15:                1, // Iron ore: Stone pickaxe or better
-	14:                2, // Gold ore: Iron pickaxe or better
-	56:                2, // Diamond ore: Iron pickaxe or better
-	49:                3, // Obsidian: Diamond pickaxe only
+	ItemStone:       0, // Any pickaxe
+	ItemCobblestone: 0, // Any pickaxe
+	16:              0, // Coal ore: Any pickaxe
+	15:              1, // Iron ore: Stone pickaxe or better
+	14:              2, // Gold ore: Iron pickaxe or better
+	56:              2, // Diamond ore: Iron pickaxe or better
+	49:              3, // Obsidian: Diamond pickaxe only
 }
 
 // IsPickaxeEffective returns true if block is best mined by a pickaxe.
@@ -112,7 +112,7 @@ func IsAxeEffective(blockID int32) bool {
 		return definition.HarvestTool == ToolAxe
 	}
 	switch blockID {
-	case ItemOakLog, ItemOakPlanks, ItemCraftingTable:
+	case ItemOakLog, 22, ItemOakPlanks, ItemCraftingTable:
 		return true
 	default:
 		return false
@@ -135,38 +135,38 @@ func IsShovelEffective(blockID int32) bool {
 // BlockHardness defines canonical Minecraft Java Edition block hardness values.
 // Negative values (-1.0) indicate unbreakable blocks such as Bedrock.
 var BlockHardness = map[int32]float64{
-	0:   0.0,  // Air
-	1:   1.5,  // Stone
-	2:   0.6,  // Grass Block
-	3:   0.5,  // Dirt
-	4:   2.0,  // Cobblestone
-	5:   2.0,  // Oak Planks
-	7:   -1.0, // Bedrock (unbreakable)
+	0:   0.0,   // Air
+	1:   1.5,   // Stone
+	2:   0.6,   // Grass Block
+	3:   0.5,   // Dirt
+	4:   2.0,   // Cobblestone
+	5:   2.0,   // Oak Planks
+	7:   -1.0,  // Bedrock (unbreakable)
 	8:   100.0, // Water
 	9:   100.0, // Flowing Water
 	10:  100.0, // Lava
 	11:  100.0, // Flowing Lava
-	12:  0.5,  // Sand
-	13:  0.6,  // Gravel
-	14:  3.0,  // Gold Ore
-	15:  3.0,  // Iron Ore
-	16:  3.0,  // Coal Ore
-	17:  2.0,  // Oak Log
-	18:  0.2,  // Oak Leaves
-	20:  0.3,  // Glass
-	31:  0.0,  // Tall Grass (instant)
-	32:  0.0,  // Dead Bush (instant)
-	37:  0.0,  // Dandelion (instant)
-	38:  0.0,  // Poppy (instant)
-	49:  50.0, // Obsidian
-	50:  0.0,  // Torch (instant)
-	56:  3.0,  // Diamond Ore
-	58:  2.5,  // Crafting Table
-	61:  3.5,  // Furnace
-	87:  0.4,  // Netherrack
-	89:  0.3,  // Glowstone
-	121: 3.0,  // End Stone
-	150: 3.0,  // Deepslate
+	12:  0.5,   // Sand
+	13:  0.6,   // Gravel
+	14:  3.0,   // Gold Ore
+	15:  3.0,   // Iron Ore
+	16:  3.0,   // Coal Ore
+	17:  2.0,   // Oak Log
+	18:  0.2,   // Oak Leaves
+	20:  0.3,   // Glass
+	31:  0.0,   // Tall Grass (instant)
+	32:  0.0,   // Dead Bush (instant)
+	37:  0.0,   // Dandelion (instant)
+	38:  0.0,   // Poppy (instant)
+	49:  50.0,  // Obsidian
+	50:  0.0,   // Torch (instant)
+	56:  3.0,   // Diamond Ore
+	58:  2.5,   // Crafting Table
+	61:  3.5,   // Furnace
+	87:  0.4,   // Netherrack
+	89:  0.3,   // Glowstone
+	121: 3.0,   // End Stone
+	150: 3.0,   // Deepslate
 }
 
 // GetBlockHardness returns the hardness of a block ID.

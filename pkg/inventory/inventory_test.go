@@ -108,6 +108,54 @@ func TestColoredGlazedTerracottaIsPlaceableAndSearchable(t *testing.T) {
 	}
 }
 
+func TestWoodLogsExposeStrippedVariants(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		baseID int32
+	}{
+		{"minecraft:stripped_oak_log", 17},
+		{"minecraft:stripped_spruce_log", 22},
+		{"minecraft:stripped_birch_log", 0},
+		{"minecraft:stripped_jungle_log", 0},
+		{"minecraft:stripped_acacia_log", 0},
+		{"minecraft:stripped_dark_oak_log", 0},
+		{"minecraft:stripped_mangrove_log", 0},
+		{"minecraft:stripped_cherry_log", 0},
+		{"minecraft:stripped_pale_oak_log", 0},
+		{"minecraft:stripped_crimson_stem", 0},
+		{"minecraft:stripped_warped_stem", 0},
+		{"minecraft:stripped_bamboo_block", 0},
+		{"minecraft:stripped_poplar_log", 0},
+	} {
+		var strippedID int32
+		for _, definition := range ExtendedBlockDefinitions() {
+			if definition.Name == tc.name {
+				strippedID = definition.RuntimeID
+				break
+			}
+		}
+		if strippedID == 0 {
+			t.Fatalf("missing stripped wood definition %s", tc.name)
+		}
+		baseID := tc.baseID
+		if baseID == 0 {
+			for _, definition := range ExtendedBlockDefinitions() {
+				if definition.StrippedVariantID == strippedID {
+					baseID = definition.RuntimeID
+					break
+				}
+			}
+		}
+		got, ok := StrippedWoodBlockVariant(baseID)
+		if !ok || got != strippedID {
+			t.Errorf("stripped variant for %s base %d = (%d,%v), want %d", tc.name, baseID, got, ok, strippedID)
+		}
+		if _, ok := StrippedWoodBlockVariant(strippedID); ok {
+			t.Errorf("already stripped block %s can be stripped again", tc.name)
+		}
+	}
+}
+
 func TestCreativeCatalogSearch(t *testing.T) {
 	diamonds := SearchCreativeCatalog(CreativeAll, "钻石")
 	if len(diamonds) < 3 {

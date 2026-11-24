@@ -15,6 +15,7 @@ type ExtendedBlockDefinition struct {
 	RequiresHarvestTool  bool
 	RequiredHarvestLevel int
 	DropRuntimeID        int32
+	StrippedVariantID    int32
 }
 
 var extendedBlockDefinitions = append(append(append([]ExtendedBlockDefinition{
@@ -28,7 +29,7 @@ var extendedBlockDefinitions = append(append(append([]ExtendedBlockDefinition{
 	baseExtendedBlock(10007, "minecraft:sulfur_bricks", "sulfur_bricks", "sulfur_bricks", "sulfur_bricks", CreativeBlocks),
 	baseExtendedBlock(10008, "minecraft:potent_sulfur", "potent_sulfur", "potent_sulfur", "potent_sulfur", CreativeBlocks),
 	baseExtendedBlock(10009, "minecraft:poplar_planks", "poplar_planks", "poplar_planks", "poplar_planks", CreativeBlocks),
-	baseExtendedBlock(10010, "minecraft:poplar_log", "poplar_log_top", "poplar_log_top", "poplar_log", CreativeBlocks),
+	{RuntimeID: 10010, Name: "minecraft:poplar_log", TextureTop: "poplar_log_top", TextureBottom: "poplar_log_top", TextureSide: "poplar_log", Category: CreativeBlocks, Hardness: 2, HarvestTool: ToolAxe, StrippedVariantID: 10011},
 	baseExtendedBlock(10011, "minecraft:stripped_poplar_log", "stripped_poplar_log_top", "stripped_poplar_log_top", "stripped_poplar_log", CreativeBlocks),
 	baseExtendedBlock(10060, "minecraft:red_poplar_leaves", "red_poplar_leaves", "red_poplar_leaves", "red_poplar_leaves", CreativeNatural),
 	baseExtendedBlock(10061, "minecraft:orange_poplar_leaves", "orange_poplar_leaves", "orange_poplar_leaves", "orange_poplar_leaves", CreativeNatural),
@@ -145,7 +146,25 @@ func modernFullCubeDefinitions() []ExtendedBlockDefinition {
 		definitions = append(definitions, definition)
 		extendedBlockDisplayNames[definition.Name] = block.display
 	}
+	for i := range definitions {
+		if strippedName := strippedWoodNames[definitions[i].Name]; strippedName != "" {
+			definitions[i].StrippedVariantID = idsByName[strippedName]
+		}
+	}
 	return definitions
+}
+
+var strippedWoodNames = map[string]string{
+	"minecraft:birch_log":    "stripped_birch_log",
+	"minecraft:jungle_log":   "stripped_jungle_log",
+	"minecraft:acacia_log":   "stripped_acacia_log",
+	"minecraft:dark_oak_log": "stripped_dark_oak_log",
+	"minecraft:mangrove_log": "stripped_mangrove_log",
+	"minecraft:cherry_log":   "stripped_cherry_log",
+	"minecraft:pale_oak_log": "stripped_pale_oak_log",
+	"minecraft:crimson_stem": "stripped_crimson_stem",
+	"minecraft:warped_stem":  "stripped_warped_stem",
+	"minecraft:bamboo_block": "stripped_bamboo_block",
 }
 
 func coloredBlockDefinitions() []ExtendedBlockDefinition {
@@ -207,6 +226,14 @@ var extendedBlockByID = func() map[int32]ExtendedBlockDefinition {
 	return definitions
 }()
 
+var extendedBlockByName = func() map[string]ExtendedBlockDefinition {
+	definitions := make(map[string]ExtendedBlockDefinition, len(extendedBlockDefinitions))
+	for _, definition := range extendedBlockDefinitions {
+		definitions[definition.Name] = definition
+	}
+	return definitions
+}()
+
 // ExtendedBlockDefinitions returns the supported namespaced blocks in stable order.
 func ExtendedBlockDefinitions() []ExtendedBlockDefinition {
 	return append([]ExtendedBlockDefinition(nil), extendedBlockDefinitions...)
@@ -216,6 +243,24 @@ func ExtendedBlockDefinitions() []ExtendedBlockDefinition {
 func ExtendedBlockByID(runtimeID int32) (ExtendedBlockDefinition, bool) {
 	definition, ok := extendedBlockByID[runtimeID]
 	return definition, ok
+}
+
+// StrippedWoodBlockVariant returns the stripped-log or stripped-stem runtime ID
+// corresponding to a wood block, including legacy oak and spruce log IDs.
+func StrippedWoodBlockVariant(runtimeID int32) (int32, bool) {
+	switch runtimeID {
+	case 17:
+		runtimeID = extendedBlockByName["minecraft:stripped_oak_log"].RuntimeID
+	case 22:
+		runtimeID = extendedBlockByName["minecraft:stripped_spruce_log"].RuntimeID
+	default:
+		definition, ok := ExtendedBlockByID(runtimeID)
+		if !ok || definition.StrippedVariantID == 0 {
+			return 0, false
+		}
+		return definition.StrippedVariantID, true
+	}
+	return runtimeID, runtimeID != 0
 }
 
 func IsExtendedLeaves(runtimeID int32) bool {

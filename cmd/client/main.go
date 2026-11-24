@@ -3083,6 +3083,21 @@ func (c *Client) UpdateRightClick(isRightDown bool, dt float64) {
 		}
 		return
 	}
+	if isRightDown && c.isLocal && c.placeCooldown <= 0 && c.hasTarget {
+		if props, ok := inventory.GetToolProperties(sel.ItemID); ok && props.Type == inventory.ToolAxe {
+			blockID := c.engine.GetBlockIfLoaded(c.targetedPos.X, c.targetedPos.Y, c.targetedPos.Z)
+			if strippedID, canStrip := inventory.StrippedWoodBlockVariant(blockID); canStrip &&
+				c.engine.SetBlockChecked(c.targetedPos.X, c.targetedPos.Y, c.targetedPos.Z, strippedID) {
+				if !c.isCreative {
+					slot := &c.player.Inventory.Slots[c.player.Inventory.SelectedHotbar]
+					inventory.ApplyToolWear(slot)
+				}
+				c.RebuildAffectedMeshes(c.targetedPos)
+				c.placeCooldown = 0.3
+				return
+			}
+		}
+	}
 
 	// 1. Food Consumption
 	if !sel.IsEmpty() && inventory.IsFood(sel.ItemID) && c.player.Hunger < 20 {
