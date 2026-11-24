@@ -109,3 +109,33 @@ func TestCreativeCursorDragSkipsIncompatibleAndInvalidTargets(t *testing.T) {
 		t.Fatalf("placed=%d cursor=%+v slots=%+v", placed, cursor, inv.Slots[:2])
 	}
 }
+
+func TestCreativeCatalogWheelUsesWin32NotchesAndRetainsRemainder(t *testing.T) {
+	row, remainder := scrollCreativeCatalog(5, 60, 20, 0)
+	if row != 5 || remainder != 60 {
+		t.Fatalf("half-notch up = row %d remainder %d, want row 5 remainder 60", row, remainder)
+	}
+	row, remainder = scrollCreativeCatalog(row, 60, 20, remainder)
+	if row != 4 || remainder != 0 {
+		t.Fatalf("second half-notch up = row %d remainder %d, want row 4 remainder 0", row, remainder)
+	}
+	row, remainder = scrollCreativeCatalog(row, -360, 20, remainder)
+	if row != 7 || remainder != 0 {
+		t.Fatalf("three notches down = row %d remainder %d, want row 7 remainder 0", row, remainder)
+	}
+}
+
+func TestCreativeCatalogWheelClampsAndClearsOutwardRemainder(t *testing.T) {
+	row, remainder := scrollCreativeCatalog(1, 360, 20, 0)
+	if row != 0 || remainder != 0 {
+		t.Fatalf("scroll past top = row %d remainder %d, want both zero", row, remainder)
+	}
+	row, remainder = scrollCreativeCatalog(19, -360, 20, 0)
+	if row != 20 || remainder != 0 {
+		t.Fatalf("scroll past bottom = row %d remainder %d, want row 20 remainder 0", row, remainder)
+	}
+	row, remainder = scrollCreativeCatalog(9, 120, 0, 60)
+	if row != 0 || remainder != 0 {
+		t.Fatalf("non-scrollable catalog = row %d remainder %d, want both zero", row, remainder)
+	}
+}

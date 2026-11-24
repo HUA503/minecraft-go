@@ -5,6 +5,30 @@ import (
 	"github.com/HUA503/minecraft-go/pkg/render"
 )
 
+// scrollCreativeCatalog converts Win32 wheel deltas (120 units per notch) into
+// catalog rows while retaining high-resolution partial-wheel movement.
+func scrollCreativeCatalog(current, delta, maxScroll, remainder int) (int, int) {
+	if maxScroll <= 0 {
+		return 0, 0
+	}
+	total := delta + remainder
+	steps := total / 120
+	remainder = total - steps*120
+	current -= steps
+	if current < 0 {
+		current = 0
+		if remainder > 0 {
+			remainder = 0
+		}
+	} else if current > maxScroll {
+		current = maxScroll
+		if remainder < 0 {
+			remainder = 0
+		}
+	}
+	return current, remainder
+}
+
 type creativeInventoryDrag struct {
 	Active      bool
 	Button      int

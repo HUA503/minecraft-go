@@ -178,52 +178,53 @@ type Client struct {
 	lastChunkZ               int32
 	lastChunkStreamTime      time.Time
 	// Authentic Minecraft Mining State
-	isMining             bool
-	breakProgress        float64 // 0.0 to 1.0
-	miningPos            world.BlockPos
-	hasMiningBlock       bool
-	swingProgress        float64 // 0.0 to 1.0
-	isSwinging           bool
-	lastHitSoundTime     time.Time
-	placeCooldown        float64
-	particles            []render.Particle
-	showInventoryGUI     bool
-	creativeTab          inventory.CreativeCategory
-	creativeSearch       string
-	creativeSearchActive bool
-	creativeScrollRow    int
-	creativeScrollDrag   bool
-	creativeScrollOffset int
-	creativeDrag         creativeInventoryDrag
-	creativeHotbars      inventory.CreativeHotbarPresets
-	showAdvancementsGUI  bool
-	showPauseMenu        bool
-	backBtnRect          [4]int
-	quitBtnRect          [4]int
-	isEating             bool
-	eatTimer             float64
-	lastMunchSound       time.Time
-	showDebugF3          bool
-	lastStepTime         time.Time
-	fpsCounter           int
-	currentFPS           int
-	fpsTimer             time.Time
-	lastFrameDuration    float64
-	isChatOpen           bool
-	chatInput            string
-	chatMessages         []render.ChatMessage
-	advancements         map[string]bool
-	isCreative           bool
-	isFlying             bool
-	perspectiveMode      int // 0: 1st person, 1: 3rd person back, 2: 3rd person front
-	lastPlayerHealth     float32
-	hurtFlashTimer       float64
-	currentEyeHeight     float64
-	targetFov            float64
-	equipProgress        float64
-	lastSelectedSlot     int
-	respawnBtnRect       [4]int
-	deathTitleBtnRect    [4]int
+	isMining               bool
+	breakProgress          float64 // 0.0 to 1.0
+	miningPos              world.BlockPos
+	hasMiningBlock         bool
+	swingProgress          float64 // 0.0 to 1.0
+	isSwinging             bool
+	lastHitSoundTime       time.Time
+	placeCooldown          float64
+	particles              []render.Particle
+	showInventoryGUI       bool
+	creativeTab            inventory.CreativeCategory
+	creativeSearch         string
+	creativeSearchActive   bool
+	creativeScrollRow      int
+	creativeScrollDrag     bool
+	creativeScrollOffset   int
+	creativeWheelRemainder int
+	creativeDrag           creativeInventoryDrag
+	creativeHotbars        inventory.CreativeHotbarPresets
+	showAdvancementsGUI    bool
+	showPauseMenu          bool
+	backBtnRect            [4]int
+	quitBtnRect            [4]int
+	isEating               bool
+	eatTimer               float64
+	lastMunchSound         time.Time
+	showDebugF3            bool
+	lastStepTime           time.Time
+	fpsCounter             int
+	currentFPS             int
+	fpsTimer               time.Time
+	lastFrameDuration      float64
+	isChatOpen             bool
+	chatInput              string
+	chatMessages           []render.ChatMessage
+	advancements           map[string]bool
+	isCreative             bool
+	isFlying               bool
+	perspectiveMode        int // 0: 1st person, 1: 3rd person back, 2: 3rd person front
+	lastPlayerHealth       float32
+	hurtFlashTimer         float64
+	currentEyeHeight       float64
+	targetFov              float64
+	equipProgress          float64
+	lastSelectedSlot       int
+	respawnBtnRect         [4]int
+	deathTitleBtnRect      [4]int
 }
 
 func buildSectionMeshSafely(engine *sim.Engine, key [3]int32) (mesh *render.Mesh) {
@@ -5523,11 +5524,7 @@ func runGraphicalWindow(c *Client, w, h int) {
 		if c.showInventoryGUI && c.isCreative && !c.isCraftingTableOpen {
 			items := inventory.SearchCreativeCatalog(c.creativeTab, c.creativeSearch)
 			maxScroll := render.CreativeCatalogMaxScroll(len(items))
-			if delta > 0 && c.creativeScrollRow > 0 {
-				c.creativeScrollRow--
-			} else if delta < 0 && c.creativeScrollRow < maxScroll {
-				c.creativeScrollRow++
-			}
+			c.creativeScrollRow, c.creativeWheelRemainder = scrollCreativeCatalog(c.creativeScrollRow, delta, maxScroll, c.creativeWheelRemainder)
 			return
 		}
 		if c.screenState != ScreenPlaying || c.showPauseMenu || c.showInventoryGUI || c.showAdvancementsGUI || c.isFurnaceOpen || c.isChatOpen || c.player == nil || c.player.Inventory == nil {
@@ -5834,6 +5831,9 @@ func runGraphicalWindow(c *Client, w, h int) {
 							stack := c.creativeHotbars[hit.Index/9][hit.Index%9]
 							if !stack.IsEmpty() {
 								c.cursorItem = inventory.CreativeItemStack(stack.ItemID, btn)
+								if btn == 1 || btn == 2 {
+									c.creativeDrag = creativeInventoryDrag{Active: true, Button: btn, StartIndex: -1}
+								}
 							}
 						}
 						break
@@ -5841,6 +5841,9 @@ func runGraphicalWindow(c *Client, w, h int) {
 					if hit.Index >= 0 && hit.Index < len(items) {
 						item := items[hit.Index]
 						c.cursorItem = inventory.CreativeItemStack(item.ID, btn)
+						if btn == 1 || btn == 2 {
+							c.creativeDrag = creativeInventoryDrag{Active: true, Button: btn, StartIndex: -1}
+						}
 					}
 				case render.SlotInventory:
 					if hit.Index >= 0 && hit.Index < len(c.player.Inventory.Slots) {
@@ -6101,6 +6104,9 @@ func runGraphicalWindow(c *Client, w, h int) {
 		drag := c.creativeDrag
 		c.creativeDrag.reset()
 		if c.player == nil || c.player.Inventory == nil || c.framebuf == nil || !c.showInventoryGUI || !c.isCreative || c.isCraftingTableOpen {
+			return
+		}
+		if drag.StartIndex < 0 && len(drag.TargetSlots) == 0 {
 			return
 		}
 		mx, my := wnd.GetCursorClientPos(c.framebuf.Width, c.framebuf.Height)
