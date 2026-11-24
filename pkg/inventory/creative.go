@@ -105,10 +105,13 @@ func creativeItemRegistryName(itemID int32) string {
 		return block.Name
 	}
 	if egg, ok := SpawnEggByID(itemID); ok {
-		return egg.EntityName
+		return "minecraft:" + egg.EntityName + "_spawn_egg"
 	}
 	if itemID == ItemBoneMeal {
 		return "minecraft:bone_meal"
+	}
+	if name, ok := legacyCreativeRegistryNames[itemID]; ok {
+		return "minecraft:" + name
 	}
 	switch itemID {
 	case ItemCopperHelmet:
@@ -135,6 +138,44 @@ func creativeItemRegistryName(itemID int32) string {
 		return "minecraft:netherite_scrap"
 	}
 	return ""
+}
+
+// legacyCreativeRegistryNames bridges the project's pre-registry numeric item
+// IDs to modern vanilla names for creative search. These IDs remain internal
+// runtime IDs; this map does not claim protocol or save-format compatibility.
+var legacyCreativeRegistryNames = map[int32]string{
+	1: "stone", 2: "grass_block", 3: "dirt", 4: "cobblestone", 5: "oak_planks", 6: "oak_sapling", 7: "bedrock",
+	8: "water", 9: "water", 10: "lava", 11: "lava", 12: "sand", 13: "gravel", 14: "gold_ore", 15: "iron_ore",
+	16: "coal_ore", 17: "oak_log", 18: "oak_leaves", 19: "sponge", 20: "glass", 21: "birch_leaves", 22: "spruce_log",
+	23: "spruce_leaves", 24: "sandstone", 25: "note_block", 31: "short_grass", 32: "dead_bush", 33: "fern",
+	35: "white_wool", 37: "dandelion", 38: "poppy", 41: "gold_block", 42: "iron_block", 43: "smooth_stone_slab",
+	44: "stone_slab", 45: "bricks", 46: "tnt", 47: "bookshelf", 48: "mossy_cobblestone", 49: "obsidian", 50: "torch",
+	52: "spawner", 54: "chest", 56: "diamond_ore", 57: "diamond_block", 58: "crafting_table", 61: "furnace",
+	65: "ladder", 73: "redstone_ore", 74: "lapis_ore", 79: "ice", 80: "snow_block", 81: "cactus", 82: "clay",
+	83: "sugar_cane", 84: "jukebox", 86: "pumpkin", 87: "netherrack", 88: "soul_sand", 89: "glowstone",
+	90: "nether_portal", 91: "jack_o_lantern", 98: "stone_bricks", 103: "melon", 111: "lily_pad", 112: "nether_bricks",
+	119: "end_portal", 120: "end_portal_frame", 121: "end_stone", 122: "dragon_egg", 123: "redstone_lamp",
+	124: "redstone_lamp", 126: "oak_slab", 129: "emerald_ore", 133: "emerald_block", 138: "beacon", 150: "deepslate",
+	152: "redstone_block", 153: "dropper", 154: "hopper", 155: "quartz_block", 159: "white_terracotta",
+	165: "slime_block", 168: "prismarine", 169: "sea_lantern", 170: "hay_block", 172: "terracotta", 173: "coal_block",
+	174: "packed_ice", 179: "red_sandstone", 256: "iron_shovel", 257: "iron_pickaxe", 258: "iron_axe", 259: "flint_and_steel",
+	260: "apple", 261: "bow", 262: "arrow", 263: "coal", 264: "diamond", 265: "iron_ingot", 266: "gold_ingot",
+	267: "iron_sword", 268: "wooden_sword", 269: "wooden_shovel", 270: "wooden_pickaxe", 271: "wooden_axe", 272: "stone_sword",
+	273: "stone_shovel", 274: "stone_pickaxe", 275: "stone_axe", 276: "diamond_sword", 277: "diamond_shovel", 278: "diamond_pickaxe",
+	279: "diamond_axe", 280: "stick", 281: "bowl", 282: "mushroom_stew", 283: "golden_sword", 284: "golden_shovel",
+	285: "golden_pickaxe", 286: "golden_axe", 287: "string", 288: "feather", 289: "gunpowder", 290: "wooden_hoe",
+	291: "stone_hoe", 292: "iron_hoe", 293: "diamond_hoe", 294: "golden_hoe", 295: "wheat_seeds", 296: "wheat",
+	297: "bread", 298: "leather_helmet", 299: "leather_chestplate", 300: "leather_leggings", 301: "leather_boots",
+	302: "chainmail_helmet", 303: "chainmail_chestplate", 304: "chainmail_leggings", 305: "chainmail_boots", 306: "iron_helmet",
+	307: "iron_chestplate", 308: "iron_leggings", 309: "iron_boots", 310: "diamond_helmet", 311: "diamond_chestplate",
+	312: "diamond_leggings", 313: "diamond_boots", 314: "golden_helmet", 315: "golden_chestplate", 316: "golden_leggings",
+	317: "golden_boots", 318: "flint", 319: "porkchop", 320: "cooked_porkchop", 322: "golden_apple", 324: "oak_door",
+	325: "bucket", 326: "water_bucket", 327: "lava_bucket", 328: "minecart", 330: "iron_door", 331: "redstone",
+	332: "snowball", 333: "oak_boat", 334: "leather", 336: "brick", 337: "clay_ball", 340: "book", 342: "chest_minecart",
+	343: "furnace_minecart", 344: "egg", 345: "compass", 346: "fishing_rod", 351: "bone_meal", 352: "bone",
+	359: "shears", 360: "melon_slice", 363: "beef", 364: "cooked_beef", 365: "chicken", 366: "cooked_chicken",
+	367: "rotten_flesh", 368: "ender_pearl", 371: "gold_nugget", 375: "spider_eye", 381: "ender_eye", 383: "slime_spawn_egg",
+	406: "quartz", 423: "mutton", 424: "cooked_mutton",
 }
 
 var creativeCatalog = []CreativeItem{

@@ -651,3 +651,25 @@ func TestLapisLazuliHasCreativeRegistryName(t *testing.T) {
 		t.Fatalf("lapis creative search = %+v, want one lapis lazuli item", items)
 	}
 }
+
+func TestEveryCreativeCatalogItemHasSearchableVanillaRegistryName(t *testing.T) {
+	for _, item := range CreativeCatalog(CreativeAll) {
+		registryName := creativeItemRegistryName(item.ID)
+		if !strings.HasPrefix(registryName, "minecraft:") {
+			t.Errorf("creative item %q (id %d) has no vanilla registry name", item.Name, item.ID)
+			continue
+		}
+		query := strings.TrimPrefix(registryName, "minecraft:")
+		matches := SearchCreativeCatalog(CreativeAll, query)
+		found := false
+		for _, match := range matches {
+			if match.ID == item.ID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("creative item %q (id %d) cannot be found by %q", item.Name, item.ID, query)
+		}
+	}
+}
