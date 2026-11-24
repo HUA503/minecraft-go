@@ -63,16 +63,16 @@ type MobEntity struct {
 	IsAlive        bool
 
 	// Dynamic authentic AI & Animation states
-	WalkDistance   float64 // Continuous walking distance for leg-swing animations
-	IsMoving       bool
-	WanderTicks    int     // Countdown for current wander or idle action
-	IsIdle         bool    // Idle/grazing vs active walking
-	TargetYaw      float32 // Target heading towards which animal smoothly steers
-	HurtTime       int     // Authentic Minecraft hurt flash timer in ticks (10 ticks = 0.5s)
-	LastHurtTime   time.Time // Real-time timestamp of damage to guarantee flash duration resets
-	BurningTicks   int     // Daylight / fire burning tick counter
-	IsAggro        bool    // Hostile aggro state (e.g. Enderman stared at)
-	TeleportTimer  int     // Enderman teleport cooldown
+	WalkDistance  float64 // Continuous walking distance for leg-swing animations
+	IsMoving      bool
+	WanderTicks   int       // Countdown for current wander or idle action
+	IsIdle        bool      // Idle/grazing vs active walking
+	TargetYaw     float32   // Target heading towards which animal smoothly steers
+	HurtTime      int       // Authentic Minecraft hurt flash timer in ticks (10 ticks = 0.5s)
+	LastHurtTime  time.Time // Real-time timestamp of damage to guarantee flash duration resets
+	BurningTicks  int       // Daylight / fire burning tick counter
+	IsAggro       bool      // Hostile aggro state (e.g. Enderman stared at)
+	TeleportTimer int       // Enderman teleport cooldown
 }
 
 // IsHurt returns whether the mob is currently in the authentic 0.5s hurt flash window.
@@ -694,14 +694,15 @@ func (m *MobEntity) DeathDrops() []inventory.ItemStack {
 	case MobSheep:
 		return []inventory.ItemStack{
 			{ItemID: 35, Count: 1},  // White Wool
-			{ItemID: 363, Count: 2}, // Raw Mutton / Beef
+			{ItemID: 423, Count: 2}, // Raw Mutton
 		}
 	case MobChicken:
 		return []inventory.ItemStack{
 			{ItemID: 288, Count: 2}, // Feathers
-			{ItemID: 363, Count: 1}, // Raw Chicken Meat
+			{ItemID: 365, Count: 1}, // Raw Chicken
 		}
 	default:
 		return nil
 	}
 }
+
