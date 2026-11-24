@@ -568,16 +568,20 @@ func TestAddedOreBlocksAreSearchableAndHaveHarvestDrops(t *testing.T) {
 		drop  int32
 		level int
 		tool  ToolType
+		min   int
+		max   int
 	}{
-		"minecraft:copper_ore":            {ItemRawCopper, 1, ToolPickaxe},
-		"minecraft:deepslate_copper_ore":  {ItemRawCopper, 1, ToolPickaxe},
-		"minecraft:deepslate_coal_ore":    {ItemCoal, 0, ToolPickaxe},
-		"minecraft:deepslate_iron_ore":    {ItemRawIron, 1, ToolPickaxe},
-		"minecraft:deepslate_gold_ore":    {ItemRawGold, 2, ToolPickaxe},
-		"minecraft:deepslate_diamond_ore": {ItemDiamond, 2, ToolPickaxe},
-		"minecraft:deepslate_emerald_ore": {ItemEmerald, 2, ToolPickaxe},
-		"minecraft:nether_quartz_ore":     {ItemNetherQuartz, 0, ToolPickaxe},
-		"minecraft:ancient_debris":        {0, 3, ToolPickaxe},
+		"minecraft:copper_ore":             {ItemRawCopper, 1, ToolPickaxe, 2, 5},
+		"minecraft:deepslate_copper_ore":   {ItemRawCopper, 1, ToolPickaxe, 2, 5},
+		"minecraft:deepslate_coal_ore":     {ItemCoal, 0, ToolPickaxe, 1, 1},
+		"minecraft:deepslate_iron_ore":     {ItemRawIron, 1, ToolPickaxe, 1, 1},
+		"minecraft:deepslate_gold_ore":     {ItemRawGold, 2, ToolPickaxe, 1, 1},
+		"minecraft:deepslate_diamond_ore":  {ItemDiamond, 2, ToolPickaxe, 1, 1},
+		"minecraft:deepslate_emerald_ore":  {ItemEmerald, 2, ToolPickaxe, 1, 1},
+		"minecraft:deepslate_lapis_ore":    {ItemLapisLazuli, 1, ToolPickaxe, 4, 9},
+		"minecraft:deepslate_redstone_ore": {331, 2, ToolPickaxe, 4, 5},
+		"minecraft:nether_quartz_ore":      {ItemNetherQuartz, 0, ToolPickaxe, 1, 1},
+		"minecraft:ancient_debris":         {0, 3, ToolPickaxe, 1, 1},
 	}
 	for name, expected := range want {
 		block, ok := ExtendedBlockByName(name)
@@ -590,6 +594,9 @@ func TestAddedOreBlocksAreSearchableAndHaveHarvestDrops(t *testing.T) {
 		}
 		if expected.drop != 0 && block.DropRuntimeID != expected.drop {
 			t.Errorf("%s drop=%d, want %d", name, block.DropRuntimeID, expected.drop)
+		}
+		if min, max := BlockDropCountRange(block.RuntimeID); min != expected.min || max != expected.max {
+			t.Errorf("%s drop count range=(%d,%d), want (%d,%d)", name, min, max, expected.min, expected.max)
 		}
 		found := false
 		for _, item := range SearchCreativeCatalog(CreativeAll, name) {
@@ -635,5 +642,12 @@ func TestNewOreMaterialsHaveSmeltingRecipesAndCreativeEntries(t *testing.T) {
 	}
 	if got := furnace.OutputSlot; got.ItemID != ItemCopperIngot || got.Count != 1 {
 		t.Fatalf("raw copper smelt output = %+v, want 1 copper ingot", got)
+	}
+}
+
+func TestLapisLazuliHasCreativeRegistryName(t *testing.T) {
+	items := SearchCreativeCatalog(CreativeMaterials, "minecraft:lapis_lazuli")
+	if len(items) != 1 || items[0].ID != ItemLapisLazuli {
+		t.Fatalf("lapis creative search = %+v, want one lapis lazuli item", items)
 	}
 }

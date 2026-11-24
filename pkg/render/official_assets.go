@@ -356,6 +356,8 @@ func GetOfficialItemTextureName(itemID int32) string {
 		return "raw_gold"
 	case inventory.ItemEmerald:
 		return "emerald"
+	case inventory.ItemLapisLazuli:
+		return "lapis_lazuli"
 	case inventory.ItemCopperIngot:
 		return "copper_ingot"
 	case inventory.ItemNetheriteScrap:

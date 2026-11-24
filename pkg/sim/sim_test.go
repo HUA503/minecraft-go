@@ -211,18 +211,22 @@ func TestAddedOresRequireTheRightPickaxeAndDropTheirMaterials(t *testing.T) {
 	eng := NewEngine()
 	player := eng.AddPlayer("ore miner", [16]byte{}, Vec3{X: 0.5, Y: 64, Z: 0.5})
 	cases := []struct {
-		name string
-		tool int32
-		drop int32
+		name    string
+		tool    int32
+		drop    int32
+		minDrop int
+		maxDrop int
 	}{
-		{"minecraft:copper_ore", inventory.ItemStonePickaxe, inventory.ItemRawCopper},
-		{"minecraft:deepslate_copper_ore", inventory.ItemStonePickaxe, inventory.ItemRawCopper},
-		{"minecraft:deepslate_coal_ore", inventory.ItemStonePickaxe, inventory.ItemCoal},
-		{"minecraft:deepslate_iron_ore", inventory.ItemStonePickaxe, inventory.ItemRawIron},
-		{"minecraft:deepslate_gold_ore", inventory.ItemIronPickaxe, inventory.ItemRawGold},
-		{"minecraft:deepslate_diamond_ore", inventory.ItemIronPickaxe, inventory.ItemDiamond},
-		{"minecraft:deepslate_emerald_ore", inventory.ItemIronPickaxe, inventory.ItemEmerald},
-		{"minecraft:nether_quartz_ore", inventory.ItemStonePickaxe, inventory.ItemNetherQuartz},
+		{"minecraft:copper_ore", inventory.ItemStonePickaxe, inventory.ItemRawCopper, 2, 5},
+		{"minecraft:deepslate_copper_ore", inventory.ItemStonePickaxe, inventory.ItemRawCopper, 2, 5},
+		{"minecraft:deepslate_coal_ore", inventory.ItemStonePickaxe, inventory.ItemCoal, 1, 1},
+		{"minecraft:deepslate_iron_ore", inventory.ItemStonePickaxe, inventory.ItemRawIron, 1, 1},
+		{"minecraft:deepslate_gold_ore", inventory.ItemIronPickaxe, inventory.ItemRawGold, 1, 1},
+		{"minecraft:deepslate_diamond_ore", inventory.ItemIronPickaxe, inventory.ItemDiamond, 1, 1},
+		{"minecraft:deepslate_emerald_ore", inventory.ItemIronPickaxe, inventory.ItemEmerald, 1, 1},
+		{"minecraft:deepslate_lapis_ore", inventory.ItemStonePickaxe, inventory.ItemLapisLazuli, 4, 9},
+		{"minecraft:deepslate_redstone_ore", inventory.ItemIronPickaxe, 331, 4, 5},
+		{"minecraft:nether_quartz_ore", inventory.ItemStonePickaxe, inventory.ItemNetherQuartz, 1, 1},
 	}
 	for i, tc := range cases {
 		block, ok := inventory.ExtendedBlockByName(tc.name)
@@ -235,8 +239,23 @@ func TestAddedOresRequireTheRightPickaxeAndDropTheirMaterials(t *testing.T) {
 			t.Fatalf("hand mined %s as (%d, %v), want no drop", tc.name, got, harvested)
 		}
 		eng.SetBlock(pos.X, pos.Y, pos.Z, block.RuntimeID)
+		previousDrops := len(eng.GetItemDrops())
 		if got, harvested := eng.BreakBlockWithTool(player.ID, pos, tc.tool); !harvested || got != tc.drop {
 			t.Fatalf("proper pickaxe mined %s as (%d, %v), want drop %d", tc.name, got, harvested, tc.drop)
+		}
+		drops := eng.GetItemDrops()
+		if len(drops) != previousDrops+1 {
+			t.Fatalf("mining %s created %d drops, want one", tc.name, len(drops)-previousDrops)
+		}
+		gotCount := 0
+		for _, drop := range drops {
+			if drop.ItemID == tc.drop && drop.Position.X == float64(pos.X)+0.5 {
+				gotCount = drop.Count
+				break
+			}
+		}
+		if gotCount < tc.minDrop || gotCount > tc.maxDrop {
+			t.Fatalf("mining %s dropped %d items, want range %d..%d", tc.name, gotCount, tc.minDrop, tc.maxDrop)
 		}
 	}
 	ancientDebris, _ := inventory.ExtendedBlockByName("minecraft:ancient_debris")
@@ -248,6 +267,30 @@ func TestAddedOresRequireTheRightPickaxeAndDropTheirMaterials(t *testing.T) {
 	eng.SetBlock(pos.X, pos.Y, pos.Z, ancientDebris.RuntimeID)
 	if got, harvested := eng.BreakBlockWithTool(player.ID, pos, inventory.ItemDiamondPickaxe); !harvested || got != ancientDebris.RuntimeID {
 		t.Fatalf("diamond pickaxe mined ancient debris as (%d, %v), want the block item %d", got, harvested, ancientDebris.RuntimeID)
+	}
+}
+
+func TestLegacyOreMiningUsesVanillaToolAndDropRules(t *testing.T) {
+	eng := NewEngine()
+	player := eng.AddPlayer("ore miner", [16]byte{}, Vec3{X: 0.5, Y: 64, Z: 0.5})
+	pos := world.BlockPos{X: 2, Y: 64, Z: 0}
+	eng.SetBlock(pos.X, pos.Y, pos.Z, 73) // Redstone ore
+	if got := eng.BreakBlock(player.ID, pos); got != inventory.ItemAir {
+		t.Fatalf("hand-mined redstone ore drop=%d, want no drop", got)
+	}
+	eng.SetBlock(pos.X, pos.Y, pos.Z, 73)
+	player.Inventory.Slots[0] = inventory.ItemStack{ItemID: inventory.ItemIronPickaxe, Count: 1}
+	if got := eng.BreakBlock(player.ID, pos); got != 331 {
+		t.Fatalf("iron-pickaxe redstone drop=%d, want redstone dust", got)
+	}
+	count := 0
+	for _, stack := range player.Inventory.Slots {
+		if stack.ItemID == 331 {
+			count += stack.Count
+		}
+	}
+	if count < 4 || count > 5 {
+		t.Fatalf("redstone drop count=%d, want 4..5", count)
 	}
 }
 
@@ -290,6 +333,8 @@ func TestMiningDropsToInventory(t *testing.T) {
 	}
 
 	// 2. Break Diamond Ore (56) -> drops Diamond (264)
+	p.Inventory.Slots[1] = inventory.ItemStack{ItemID: inventory.ItemIronPickaxe, Count: 1}
+	p.Inventory.SelectedHotbar = 1
 	eng.SetBlock(2, 64, 0, 56)
 	drop = eng.BreakBlock(p.ID, world.BlockPos{X: 2, Y: 64, Z: 0})
 	if drop != inventory.ItemDiamond {

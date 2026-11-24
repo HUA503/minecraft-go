@@ -127,6 +127,8 @@ func creativeItemRegistryName(itemID int32) string {
 		return "minecraft:raw_gold"
 	case ItemEmerald:
 		return "minecraft:emerald"
+	case ItemLapisLazuli:
+		return "minecraft:lapis_lazuli"
 	case ItemCopperIngot:
 		return "minecraft:copper_ingot"
 	case ItemNetheriteScrap:
@@ -167,7 +169,7 @@ var creativeCatalog = []CreativeItem{
 	{302, "锁链头盔", CreativeCombat}, {303, "锁链胸甲", CreativeCombat}, {304, "锁链护腿", CreativeCombat}, {305, "锁链靴子", CreativeCombat},
 	{314, "金头盔", CreativeCombat}, {315, "金胸甲", CreativeCombat}, {316, "金护腿", CreativeCombat}, {317, "金靴子", CreativeCombat},
 	{ItemCopperHelmet, "铜头盔", CreativeCombat}, {ItemCopperChestplate, "铜胸甲", CreativeCombat}, {ItemCopperLeggings, "铜护腿", CreativeCombat}, {ItemCopperBoots, "铜靴子", CreativeCombat},
-	{ItemRawCopper, "粗铜", CreativeMaterials}, {ItemRawIron, "粗铁", CreativeMaterials}, {ItemRawGold, "粗金", CreativeMaterials}, {ItemEmerald, "绿宝石", CreativeMaterials}, {ItemCopperIngot, "铜锭", CreativeMaterials}, {ItemNetheriteScrap, "下界合金碎片", CreativeMaterials},
+	{ItemRawCopper, "粗铜", CreativeMaterials}, {ItemRawIron, "粗铁", CreativeMaterials}, {ItemRawGold, "粗金", CreativeMaterials}, {ItemEmerald, "绿宝石", CreativeMaterials}, {ItemLapisLazuli, "青金石", CreativeMaterials}, {ItemCopperIngot, "铜锭", CreativeMaterials}, {ItemNetheriteScrap, "下界合金碎片", CreativeMaterials},
 
 	{262, "箭", CreativeMaterials}, {263, "煤炭", CreativeMaterials}, {264, "钻石", CreativeMaterials}, {265, "铁锭", CreativeMaterials}, {266, "金锭", CreativeMaterials},
 	{280, "木棍", CreativeMaterials}, {331, "红石粉", CreativeRedstone}, {352, "骨头", CreativeMaterials}, {351, "骨粉", CreativeMaterials}, {288, "羽毛", CreativeMaterials},

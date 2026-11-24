@@ -90,6 +90,9 @@ var BlockRequiredHarvestLevel = map[int32]int{
 	15:              1, // Iron ore: Stone pickaxe or better
 	14:              2, // Gold ore: Iron pickaxe or better
 	56:              2, // Diamond ore: Iron pickaxe or better
+	73:              2, // Redstone ore: Iron pickaxe or better
+	74:              1, // Lapis lazuli ore: Stone pickaxe or better
+	129:             2, // Emerald ore: Iron pickaxe or better
 	49:              3, // Obsidian: Diamond pickaxe only
 }
 
@@ -99,7 +102,7 @@ func IsPickaxeEffective(blockID int32) bool {
 		return definition.HarvestTool == ToolPickaxe
 	}
 	switch blockID {
-	case ItemStone, ItemCobblestone, ItemFurnace, 14, 15, 16, 56, 49:
+	case ItemStone, ItemCobblestone, ItemFurnace, 14, 15, 16, 56, 73, 74, 129, 49:
 		return true
 	default:
 		return false

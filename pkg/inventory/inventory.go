@@ -117,6 +117,7 @@ const (
 	ItemEmerald          int32 = 13007
 	ItemCopperIngot      int32 = 13008
 	ItemNetheriteScrap   int32 = 13009
+	ItemLapisLazuli      int32 = 13010
 
 	// Utility, materials, and blocks
 	ItemBucket        int32 = 325

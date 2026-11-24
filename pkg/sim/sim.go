@@ -925,8 +925,18 @@ func (e *Engine) BreakBlockWithTool(playerID int32, pos world.BlockPos, toolID i
 			dropItem = inventory.ItemOakLog
 		case 16: // Coal Ore -> Coal
 			dropItem = inventory.ItemCoal
+		case 14: // Gold Ore -> Raw Gold
+			dropItem = inventory.ItemRawGold
+		case 15: // Iron Ore -> Raw Iron
+			dropItem = inventory.ItemRawIron
 		case 56: // Diamond Ore -> Diamond
 			dropItem = inventory.ItemDiamond
+		case 73: // Redstone Ore -> Redstone Dust
+			dropItem = 331
+		case 74: // Lapis Ore -> Lapis Lazuli
+			dropItem = inventory.ItemLapisLazuli
+		case 129: // Emerald Ore -> Emerald
+			dropItem = inventory.ItemEmerald
 		case 58: // Crafting Table
 			dropItem = inventory.ItemCraftingTable
 		case 61, 62: // Furnace, Lit Furnace -> drops Furnace (61)
@@ -941,12 +951,13 @@ func (e *Engine) BreakBlockWithTool(playerID int32, pos world.BlockPos, toolID i
 		}
 
 		dropPos := Vec3{X: float64(pos.X) + 0.5, Y: float64(pos.Y) + 0.5, Z: float64(pos.Z) + 0.5}
+		dropCount := e.rollBlockDropCount(origBlock)
 		e.mu.Lock()
 		e.nextItemDropID++
 		e.ItemDrops[e.nextItemDropID] = &ItemDrop{
 			ID:          e.nextItemDropID,
 			ItemID:      dropItem,
-			Count:       1,
+			Count:       dropCount,
 			Position:    dropPos,
 			Velocity:    Vec3{X: 0, Y: 0.18, Z: 0},
 			PickupDelay: 0.4,
@@ -1017,8 +1028,18 @@ func (e *Engine) BreakBlock(playerID int32, pos world.BlockPos) int32 {
 		dropItem = inventory.ItemDirt
 	case 16: // Coal Ore -> Coal
 		dropItem = inventory.ItemCoal
+	case 14: // Gold Ore -> Raw Gold
+		dropItem = inventory.ItemRawGold
+	case 15: // Iron Ore -> Raw Iron
+		dropItem = inventory.ItemRawIron
 	case 56: // Diamond Ore -> Diamond
 		dropItem = inventory.ItemDiamond
+	case 73: // Redstone Ore -> Redstone Dust
+		dropItem = 331
+	case 74: // Lapis Ore -> Lapis Lazuli
+		dropItem = inventory.ItemLapisLazuli
+	case 129: // Emerald Ore -> Emerald
+		dropItem = inventory.ItemEmerald
 	}
 	if definition, ok := inventory.ExtendedBlockByID(origBlock); ok {
 		if definition.DropRuntimeID != 0 {
@@ -1036,14 +1057,41 @@ func (e *Engine) BreakBlock(playerID int32, pos world.BlockPos) int32 {
 			}
 		}
 	}
+	switch origBlock {
+	case 14, 15, 16, 56, 73, 74, 129:
+		toolID := inventory.ItemAir
+		e.mu.RLock()
+		if player, ok := e.Players[playerID]; ok && player.Inventory != nil {
+			toolID = player.Inventory.GetSelectedItem().ItemID
+		}
+		e.mu.RUnlock()
+		if !inventory.CanHarvestBlock(toolID, origBlock) {
+			dropItem = inventory.ItemAir
+		}
+	}
 
+	dropCount := 0
+	if dropItem != inventory.ItemAir {
+		dropCount = e.rollBlockDropCount(origBlock)
+	}
 	e.mu.Lock()
 	if p, ok := e.Players[playerID]; ok && p.Inventory != nil && dropItem != inventory.ItemAir {
-		p.Inventory.AddItem(dropItem, 1)
+		p.Inventory.AddItem(dropItem, dropCount)
 	}
 	e.mu.Unlock()
 
 	return dropItem
+}
+
+func (e *Engine) rollBlockDropCount(blockID int32) int {
+	minCount, maxCount := inventory.BlockDropCountRange(blockID)
+	if maxCount <= minCount {
+		return minCount
+	}
+	e.mu.Lock()
+	random := e.nextRandomTickValueLocked()
+	e.mu.Unlock()
+	return minCount + int(random%uint64(maxCount-minCount+1))
 }
 
 // PlaceBlock places a block if it does not intersect the player's bounding box.

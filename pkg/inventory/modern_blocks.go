@@ -15,7 +15,16 @@ type ExtendedBlockDefinition struct {
 	RequiresHarvestTool  bool
 	RequiredHarvestLevel int
 	DropRuntimeID        int32
+	DropCountMin         int
+	DropCountMax         int
 	StrippedVariantID    int32
+}
+
+var modernOreDropRanges = map[string][2]int{
+	"minecraft:copper_ore":             {2, 5},
+	"minecraft:deepslate_copper_ore":   {2, 5},
+	"minecraft:deepslate_lapis_ore":    {4, 9},
+	"minecraft:deepslate_redstone_ore": {4, 5},
 }
 
 var extendedBlockDefinitions = append(append(append([]ExtendedBlockDefinition{
@@ -135,6 +144,8 @@ func modernFullCubeDefinitions() []ExtendedBlockDefinition {
 		{"deepslate_gold_ore", "深层金矿石", "deepslate_gold_ore", "deepslate_gold_ore", "deepslate_gold_ore", CreativeNatural, 4.5, ToolPickaxe, true, 2, "raw_gold"},
 		{"deepslate_diamond_ore", "深层钻石矿石", "deepslate_diamond_ore", "deepslate_diamond_ore", "deepslate_diamond_ore", CreativeNatural, 4.5, ToolPickaxe, true, 2, "diamond"},
 		{"deepslate_emerald_ore", "深层绿宝石矿石", "deepslate_emerald_ore", "deepslate_emerald_ore", "deepslate_emerald_ore", CreativeNatural, 4.5, ToolPickaxe, true, 2, "emerald"},
+		{"deepslate_lapis_ore", "深层青金石矿石", "deepslate_lapis_ore", "deepslate_lapis_ore", "deepslate_lapis_ore", CreativeNatural, 4.5, ToolPickaxe, true, 1, "lapis_lazuli"},
+		{"deepslate_redstone_ore", "深层红石矿石", "deepslate_redstone_ore", "deepslate_redstone_ore", "deepslate_redstone_ore", CreativeNatural, 4.5, ToolPickaxe, true, 2, "redstone"},
 		{"nether_quartz_ore", "下界石英矿石", "nether_quartz_ore", "nether_quartz_ore", "nether_quartz_ore", CreativeNatural, 3.0, ToolPickaxe, true, 0, "quartz"},
 		{"ancient_debris", "远古残骸", "ancient_debris_top", "ancient_debris_top", "ancient_debris_side", CreativeNatural, 30.0, ToolPickaxe, true, 3, ""},
 	}
@@ -156,8 +167,13 @@ func modernFullCubeDefinitions() []ExtendedBlockDefinition {
 				definition.DropRuntimeID = map[string]int32{
 					"raw_copper": ItemRawCopper, "raw_iron": ItemRawIron, "raw_gold": ItemRawGold,
 					"coal": ItemCoal, "diamond": ItemDiamond, "emerald": ItemEmerald, "quartz": ItemNetherQuartz,
+					"lapis_lazuli": ItemLapisLazuli, "redstone": 331,
 				}[block.drop]
 			}
+		}
+		if dropRange, ok := modernOreDropRanges[definition.Name]; ok {
+			definition.DropCountMin = dropRange[0]
+			definition.DropCountMax = dropRange[1]
 		}
 		definitions = append(definitions, definition)
 		extendedBlockDisplayNames[definition.Name] = block.display
@@ -265,6 +281,21 @@ func ExtendedBlockByID(runtimeID int32) (ExtendedBlockDefinition, bool) {
 func ExtendedBlockByName(name string) (ExtendedBlockDefinition, bool) {
 	definition, ok := extendedBlockByName[name]
 	return definition, ok
+}
+
+// BlockDropCountRange returns the base quantity range before enchantment bonuses.
+func BlockDropCountRange(blockID int32) (int, int) {
+	if definition, ok := ExtendedBlockByID(blockID); ok && definition.DropCountMin > 0 && definition.DropCountMax >= definition.DropCountMin {
+		return definition.DropCountMin, definition.DropCountMax
+	}
+	switch blockID {
+	case 73: // Redstone ore
+		return 4, 5
+	case 74: // Lapis lazuli ore
+		return 4, 9
+	default:
+		return 1, 1
+	}
 }
 
 // StrippedWoodBlockVariant returns the stripped-log or stripped-stem runtime ID
