@@ -107,17 +107,22 @@ const (
 
 	// Copper armor uses project-local IDs because the legacy item-ID space is
 	// occupied by the existing compatibility catalog.
-	ItemCopperHelmet     int32 = 13000
-	ItemCopperChestplate int32 = 13001
-	ItemCopperLeggings   int32 = 13002
-	ItemCopperBoots      int32 = 13003
-	ItemRawCopper        int32 = 13004
-	ItemRawIron          int32 = 13005
-	ItemRawGold          int32 = 13006
-	ItemEmerald          int32 = 13007
-	ItemCopperIngot      int32 = 13008
-	ItemNetheriteScrap   int32 = 13009
-	ItemLapisLazuli      int32 = 13010
+	ItemCopperHelmet        int32 = 13000
+	ItemCopperChestplate    int32 = 13001
+	ItemCopperLeggings      int32 = 13002
+	ItemCopperBoots         int32 = 13003
+	ItemRawCopper           int32 = 13004
+	ItemRawIron             int32 = 13005
+	ItemRawGold             int32 = 13006
+	ItemEmerald             int32 = 13007
+	ItemCopperIngot         int32 = 13008
+	ItemNetheriteScrap      int32 = 13009
+	ItemLapisLazuli         int32 = 13010
+	ItemNetheriteIngot      int32 = 13011
+	ItemNetheriteHelmet     int32 = 13012
+	ItemNetheriteChestplate int32 = 13013
+	ItemNetheriteLeggings   int32 = 13014
+	ItemNetheriteBoots      int32 = 13015
 
 	// Utility, materials, and blocks
 	ItemBucket        int32 = 325
@@ -313,6 +318,9 @@ func CalculateArmorProtection(armor [4]ItemStack) ArmorProtection {
 		case 313:
 			protection.Defense += 3 // diamond boots
 			protection.Toughness += 2
+		case ItemNetheriteBoots:
+			protection.Defense += 3
+			protection.Toughness += 3
 		case 309:
 			protection.Defense += 2 // iron boots
 		case 300:
@@ -324,6 +332,9 @@ func CalculateArmorProtection(armor [4]ItemStack) ArmorProtection {
 		case 312:
 			protection.Defense += 6 // diamond leggings
 			protection.Toughness += 2
+		case ItemNetheriteLeggings:
+			protection.Defense += 6
+			protection.Toughness += 3
 		case 316:
 			protection.Defense += 3 // gold leggings
 		case 299:
@@ -335,6 +346,9 @@ func CalculateArmorProtection(armor [4]ItemStack) ArmorProtection {
 		case 311:
 			protection.Defense += 8 // diamond chestplate
 			protection.Toughness += 2
+		case ItemNetheriteChestplate:
+			protection.Defense += 8
+			protection.Toughness += 3
 		case 315:
 			protection.Defense += 5 // gold chestplate
 		case 302:
@@ -344,6 +358,9 @@ func CalculateArmorProtection(armor [4]ItemStack) ArmorProtection {
 		case 310:
 			protection.Defense += 3 // diamond helmet
 			protection.Toughness += 2
+		case ItemNetheriteHelmet:
+			protection.Defense += 3
+			protection.Toughness += 3
 		case 314:
 			protection.Defense += 2 // gold helmet
 		case ItemCopperBoots:
@@ -363,13 +380,13 @@ func CalculateArmorProtection(armor [4]ItemStack) ArmorProtection {
 // Slot order is boots, leggings, chestplate, helmet.
 func ArmorSlotForItem(itemID int32) (int, bool) {
 	switch itemID {
-	case 301, 305, 309, 313, 317, ItemCopperBoots:
+	case 301, 305, 309, 313, 317, ItemCopperBoots, ItemNetheriteBoots:
 		return 0, true
-	case 300, 304, 308, 312, 316, ItemCopperLeggings:
+	case 300, 304, 308, 312, 316, ItemCopperLeggings, ItemNetheriteLeggings:
 		return 1, true
-	case 299, 303, 307, 311, 315, ItemCopperChestplate:
+	case 299, 303, 307, 311, 315, ItemCopperChestplate, ItemNetheriteChestplate:
 		return 2, true
-	case 298, 302, 306, 310, 314, ItemCopperHelmet:
+	case 298, 302, 306, 310, 314, ItemCopperHelmet, ItemNetheriteHelmet:
 		return 3, true
 	default:
 		return 0, false
@@ -414,7 +431,7 @@ func GetMaxStackSize(itemID int32) int {
 		return 1
 	}
 	// Armor (Leather 298-301, Chainmail 302-305, Iron 306-309, Diamond 310-313, Gold 314-317)
-	if (itemID >= 298 && itemID <= 317) || (itemID >= ItemCopperHelmet && itemID <= ItemCopperBoots) {
+	if (itemID >= 298 && itemID <= 317) || (itemID >= ItemCopperHelmet && itemID <= ItemCopperBoots) || (itemID >= ItemNetheriteHelmet && itemID <= ItemNetheriteBoots) {
 		return 1
 	}
 	// Non-stackable tools, weapons, and accessories

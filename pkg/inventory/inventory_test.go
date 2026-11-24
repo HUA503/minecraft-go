@@ -563,6 +563,35 @@ func TestCopperArmorIsSearchableAndHasVanillaProtection(t *testing.T) {
 	}
 }
 
+func TestNetheriteArmorHasCreativeItemsStackLimitsAndVanillaProtection(t *testing.T) {
+	for _, tc := range []struct {
+		id   int32
+		slot int
+		name string
+	}{{ItemNetheriteBoots, 0, "netherite_boots"}, {ItemNetheriteLeggings, 1, "netherite_leggings"}, {ItemNetheriteChestplate, 2, "netherite_chestplate"}, {ItemNetheriteHelmet, 3, "netherite_helmet"}} {
+		if slot, ok := ArmorSlotForItem(tc.id); !ok || slot != tc.slot {
+			t.Errorf("netherite armor %d slot=(%d,%t), want %d", tc.id, slot, ok, tc.slot)
+		}
+		if GetMaxStackSize(tc.id) != 1 {
+			t.Errorf("netherite armor %d max stack=%d, want 1", tc.id, GetMaxStackSize(tc.id))
+		}
+		if found := SearchCreativeCatalog(CreativeCombat, tc.name); len(found) != 1 || found[0].ID != tc.id {
+			t.Errorf("creative search %q = %+v", tc.name, found)
+		}
+	}
+	if found := SearchCreativeCatalog(CreativeMaterials, "minecraft:netherite_ingot"); len(found) != 1 || found[0].ID != ItemNetheriteIngot {
+		t.Fatalf("netherite ingot creative search = %+v", found)
+	}
+	var armor [4]ItemStack
+	armor[0] = ItemStack{ItemID: ItemNetheriteBoots, Count: 1}
+	armor[1] = ItemStack{ItemID: ItemNetheriteLeggings, Count: 1}
+	armor[2] = ItemStack{ItemID: ItemNetheriteChestplate, Count: 1}
+	armor[3] = ItemStack{ItemID: ItemNetheriteHelmet, Count: 1}
+	if got := CalculateArmorProtection(armor); got.Defense != 20 || got.Toughness != 12 {
+		t.Fatalf("full netherite protection=%+v, want 20 defense and 12 toughness", got)
+	}
+}
+
 func TestAddedOreBlocksAreSearchableAndHaveHarvestDrops(t *testing.T) {
 	want := map[string]struct {
 		drop  int32

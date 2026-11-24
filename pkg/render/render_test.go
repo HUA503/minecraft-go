@@ -799,6 +799,20 @@ func TestCopperArmorHasOfficialCreativeTextures(t *testing.T) {
 	}
 }
 
+func TestNetheriteArmorAndIngotHaveOfficialCreativeTextures(t *testing.T) {
+	for _, tc := range []struct {
+		id   int32
+		name string
+	}{{inventory.ItemNetheriteIngot, "netherite_ingot"}, {inventory.ItemNetheriteHelmet, "netherite_helmet"}, {inventory.ItemNetheriteChestplate, "netherite_chestplate"}, {inventory.ItemNetheriteLeggings, "netherite_leggings"}, {inventory.ItemNetheriteBoots, "netherite_boots"}} {
+		if got := GetOfficialItemTextureName(tc.id); got != tc.name {
+			t.Errorf("netherite item %d texture = %q, want %q", tc.id, got, tc.name)
+		}
+		if _, ok := GetOfficialItemSprite(tc.id); !ok {
+			t.Errorf("netherite item %d has no embedded vanilla icon", tc.id)
+		}
+	}
+}
+
 func TestDrawCloudsAestheticsAndDepth(t *testing.T) {
 	fb := NewFramebuffer(160, 120)
 	fb.ClearSky()
