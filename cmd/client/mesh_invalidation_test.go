@@ -2,8 +2,10 @@ package main
 
 import (
 	"testing"
+	"time"
 
 	"github.com/HUA503/minecraft-go/pkg/render"
+	"github.com/HUA503/minecraft-go/pkg/sim"
 	"github.com/HUA503/minecraft-go/pkg/world"
 )
 
@@ -78,3 +80,30 @@ func TestChunkMeshInvalidationIncludesDiagonalColumns(t *testing.T) {
 	}
 }
 
+func TestRebuildAffectedMeshesInitializesZeroValueCacheBeforeWorkerRuns(t *testing.T) {
+	client := &Client{engine: sim.NewEngine()}
+	client.RebuildAffectedMeshes(world.BlockPos{X: 8, Y: 64, Z: 8})
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		client.meshJobsMu.Lock()
+		pending, running := len(client.meshJobsPending), len(client.meshJobsRunning)
+		client.meshJobsMu.Unlock()
+		if pending == 0 && running == 0 {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	client.meshJobsMu.Lock()
+	pending, running := len(client.meshJobsPending), len(client.meshJobsRunning)
+	client.meshJobsMu.Unlock()
+	if pending != 0 || running != 0 {
+		t.Fatalf("mesh jobs did not drain: pending=%d running=%d", pending, running)
+	}
+	client.meshMu.RLock()
+	cacheInitialized := client.meshCache != nil
+	client.meshMu.RUnlock()
+	if !cacheInitialized {
+		t.Fatal("background mesh job completed without an initialized cache map")
+	}
+}

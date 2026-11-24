@@ -110,6 +110,51 @@ func TestCreativeCursorDragSkipsIncompatibleAndInvalidTargets(t *testing.T) {
 	}
 }
 
+func TestCreativePresetSlotClickTakesAndPlacesWithVanillaSemantics(t *testing.T) {
+	var presets inventory.CreativeHotbarPresets
+	presets[0][2] = inventory.ItemStack{ItemID: inventory.ItemStone, Count: 12, Damage: 3}
+	cursor := inventory.ItemStack{}
+	if !applyCreativeHotbarPresetClick(&presets, &cursor, 2, 2) {
+		t.Fatal("right-click did not take half of saved preset stack")
+	}
+	if cursor.ItemID != inventory.ItemStone || cursor.Count != 6 || cursor.Damage != 3 || presets[0][2].Count != 6 {
+		t.Fatalf("right-click take cursor=%+v slot=%+v", cursor, presets[0][2])
+	}
+	if !applyCreativeHotbarPresetClick(&presets, &cursor, 3, 1) {
+		t.Fatal("left-click did not place cursor into an empty preset slot")
+	}
+	if !cursor.IsEmpty() || presets[0][3] != (inventory.ItemStack{ItemID: inventory.ItemStone, Count: 6, Damage: 3}) {
+		t.Fatalf("left-click place cursor=%+v target=%+v", cursor, presets[0][3])
+	}
+}
+
+func TestCreativePresetDragDistributesAndPersistsStackData(t *testing.T) {
+	var presets inventory.CreativeHotbarPresets
+	presets[1][0] = inventory.ItemStack{ItemID: inventory.ItemStone, Count: 62, Damage: 4}
+	cursor := inventory.ItemStack{ItemID: inventory.ItemStone, Count: 6, Damage: 4}
+	placed := distributeCreativePresetCursor(&presets, &cursor, []int{9, 10, 10, 99}, 1)
+	if placed != 5 || cursor.Count != 1 {
+		t.Fatalf("placed=%d cursor=%+v, want 5 placed and one remaining", placed, cursor)
+	}
+	if presets[1][0] != (inventory.ItemStack{ItemID: inventory.ItemStone, Count: 64, Damage: 4}) || presets[1][1] != (inventory.ItemStack{ItemID: inventory.ItemStone, Count: 3, Damage: 4}) {
+		t.Fatalf("preset stacks after drag = %+v %+v", presets[1][0], presets[1][1])
+	}
+}
+
+func TestCreativePresetDragExcludesSourceAndDuplicateTargets(t *testing.T) {
+	drag := creativeInventoryDrag{SourcePresetIndex: 4, SourceIsPreset: true}
+	drag.addPresetTarget(4)
+	drag.addPresetTarget(5)
+	drag.addPresetTarget(5)
+	if len(drag.TargetPresetSlots) != 1 || drag.TargetPresetSlots[0] != 5 {
+		t.Fatalf("preset targets=%v, want only slot 5", drag.TargetPresetSlots)
+	}
+	drag.reset()
+	if drag.Active || len(drag.TargetPresetSlots) != 0 || drag.SourceIsPreset {
+		t.Fatalf("drag reset left stale state: %+v", drag)
+	}
+}
+
 func TestCreativeCatalogWheelUsesWin32NotchesAndRetainsRemainder(t *testing.T) {
 	row, remainder := scrollCreativeCatalog(5, 60, 20, 0)
 	if row != 5 || remainder != 60 {

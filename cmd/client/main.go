@@ -1738,6 +1738,9 @@ func (c *Client) RebuildAffectedMeshes(pos world.BlockPos) {
 	keys := affectedMeshSections(pos)
 	jobs := make([]sectionMeshJob, len(keys))
 	c.meshMu.Lock()
+	if c.meshCache == nil {
+		c.meshCache = make(map[[3]int32]*render.Mesh)
+	}
 	if c.meshRevisions == nil {
 		c.meshRevisions = make(map[[3]int32]uint64)
 	}
@@ -5545,6 +5548,8 @@ func runGraphicalWindow(c *Client, w, h int) {
 				hit := render.HitTestCreativeInventory(c.framebuf.Width, c.framebuf.Height, c.creativeTab, c.creativeSearch, c.creativeScrollRow, mx, my, c.creativeHotbars)
 				if hit.Type == render.SlotInventory {
 					c.creativeDrag.addTarget(hit.Index)
+				} else if c.creativeTab == inventory.CreativeHotbar && hit.Type == render.SlotCreativeItem {
+					c.creativeDrag.addPresetTarget(hit.Index)
 				}
 			}
 		}
@@ -5827,14 +5832,18 @@ func runGraphicalWindow(c *Client, w, h int) {
 					c.creativeSearchActive = false
 					items := inventory.SearchCreativeCatalog(c.creativeTab, c.creativeSearch)
 					if c.creativeTab == inventory.CreativeHotbar {
-						if hit.Index >= 0 && hit.Index < 81 {
-							stack := c.creativeHotbars[hit.Index/9][hit.Index%9]
-							if !stack.IsEmpty() {
-								c.cursorItem = inventory.CreativeItemStack(stack.ItemID, btn)
-								if btn == 1 || btn == 2 {
-									c.creativeDrag = creativeInventoryDrag{Active: true, Button: btn, StartIndex: -1}
+						if hit.Index < 0 || hit.Index >= 81 || (btn != 1 && btn != 2) {
+							break
+						}
+						if c.cursorItem.IsEmpty() {
+							if applyCreativeHotbarPresetClick(&c.creativeHotbars, &c.cursorItem, hit.Index, btn) {
+								if err := saveCreativeHotbarPresets(c.creativeHotbars); err != nil {
+									log.Printf("[Creative] Failed to save hotbar presets: %v", err)
 								}
+								c.creativeDrag = creativeInventoryDrag{Active: true, Button: btn, StartIndex: -1, SourcePresetIndex: hit.Index, SourceIsPreset: true}
 							}
+						} else {
+							c.creativeDrag = creativeInventoryDrag{Active: true, Button: btn, StartIndex: -1, TargetPresetSlots: []int{hit.Index}}
 						}
 						break
 					}
@@ -6106,13 +6115,31 @@ func runGraphicalWindow(c *Client, w, h int) {
 		if c.player == nil || c.player.Inventory == nil || c.framebuf == nil || !c.showInventoryGUI || !c.isCreative || c.isCraftingTableOpen {
 			return
 		}
-		if drag.StartIndex < 0 && len(drag.TargetSlots) == 0 {
+		if drag.StartIndex < 0 && len(drag.TargetSlots) == 0 && len(drag.TargetPresetSlots) == 0 {
 			return
 		}
 		mx, my := wnd.GetCursorClientPos(c.framebuf.Width, c.framebuf.Height)
 		hit := render.HitTestCreativeInventory(c.framebuf.Width, c.framebuf.Height, c.creativeTab, c.creativeSearch, c.creativeScrollRow, mx, my, c.creativeHotbars)
 		if hit.Type == render.SlotInventory {
 			drag.addTarget(hit.Index)
+		} else if c.creativeTab == inventory.CreativeHotbar && hit.Type == render.SlotCreativeItem {
+			drag.addPresetTarget(hit.Index)
+		}
+		if len(drag.TargetPresetSlots) >= 2 {
+			if distributeCreativePresetCursor(&c.creativeHotbars, &c.cursorItem, drag.TargetPresetSlots, btn) > 0 {
+				if err := saveCreativeHotbarPresets(c.creativeHotbars); err != nil {
+					log.Printf("[Creative] Failed to save hotbar presets: %v", err)
+				}
+			}
+			return
+		}
+		if len(drag.TargetPresetSlots) == 1 {
+			if applyCreativeHotbarPresetClick(&c.creativeHotbars, &c.cursorItem, drag.TargetPresetSlots[0], btn) {
+				if err := saveCreativeHotbarPresets(c.creativeHotbars); err != nil {
+					log.Printf("[Creative] Failed to save hotbar presets: %v", err)
+				}
+			}
+			return
 		}
 		if len(drag.TargetSlots) >= 2 && distributeCreativeCursor(c.player.Inventory, &c.cursorItem, drag.TargetSlots, btn) > 0 {
 			return
