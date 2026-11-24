@@ -95,6 +95,9 @@ var BlockRequiredHarvestLevel = map[int32]int{
 
 // IsPickaxeEffective returns true if block is best mined by a pickaxe.
 func IsPickaxeEffective(blockID int32) bool {
+	if definition, ok := ExtendedBlockByID(blockID); ok {
+		return definition.HarvestTool == ToolPickaxe
+	}
 	switch blockID {
 	case ItemStone, ItemCobblestone, ItemFurnace, 14, 15, 16, 56, 49:
 		return true
@@ -105,6 +108,9 @@ func IsPickaxeEffective(blockID int32) bool {
 
 // IsAxeEffective returns true if block is best mined by an axe.
 func IsAxeEffective(blockID int32) bool {
+	if definition, ok := ExtendedBlockByID(blockID); ok {
+		return definition.HarvestTool == ToolAxe
+	}
 	switch blockID {
 	case ItemOakLog, ItemOakPlanks, ItemCraftingTable:
 		return true
@@ -115,6 +121,9 @@ func IsAxeEffective(blockID int32) bool {
 
 // IsShovelEffective returns true if block is best mined by a shovel.
 func IsShovelEffective(blockID int32) bool {
+	if definition, ok := ExtendedBlockByID(blockID); ok {
+		return definition.HarvestTool == ToolShovel
+	}
 	switch blockID {
 	case ItemDirt, ItemGrass, 12, 13: // Dirt, Grass, Sand, Gravel
 		return true
@@ -162,6 +171,9 @@ var BlockHardness = map[int32]float64{
 
 // GetBlockHardness returns the hardness of a block ID.
 func GetBlockHardness(blockID int32) float64 {
+	if definition, ok := ExtendedBlockByID(blockID); ok && definition.Hardness > 0 {
+		return definition.Hardness
+	}
 	h, ok := BlockHardness[blockID]
 	if !ok {
 		return 1.5 // Default standard block hardness
@@ -194,6 +206,10 @@ func CalculateBlockDamagePerSecond(toolID, blockID int32) float64 {
 
 // CanHarvestBlock checks if current tool tier is sufficient to drop items.
 func CanHarvestBlock(toolID, blockID int32) bool {
+	if definition, ok := ExtendedBlockByID(blockID); ok && definition.RequiresHarvestTool {
+		tool, isTool := GetToolProperties(toolID)
+		return isTool && tool.Type == definition.HarvestTool && tool.HarvestLevel >= definition.RequiredHarvestLevel
+	}
 	reqTier, requiresTool := BlockRequiredHarvestLevel[blockID]
 	if !requiresTool {
 		return true // Dirt, wood, etc. can be harvested by hand

@@ -52,6 +52,39 @@ func TestExtendedBlockRegistryIsNamespacedAndExposesColorSets(t *testing.T) {
 	}
 }
 
+func TestModernFullCubeBlocksDeclareMiningAndDropRules(t *testing.T) {
+	byName := make(map[string]ExtendedBlockDefinition)
+	for _, definition := range ExtendedBlockDefinitions() {
+		byName[definition.Name] = definition
+	}
+	for _, name := range []string{
+		"minecraft:andesite", "minecraft:polished_andesite", "minecraft:deepslate",
+		"minecraft:cobbled_deepslate", "minecraft:calcite", "minecraft:tuff",
+		"minecraft:dripstone_block", "minecraft:moss_block", "minecraft:mud",
+		"minecraft:raw_iron_block", "minecraft:copper_block", "minecraft:oxidized_copper",
+		"minecraft:blackstone", "minecraft:basalt", "minecraft:crimson_planks",
+		"minecraft:pale_oak_planks",
+	} {
+		definition, ok := byName[name]
+		if !ok {
+			t.Errorf("missing modern full cube %s", name)
+			continue
+		}
+		if !IsPlaceableBlock(definition.RuntimeID) || definition.Hardness <= 0 || definition.HarvestTool == ToolNone {
+			t.Errorf("modern block lacks placement/mining metadata: %+v", definition)
+		}
+	}
+	deepslate := byName["minecraft:deepslate"]
+	cobbled := byName["minecraft:cobbled_deepslate"]
+	if deepslate.DropRuntimeID != cobbled.RuntimeID || !deepslate.RequiresHarvestTool || deepslate.RequiredHarvestLevel != 1 {
+		t.Fatalf("deepslate drop/harvest rules are incorrect: %+v (cobbled ID %d)", deepslate, cobbled.RuntimeID)
+	}
+	planks := byName["minecraft:pale_oak_planks"]
+	if planks.HarvestTool != ToolAxe || planks.RequiresHarvestTool {
+		t.Fatalf("planks must be axe-efficient without requiring an axe: %+v", planks)
+	}
+}
+
 func TestCreativeCatalogSearch(t *testing.T) {
 	diamonds := SearchCreativeCatalog(CreativeAll, "钻石")
 	if len(diamonds) < 3 {

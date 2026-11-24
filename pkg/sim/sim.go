@@ -931,6 +931,9 @@ func (e *Engine) BreakBlockWithTool(playerID int32, pos world.BlockPos, toolID i
 		case 37, 38, 45, 49, 50, 87, 89, 121, 150:
 			dropItem = origBlock
 		}
+		if definition, ok := inventory.ExtendedBlockByID(origBlock); ok && definition.DropRuntimeID != 0 {
+			dropItem = definition.DropRuntimeID
+		}
 
 		dropPos := Vec3{X: float64(pos.X) + 0.5, Y: float64(pos.Y) + 0.5, Z: float64(pos.Z) + 0.5}
 		e.mu.Lock()
@@ -1011,6 +1014,22 @@ func (e *Engine) BreakBlock(playerID int32, pos world.BlockPos) int32 {
 		dropItem = inventory.ItemCoal
 	case 56: // Diamond Ore -> Diamond
 		dropItem = inventory.ItemDiamond
+	}
+	if definition, ok := inventory.ExtendedBlockByID(origBlock); ok {
+		if definition.DropRuntimeID != 0 {
+			dropItem = definition.DropRuntimeID
+		}
+		if definition.RequiresHarvestTool {
+			toolID := inventory.ItemAir
+			e.mu.RLock()
+			if player, ok := e.Players[playerID]; ok && player.Inventory != nil {
+				toolID = player.Inventory.GetSelectedItem().ItemID
+			}
+			e.mu.RUnlock()
+			if !inventory.CanHarvestBlock(toolID, origBlock) {
+				dropItem = inventory.ItemAir
+			}
+		}
 	}
 
 	e.mu.Lock()

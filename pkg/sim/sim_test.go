@@ -187,6 +187,26 @@ func TestPoplarLeavesBreakAndShearDrops(t *testing.T) {
 	}
 }
 
+func TestModernDeepslateHarvestAndDropRules(t *testing.T) {
+	eng := NewEngine()
+	player := eng.AddPlayer("test", [16]byte{}, Vec3{X: 0.5, Y: 64, Z: 0.5})
+	pos := world.BlockPos{X: 2, Y: 64, Z: 2}
+	eng.SetBlock(pos.X, pos.Y, pos.Z, 12006) // Deepslate
+	if drop, harvested := eng.BreakBlockWithTool(player.ID, pos, inventory.ItemWoodenPickaxe); harvested || drop != inventory.ItemAir {
+		t.Fatalf("wood pickaxe deepslate break = (%d, %v), want no drop", drop, harvested)
+	}
+	eng.SetBlock(pos.X, pos.Y, pos.Z, 12006)
+	if drop, harvested := eng.BreakBlockWithTool(player.ID, pos, inventory.ItemStonePickaxe); !harvested || drop != 12007 {
+		t.Fatalf("stone pickaxe deepslate break = (%d, %v), want cobbled deepslate (12007)", drop, harvested)
+	}
+
+	eng.SetBlock(pos.X, pos.Y, pos.Z, 12006)
+	player.Inventory.Slots[0] = inventory.ItemStack{}
+	if drop := eng.BreakBlock(player.ID, pos); drop != inventory.ItemAir {
+		t.Fatalf("hand-mined deepslate drop = %d, want air/no item", drop)
+	}
+}
+
 func TestRaycastHitBlock(t *testing.T) {
 	solidBlocks := map[[3]int32]bool{
 		{5, 64, 0}: true,
