@@ -367,6 +367,9 @@ func GetItemSprite16x16(itemID int32) [16][16]uint32 {
 	if official, ok := GetOfficialItemSprite(itemID); ok {
 		return official
 	}
+	if itemID == inventory.ItemChest {
+		return generateChestItemSprite()
+	}
 
 	// 2. If placeable voxel block, render 3D isometric cube using block textures
 	if inventory.IsPlaceableBlock(itemID) {
@@ -444,6 +447,97 @@ func GetItemSprite16x16(itemID int32) [16][16]uint32 {
 		// Fallback simple icon
 		return generateStickSprite()
 	}
+}
+
+type chestModelPoint struct {
+	x, y, z float64
+}
+
+type chestTexturePoint struct {
+	u, v float64
+}
+
+type chestScreenPoint struct {
+	x, y float64
+}
+
+// generateChestItemSprite projects the Java chest block-entity model into the
+// same 16x16 isometric item-icon space used for block items. Its UV rectangles
+// follow ChestModel.createSingleBodyLayer in the 26.3 client model.
+func generateChestItemSprite() [16][16]uint32 {
+	var out [16][16]uint32
+	texture, ok := GetOfficialImage("entity/chest/normal.png")
+	if !ok || texture.Width != 64 || texture.Height != 64 {
+		return RenderIsometricBlock16x16(inventory.ItemChest)
+	}
+	project := func(point chestModelPoint) chestScreenPoint {
+		return chestScreenPoint{
+			x: 8 + (point.x-point.z)*0.52,
+			y: 8 + (point.x+point.z-16)*0.18 + (15-point.y)*0.48,
+		}
+	}
+	drawFace := func(points [4]chestModelPoint, uvs [4]chestTexturePoint, shade float64) {
+		var screen [4]chestScreenPoint
+		for i := range points {
+			screen[i] = project(points[i])
+		}
+		drawChestTriangle(&out, texture, screen[0], screen[1], screen[2], uvs[0], uvs[1], uvs[2], shade)
+		drawChestTriangle(&out, texture, screen[0], screen[2], screen[3], uvs[0], uvs[2], uvs[3], shade)
+	}
+	uv := func(u, v float64) chestTexturePoint { return chestTexturePoint{u: u, v: v} }
+	// Lower chest body: 14 x 10 x 14, UV offset (0,19).
+	// Render its two visible faces before the lid.
+	drawFace([4]chestModelPoint{{15, 0, 15}, {15, 0, 1}, {15, 10, 1}, {15, 10, 15}}, [4]chestTexturePoint{uv(28, 33), uv(42, 33), uv(42, 43), uv(28, 43)}, 0.72)
+	drawFace([4]chestModelPoint{{1, 0, 15}, {15, 0, 15}, {15, 10, 15}, {1, 10, 15}}, [4]chestTexturePoint{uv(42, 33), uv(56, 33), uv(56, 43), uv(42, 43)}, 0.9)
+	// Lid top and sides: 14 x 5 x 14, UV offset (0,0).
+	drawFace([4]chestModelPoint{{15, 14, 1}, {1, 14, 1}, {1, 14, 15}, {15, 14, 15}}, [4]chestTexturePoint{uv(28, 14), uv(42, 14), uv(42, 0), uv(28, 0)}, 1)
+	drawFace([4]chestModelPoint{{15, 9, 15}, {15, 9, 1}, {15, 14, 1}, {15, 14, 15}}, [4]chestTexturePoint{uv(28, 14), uv(42, 14), uv(42, 19), uv(28, 19)}, 0.72)
+	drawFace([4]chestModelPoint{{1, 9, 15}, {15, 9, 15}, {15, 14, 15}, {1, 14, 15}}, [4]chestTexturePoint{uv(42, 14), uv(56, 14), uv(56, 19), uv(42, 19)}, 0.9)
+	// Java's lock is a separate 2x4x1 cuboid at texOffs(0,0), projected
+	// on the chest's south/front face.
+	drawFace([4]chestModelPoint{{7, 7, 16}, {9, 7, 16}, {9, 11, 16}, {7, 11, 16}}, [4]chestTexturePoint{uv(4, 1), uv(6, 1), uv(6, 5), uv(4, 5)}, 0.9)
+	return out
+}
+
+func drawChestTriangle(out *[16][16]uint32, texture *RawImage, a, b, c chestScreenPoint, ua, ub, uc chestTexturePoint, shade float64) {
+	denom := (b.y-c.y)*(a.x-c.x) + (c.x-b.x)*(a.y-c.y)
+	if denom == 0 {
+		return
+	}
+	minX := max(0, int(math.Floor(math.Min(a.x, math.Min(b.x, c.x)))))
+	maxX := min(15, int(math.Ceil(math.Max(a.x, math.Max(b.x, c.x)))))
+	minY := max(0, int(math.Floor(math.Min(a.y, math.Min(b.y, c.y)))))
+	maxY := min(15, int(math.Ceil(math.Max(a.y, math.Max(b.y, c.y)))))
+	for y := minY; y <= maxY; y++ {
+		for x := minX; x <= maxX; x++ {
+			px, py := float64(x)+0.5, float64(y)+0.5
+			wa := ((b.y-c.y)*(px-c.x) + (c.x-b.x)*(py-c.y)) / denom
+			wb := ((c.y-a.y)*(px-c.x) + (a.x-c.x)*(py-c.y)) / denom
+			wc := 1 - wa - wb
+			if wa < -1e-6 || wb < -1e-6 || wc < -1e-6 {
+				continue
+			}
+			u := wa*ua.u + wb*ub.u + wc*uc.u
+			v := wa*ua.v + wb*ub.v + wc*uc.v
+			tx, ty := int(u), int(v)
+			if tx < 0 || tx >= texture.Width || ty < 0 || ty >= texture.Height {
+				continue
+			}
+			color := texture.Pixels[ty*texture.Width+tx]
+			if color>>24 == 0 {
+				continue
+			}
+			out[y][x] = shadeChestColor(color, shade)
+		}
+	}
+}
+
+func shadeChestColor(color uint32, shade float64) uint32 {
+	a := color & 0xFF000000
+	r := uint32(float64((color>>16)&0xFF) * shade)
+	g := uint32(float64((color>>8)&0xFF) * shade)
+	b := uint32(float64(color&0xFF) * shade)
+	return a | r<<16 | g<<8 | b
 }
 
 // generateToolSprite creates authentic 45-degree angled tools with shaded bevels.
@@ -764,8 +858,8 @@ func generateDiamondSprite() [16][16]uint32 {
 			minX = 7 - (y - 2)
 			maxX = 8 + (y - 2)
 		} else {
-			minX = 3 + (y - 6)*4/7
-			maxX = 12 - (y - 6)*4/7
+			minX = 3 + (y-6)*4/7
+			maxX = 12 - (y-6)*4/7
 		}
 		for x := minX; x <= maxX; x++ {
 			s[y][x] = base

@@ -254,6 +254,28 @@ func TestCreativeTabIconsUseJava263ReferenceItems(t *testing.T) {
 	}
 }
 
+func TestInventoryTabUsesOfficialChestModelTexture(t *testing.T) {
+	texture, ok := GetOfficialImage("entity/chest/normal.png")
+	if !ok || texture.Width != 64 || texture.Height != 64 {
+		t.Fatalf("official chest model texture = (%v, %dx%d), want embedded 64x64 texture", ok, texture.Width, texture.Height)
+	}
+	got := GetItemSprite16x16(inventory.ItemChest)
+	if got == RenderIsometricBlock16x16(inventory.ItemChest) {
+		t.Fatal("chest item icon still uses the generic full-cube block renderer")
+	}
+	colored := 0
+	for y := range got {
+		for _, pixel := range got[y] {
+			if pixel>>24 != 0 {
+				colored++
+			}
+		}
+	}
+	if colored < 30 {
+		t.Fatalf("official chest model icon has only %d nontransparent pixels", colored)
+	}
+}
+
 func TestCreativeChineseTooltipsUseCJKTextWidth(t *testing.T) {
 	label := "工具与实用物品"
 	want := MeasureText5x7(label, 2) + 16
