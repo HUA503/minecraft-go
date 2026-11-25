@@ -457,6 +457,18 @@ func (cm *CraftingManager) registerDefaults() {
 			Output:  ItemStack{ItemID: ItemStoneSlab, Count: 6},
 		},
 	)
+	for _, slab := range woodSlabDefinitions {
+		planks, ok := ExtendedBlockByName(slab.PlankBlock)
+		if !ok {
+			continue
+		}
+		cm.Recipes = append(cm.Recipes, Recipe{
+			Width:   3,
+			Height:  1,
+			Pattern: []int32{planks.RuntimeID, planks.RuntimeID, planks.RuntimeID},
+			Output:  ItemStack{ItemID: slab.ItemID, Count: 6},
+		})
+	}
 
 	// 23. Ladder (7 Sticks in H pattern)
 	cm.Recipes = append(cm.Recipes, Recipe{

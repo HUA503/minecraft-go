@@ -503,6 +503,32 @@ func TestSlabPlacementMergeCollisionAndDrops(t *testing.T) {
 	if got := eng.GetBlock(topPos.X, topPos.Y, topPos.Z); got != inventory.BlockOakSlabTop {
 		t.Fatalf("top oak slab state = %d, want %d", got, inventory.BlockOakSlabTop)
 	}
+
+	// Exercise a modern wood family through the real placement, merge, and
+	// harvest path rather than only testing the shared state helpers.
+	spruce := inventory.FirstWoodSlabItem
+	spruceDouble := inventory.FirstWoodSlabDouble
+	woodPos := world.BlockPos{X: 14, Y: 64, Z: 10}
+	player.Inventory.Slots[0] = inventory.ItemStack{ItemID: spruce, Count: 2}
+	if !eng.PlaceBlock(player.ID, woodPos, spruce) || !eng.PlaceBlock(player.ID, woodPos, spruceDouble) {
+		t.Fatal("spruce slab placement and merge failed")
+	}
+	if got := eng.GetBlock(woodPos.X, woodPos.Y, woodPos.Z); got != spruceDouble {
+		t.Fatalf("merged spruce slab state = %d, want %d", got, spruceDouble)
+	}
+	if got, harvested := eng.BreakBlockWithTool(player.ID, woodPos, inventory.ItemWoodenAxe); !harvested || got != spruce {
+		t.Fatalf("breaking double spruce slab returned (%d,%t), want canonical spruce slab", got, harvested)
+	}
+	foundTwoWoodSlabs := false
+	for _, itemDrop := range eng.ItemDrops {
+		if itemDrop.ItemID == spruce && itemDrop.Count == 2 {
+			foundTwoWoodSlabs = true
+			break
+		}
+	}
+	if !foundTwoWoodSlabs {
+		t.Fatal("breaking a double spruce slab should drop two spruce slab items")
+	}
 }
 
 func TestSlabCollisionAndShapeAwareRaycast(t *testing.T) {

@@ -57,6 +57,19 @@ func buildExtendedBlockDefinitions() []ExtendedBlockDefinition {
 	definitions = append(definitions, glazedTerracottaDefinitions()...)
 	definitions = append(definitions, additionalFullCubeDefinitions()...)
 	definitions = append(definitions, additionalCommonCubeDefinitions()...)
+	definitions = append(definitions, woodSlabBlockDefinitions()...)
+	return definitions
+}
+
+func woodSlabBlockDefinitions() []ExtendedBlockDefinition {
+	definitions := make([]ExtendedBlockDefinition, 0, len(woodSlabDefinitions))
+	for _, slab := range woodSlabDefinitions {
+		definitions = append(definitions, ExtendedBlockDefinition{
+			RuntimeID: slab.ItemID, Name: slab.Name,
+			TextureTop: slab.Texture, TextureBottom: slab.Texture, TextureSide: slab.Texture,
+			Category: CreativeBlocks, Hardness: 2, HarvestTool: ToolAxe,
+		})
+	}
 	return definitions
 }
 
@@ -441,9 +454,10 @@ func BlockDropCountRange(blockID int32) (int, int) {
 	if definition, ok := ExtendedBlockByID(blockID); ok && definition.DropCountMin > 0 && definition.DropCountMax >= definition.DropCountMin {
 		return definition.DropCountMin, definition.DropCountMax
 	}
-	switch blockID {
-	case BlockStoneSlabDouble, BlockOakSlabDouble:
+	if IsDoubleSlabState(blockID) {
 		return 2, 2
+	}
+	switch blockID {
 	case 73: // Redstone ore
 		return 4, 5
 	case 74: // Lapis lazuli ore
@@ -497,6 +511,19 @@ func ExtendedBlockItemTextureName(runtimeID int32) string {
 }
 
 var extendedBlockDisplayNames = map[string]string{
+	"minecraft:spruce_slab":             "云杉木台阶",
+	"minecraft:birch_slab":              "白桦木台阶",
+	"minecraft:jungle_slab":             "丛林木台阶",
+	"minecraft:acacia_slab":             "金合欢木台阶",
+	"minecraft:dark_oak_slab":           "深色橡木台阶",
+	"minecraft:mangrove_slab":           "红树木台阶",
+	"minecraft:cherry_slab":             "樱花木台阶",
+	"minecraft:pale_oak_slab":           "苍白橡木台阶",
+	"minecraft:poplar_slab":             "杨木台阶",
+	"minecraft:bamboo_slab":             "竹台阶",
+	"minecraft:bamboo_mosaic_slab":      "竹马赛克台阶",
+	"minecraft:crimson_slab":            "绯红菌柄台阶",
+	"minecraft:warped_slab":             "诡异菌柄台阶",
 	"minecraft:cinnabar":                "朱砂块",
 	"minecraft:polished_cinnabar":       "磨制朱砂块",
 	"minecraft:chiseled_cinnabar":       "錾制朱砂块",
