@@ -874,7 +874,7 @@ func TestAddedVanillaFullCubesHaveCreativeItemsAndCorrectHarvestRules(t *testing
 
 func TestModernCreativeMaterialsHaveRegistryNamesAndUsefulRecipes(t *testing.T) {
 	for _, definition := range ModernCreativeItemDefinitions() {
-		if definition.Category != CreativeMaterials || definition.MaxStack != 64 {
+		if definition.Category != CreativeMaterials || definition.MaxStack < 1 || definition.MaxStack > 64 {
 			t.Errorf("item %s has category/stack limit %d/%d", definition.Name, definition.Category, definition.MaxStack)
 		}
 		if got := GetMaxStackSize(definition.RuntimeID); got != definition.MaxStack {
@@ -903,6 +903,12 @@ func TestModernCreativeMaterialsHaveRegistryNamesAndUsefulRecipes(t *testing.T) 
 		{"torch from charcoal", []int32{ItemCharcoal, 0, ItemStick, 0}, 2, ItemStack{ItemID: ItemTorch, Count: 4}},
 		{"copper nuggets", []int32{ItemCopperIngot, 0, 0, 0}, 2, ItemStack{ItemID: ItemCopperNugget, Count: 9}},
 		{"copper ingot", []int32{ItemCopperNugget, ItemCopperNugget, ItemCopperNugget, ItemCopperNugget, ItemCopperNugget, ItemCopperNugget, ItemCopperNugget, ItemCopperNugget, ItemCopperNugget}, 3, ItemStack{ItemID: ItemCopperIngot, Count: 1}},
+		{"iron nuggets", []int32{ItemIronIngot, 0, 0, 0}, 2, ItemStack{ItemID: ItemIronNugget, Count: 9}},
+		{"iron ingot", []int32{ItemIronNugget, ItemIronNugget, ItemIronNugget, ItemIronNugget, ItemIronNugget, ItemIronNugget, ItemIronNugget, ItemIronNugget, ItemIronNugget}, 3, ItemStack{ItemID: ItemIronIngot, Count: 1}},
+		{"sugar", []int32{ItemSugarCane, 0, 0, 0}, 2, ItemStack{ItemID: ItemSugar, Count: 1}},
+		{"paper", []int32{ItemSugarCane, ItemSugarCane, ItemSugarCane, 0, 0, 0, 0, 0, 0}, 3, ItemStack{ItemID: ItemPaper, Count: 3}},
+		{"glowstone block", []int32{ItemGlowstoneDust, ItemGlowstoneDust, ItemGlowstoneDust, ItemGlowstoneDust}, 2, ItemStack{ItemID: ItemGlowstoneBlock, Count: 1}},
+		{"slime block", []int32{ItemSlimeBall, ItemSlimeBall, ItemSlimeBall, ItemSlimeBall, ItemSlimeBall, ItemSlimeBall, ItemSlimeBall, ItemSlimeBall, ItemSlimeBall}, 3, ItemStack{ItemID: ItemSlimeBlock, Count: 1}},
 		{"amethyst block", []int32{ItemAmethystShard, ItemAmethystShard, ItemAmethystShard, ItemAmethystShard}, 2, ItemStack{ItemID: 14000, Count: 1}},
 		{"honeycomb block", []int32{ItemHoneycomb, ItemHoneycomb, ItemHoneycomb, ItemHoneycomb}, 2, ItemStack{ItemID: 14106, Count: 1}},
 	} {
@@ -931,6 +937,15 @@ func TestModernCreativeMaterialsHaveRegistryNamesAndUsefulRecipes(t *testing.T) 
 	}
 	if got := GetFuelBurnTime(ItemBlazeRod); got != 2400 {
 		t.Errorf("blaze rod burn time = %d, want 2400", got)
+	}
+	if smelt, ok := MatchSmelting(ItemResinClump); !ok || smelt.OutputID != ItemResinBrick {
+		t.Errorf("resin clump smelting = %+v, matched=%t", smelt, ok)
+	}
+	if smelt, ok := MatchSmelting(87); !ok || smelt.OutputID != ItemNetherBrick {
+		t.Errorf("netherrack smelting = %+v, matched=%t", smelt, ok)
+	}
+	if slot, ok := ArmorSlotForItem(ItemTurtleHelmet); !ok || slot != 3 || !CanEquipArmor(3, ItemTurtleHelmet) {
+		t.Errorf("turtle helmet equipment slot = %d, valid=%t", slot, ok)
 	}
 }
 

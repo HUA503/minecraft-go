@@ -65,6 +65,9 @@ const (
 	ItemGunpowder      int32 = 289
 	ItemBone           int32 = 352
 	ItemBoneMeal       int32 = 351
+	ItemMelonSlice     int32 = 360
+	ItemSlimeBlock     int32 = 165
+	ItemGlowstoneBlock int32 = 89
 	ItemArrow          int32 = 262
 	ItemBow            int32 = 261
 	ItemFlintAndSteel  int32 = 259
@@ -382,6 +385,8 @@ func CalculateArmorProtection(armor [4]ItemStack) ArmorProtection {
 			protection.Defense += 3
 		case ItemCopperHelmet:
 			protection.Defense += 1
+		case ItemTurtleHelmet:
+			protection.Defense += 2
 		}
 	}
 	return protection
@@ -397,7 +402,7 @@ func ArmorSlotForItem(itemID int32) (int, bool) {
 		return 1, true
 	case 299, 303, 307, 311, 315, ItemCopperChestplate, ItemNetheriteChestplate:
 		return 2, true
-	case 298, 302, 306, 310, 314, ItemCopperHelmet, ItemNetheriteHelmet:
+	case 298, 302, 306, 310, 314, ItemCopperHelmet, ItemNetheriteHelmet, ItemTurtleHelmet:
 		return 3, true
 	default:
 		return 0, false

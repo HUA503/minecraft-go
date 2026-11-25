@@ -475,7 +475,15 @@ func (cm *CraftingManager) registerDefaults() {
 		Recipe{Width: 1, Height: 1, Pattern: []int32{ItemBlazeRod}, Output: ItemStack{ItemID: ItemBlazePowder, Count: 2}},
 		Recipe{Width: 1, Height: 1, Pattern: []int32{ItemCopperIngot}, Output: ItemStack{ItemID: ItemCopperNugget, Count: 9}},
 		Recipe{Width: 3, Height: 3, Pattern: []int32{ItemCopperNugget, ItemCopperNugget, ItemCopperNugget, ItemCopperNugget, ItemCopperNugget, ItemCopperNugget, ItemCopperNugget, ItemCopperNugget, ItemCopperNugget}, Output: ItemStack{ItemID: ItemCopperIngot, Count: 1}},
+		Recipe{Width: 1, Height: 1, Pattern: []int32{ItemIronIngot}, Output: ItemStack{ItemID: ItemIronNugget, Count: 9}},
+		Recipe{Width: 3, Height: 3, Pattern: []int32{ItemIronNugget, ItemIronNugget, ItemIronNugget, ItemIronNugget, ItemIronNugget, ItemIronNugget, ItemIronNugget, ItemIronNugget, ItemIronNugget}, Output: ItemStack{ItemID: ItemIronIngot, Count: 1}},
 		Recipe{Width: 1, Height: 2, Pattern: []int32{ItemCharcoal, ItemStick}, Output: ItemStack{ItemID: ItemTorch, Count: 4}},
+		Recipe{Width: 1, Height: 1, Pattern: []int32{ItemSugarCane}, Output: ItemStack{ItemID: ItemSugar, Count: 1}},
+		Recipe{Width: 3, Height: 1, Pattern: []int32{ItemSugarCane, ItemSugarCane, ItemSugarCane}, Output: ItemStack{ItemID: ItemPaper, Count: 3}},
+		Recipe{Width: 1, Height: 1, Pattern: []int32{ItemGlowstoneBlock}, Output: ItemStack{ItemID: ItemGlowstoneDust, Count: 4}},
+		Recipe{Width: 2, Height: 2, Pattern: []int32{ItemGlowstoneDust, ItemGlowstoneDust, ItemGlowstoneDust, ItemGlowstoneDust}, Output: ItemStack{ItemID: ItemGlowstoneBlock, Count: 1}},
+		Recipe{Width: 1, Height: 1, Pattern: []int32{ItemSlimeBlock}, Output: ItemStack{ItemID: ItemSlimeBall, Count: 9}},
+		Recipe{Width: 3, Height: 3, Pattern: []int32{ItemSlimeBall, ItemSlimeBall, ItemSlimeBall, ItemSlimeBall, ItemSlimeBall, ItemSlimeBall, ItemSlimeBall, ItemSlimeBall, ItemSlimeBall}, Output: ItemStack{ItemID: ItemSlimeBlock, Count: 1}},
 	)
 	if amethystBlock, ok := ExtendedBlockByName("minecraft:amethyst_block"); ok {
 		cm.Recipes = append(cm.Recipes, Recipe{
@@ -491,6 +499,17 @@ func (cm *CraftingManager) registerDefaults() {
 			Output:  ItemStack{ItemID: honeycombBlock.RuntimeID, Count: 1},
 		})
 	}
+	if resinBricks, ok := ExtendedBlockByName("minecraft:resin_bricks"); ok {
+		cm.Recipes = append(cm.Recipes,
+			Recipe{Width: 2, Height: 2, Pattern: []int32{ItemResinBrick, ItemResinBrick, ItemResinBrick, ItemResinBrick}, Output: ItemStack{ItemID: resinBricks.RuntimeID, Count: 1}},
+			Recipe{Width: 1, Height: 1, Pattern: []int32{resinBricks.RuntimeID}, Output: ItemStack{ItemID: ItemResinBrick, Count: 4}},
+		)
+	}
+	cm.Recipes = append(cm.Recipes, Recipe{
+		Width: 3, Height: 3,
+		Pattern: []int32{ItemGoldNugget, ItemGoldNugget, ItemGoldNugget, ItemGoldNugget, ItemMelonSlice, ItemGoldNugget, ItemGoldNugget, ItemGoldNugget, ItemGoldNugget},
+		Output:  ItemStack{ItemID: ItemGlisteringMelon, Count: 1},
+	})
 }
 
 // MatchCrafting finds matching recipe for grid (gridSize = 2 for 2x2, 3 for 3x3).

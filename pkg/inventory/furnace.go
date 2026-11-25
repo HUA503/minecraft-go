@@ -34,6 +34,8 @@ func init() {
 			SmeltingRecipes[block.RuntimeID] = SmeltingRecipe{InputID: block.RuntimeID, OutputID: ItemCharcoal, Experience: 0.15}
 		}
 	}
+	SmeltingRecipes[ItemResinClump] = SmeltingRecipe{InputID: ItemResinClump, OutputID: ItemResinBrick, Experience: 0.3}
+	SmeltingRecipes[87] = SmeltingRecipe{InputID: 87, OutputID: ItemNetherBrick, Experience: 0.1} // Netherrack -> Nether Brick.
 	for _, recipe := range []struct {
 		inputID int32
 		output  string
