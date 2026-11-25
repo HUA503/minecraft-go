@@ -258,9 +258,18 @@ func CalculateMiningSpeedMultiplier(toolID, blockID int32) float64 {
 	return 1.0
 }
 
-// ApplyToolWear deducts 1 durability point. Returns true if tool broke.
+// ApplyToolWear deducts 1 durability point. Returns true if the tool broke.
 func ApplyToolWear(stack *ItemStack) bool {
+	return ApplyToolWearAmount(stack, 1)
+}
+
+// ApplyToolWearAmount deducts the requested durability amount. Returns true if
+// the tool broke.
+func ApplyToolWearAmount(stack *ItemStack, amount int) bool {
 	if stack == nil || stack.IsEmpty() {
+		return false
+	}
+	if amount <= 0 {
 		return false
 	}
 	props, isTool := GetToolProperties(stack.ItemID)
@@ -268,7 +277,7 @@ func ApplyToolWear(stack *ItemStack) bool {
 		return false
 	}
 
-	stack.Damage++
+	stack.Damage += amount
 	if stack.Damage >= props.MaxDurability {
 		// Tool broken! Reset to empty air
 		stack.ItemID = ItemAir

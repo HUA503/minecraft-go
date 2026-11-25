@@ -16,9 +16,10 @@ func TestAttackDurabilityForWeaponsAndTools(t *testing.T) {
 		wantItemID int32
 	}{
 		{"sword loses one durability", inventory.ItemNetheriteSword, 12, 13, false, inventory.ItemNetheriteSword},
-		{"axe loses one durability", inventory.ItemNetheriteAxe, 12, 13, false, inventory.ItemNetheriteAxe},
+		{"axe loses two durability", inventory.ItemNetheriteAxe, 12, 14, false, inventory.ItemNetheriteAxe},
 		{"sword breaks on final point", inventory.ItemNetheriteSword, 2030, 0, true, inventory.ItemAir},
-		{"tool breaks on final point", inventory.ItemNetheritePickaxe, 2030, 0, true, inventory.ItemAir},
+		{"axe breaks on last two points", inventory.ItemNetheriteAxe, 2029, 0, true, inventory.ItemAir},
+		{"pickaxe breaks on last point", inventory.ItemNetheritePickaxe, 2030, 0, true, inventory.ItemAir},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -46,13 +47,13 @@ func TestAttackDoesNotDamageItemsInCreativeMode(t *testing.T) {
 	}
 }
 
-func TestAttackWithoutRegisteredToolDoesNotAddDurabilityDamage(t *testing.T) {
+func TestAttackDoesNotDamageNonWeaponDurableItems(t *testing.T) {
 	inv := inventory.NewPlayerInventory()
-	inv.Slots[inv.SelectedHotbar] = inventory.ItemStack{ItemID: inventory.ItemApple, Count: 1}
+	inv.Slots[inv.SelectedHotbar] = inventory.ItemStack{ItemID: inventory.ItemShears, Count: 1, Damage: 20}
 	if applyAttackItemDurability(inv, false) {
-		t.Fatal("non-tool attack reported a broken item")
+		t.Fatal("non-weapon attack reported a broken item")
 	}
-	if got := inv.Slots[inv.SelectedHotbar]; got.ItemID != inventory.ItemApple || got.Count != 1 || got.Damage != 0 {
-		t.Fatalf("non-tool held stack changed: %+v", got)
+	if got := inv.Slots[inv.SelectedHotbar]; got.ItemID != inventory.ItemShears || got.Count != 1 || got.Damage != 20 {
+		t.Fatalf("non-weapon held stack changed: %+v", got)
 	}
 }

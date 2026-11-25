@@ -17,7 +17,16 @@ func applyAttackItemDurability(inv *inventory.PlayerInventory, creative bool) bo
 	if !ok || properties.MaxDurability <= 0 {
 		return false
 	}
-	if inventory.ApplyToolWear(stack) {
+	damage := 0
+	switch properties.Type {
+	case inventory.ToolSword:
+		damage = 1
+	case inventory.ToolPickaxe, inventory.ToolAxe, inventory.ToolShovel, inventory.ToolHoe:
+		damage = 2
+	default:
+		return false
+	}
+	if inventory.ApplyToolWearAmount(stack, damage) {
 		return true
 	}
 	return false
