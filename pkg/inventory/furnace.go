@@ -25,6 +25,21 @@ func init() {
 	if ancientDebris, ok := ExtendedBlockByName("minecraft:ancient_debris"); ok {
 		SmeltingRecipes[ancientDebris.RuntimeID] = SmeltingRecipe{InputID: ancientDebris.RuntimeID, OutputID: ItemNetheriteScrap, Experience: 2.0}
 	}
+	for _, recipe := range []struct {
+		inputID int32
+		output  string
+	}{
+		{ItemStone, "minecraft:smooth_stone"},
+		{155, "minecraft:smooth_quartz"},
+		{24, "minecraft:smooth_sandstone"},
+		{179, "minecraft:smooth_red_sandstone"},
+	} {
+		if output, ok := ExtendedBlockByName(recipe.output); ok {
+			SmeltingRecipes[recipe.inputID] = SmeltingRecipe{
+				InputID: recipe.inputID, OutputID: output.RuntimeID, Experience: 0.1,
+			}
+		}
+	}
 }
 
 // MatchSmelting looks up the smelted output product for an input item ID.

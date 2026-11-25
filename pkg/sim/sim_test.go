@@ -236,6 +236,68 @@ func TestWoodBlockVariantsDropTheirOwnItems(t *testing.T) {
 	}
 }
 
+func TestCommonVanillaCubeBlocksBreakAndDropTheirOwnItems(t *testing.T) {
+	blocks := []struct {
+		name string
+		tool int32
+	}{
+		{"bone_block", inventory.ItemAir},
+		{"chiseled_quartz_block", inventory.ItemAir},
+		{"chiseled_red_sandstone", inventory.ItemAir},
+		{"chiseled_sandstone", inventory.ItemAir},
+		{"coarse_dirt", inventory.ItemAir},
+		{"end_stone_bricks", inventory.ItemAir},
+		{"honeycomb_block", inventory.ItemAir},
+		{"lodestone", inventory.ItemAir},
+		{"muddy_mangrove_roots", inventory.ItemAir},
+		{"purpur_pillar", inventory.ItemAir},
+		{"quartz_pillar", inventory.ItemAir},
+		{"rooted_dirt", inventory.ItemAir},
+		{"shroomlight", inventory.ItemAir},
+		{"smooth_quartz", inventory.ItemAir},
+		{"smooth_red_sandstone", inventory.ItemAir},
+		{"smooth_sandstone", inventory.ItemAir},
+		{"smooth_stone", inventory.ItemAir},
+		{"soul_soil", inventory.ItemAir},
+		{"wet_sponge", inventory.ItemAir},
+		{"red_sand", inventory.ItemAir},
+	}
+	eng := NewEngine()
+	player := eng.AddPlayer("cube-breaker", [16]byte{0xC3}, Vec3{X: 0, Y: 64, Z: 0})
+	for i, block := range blocks {
+		t.Run(block.name, func(t *testing.T) {
+			definition, ok := inventory.ExtendedBlockByName("minecraft:" + block.name)
+			if !ok {
+				t.Fatalf("missing block definition for %s", block.name)
+			}
+			pos := world.BlockPos{X: int32(i + 1), Y: 64, Z: 0}
+			eng.SetBlock(pos.X, pos.Y, pos.Z, definition.RuntimeID)
+			got, harvested := eng.BreakBlockWithTool(player.ID, pos, block.tool)
+			if !harvested || got != definition.RuntimeID {
+				t.Fatalf("breaking %s returned (%d, %t), want (%d, true)", block.name, got, harvested, definition.RuntimeID)
+			}
+		})
+	}
+}
+
+func TestNetheriteBlockRequiresDiamondTierToDrop(t *testing.T) {
+	block, ok := inventory.ExtendedBlockByName("minecraft:netherite_block")
+	if !ok {
+		t.Fatal("netherite block definition is missing")
+	}
+	eng := NewEngine()
+	player := eng.AddPlayer("netherite miner", [16]byte{0xC4}, Vec3{X: 0.5, Y: 64, Z: 0.5})
+	pos := world.BlockPos{X: 2, Y: 64, Z: 2}
+	eng.SetBlock(pos.X, pos.Y, pos.Z, block.RuntimeID)
+	if drop, harvested := eng.BreakBlockWithTool(player.ID, pos, inventory.ItemIronPickaxe); harvested || drop != inventory.ItemAir {
+		t.Fatalf("iron pickaxe netherite block break = (%d, %t), want no drop", drop, harvested)
+	}
+	eng.SetBlock(pos.X, pos.Y, pos.Z, block.RuntimeID)
+	if drop, harvested := eng.BreakBlockWithTool(player.ID, pos, inventory.ItemDiamondPickaxe); !harvested || drop != block.RuntimeID {
+		t.Fatalf("diamond pickaxe netherite block break = (%d, %t), want self-drop %d", drop, harvested, block.RuntimeID)
+	}
+}
+
 func TestAddedOresRequireTheRightPickaxeAndDropTheirMaterials(t *testing.T) {
 	eng := NewEngine()
 	player := eng.AddPlayer("ore miner", [16]byte{}, Vec3{X: 0.5, Y: 64, Z: 0.5})

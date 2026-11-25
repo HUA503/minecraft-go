@@ -56,6 +56,7 @@ func buildExtendedBlockDefinitions() []ExtendedBlockDefinition {
 	definitions = append(definitions, coloredBlockDefinitions()...)
 	definitions = append(definitions, glazedTerracottaDefinitions()...)
 	definitions = append(definitions, additionalFullCubeDefinitions()...)
+	definitions = append(definitions, additionalCommonCubeDefinitions()...)
 	return definitions
 }
 
@@ -94,7 +95,7 @@ func additionalFullCubeDefinitions() []ExtendedBlockDefinition {
 		{"purpur_block", "紫珀块", 1.5, ToolPickaxe, CreativeBlocks},
 		{"quartz_bricks", "石英砖", 0.8, ToolPickaxe, CreativeBlocks},
 		{"red_nether_bricks", "红色下界砖块", 2, ToolPickaxe, CreativeBlocks},
-		{"resin_block", "树脂块", 5, ToolPickaxe, CreativeBlocks},
+		{"resin_block", "树脂块", 5, ToolNone, CreativeBlocks},
 	}
 	definitions := make([]ExtendedBlockDefinition, 0, len(blocks))
 	for i, block := range blocks {
@@ -104,10 +105,59 @@ func additionalFullCubeDefinitions() []ExtendedBlockDefinition {
 			RuntimeID: id, Name: "minecraft:" + block.name,
 			TextureTop: texture, TextureBottom: texture, TextureSide: texture,
 			Category: block.category, Hardness: block.hardness,
-			HarvestTool: block.tool, RequiresHarvestTool: true,
+			HarvestTool: block.tool, RequiresHarvestTool: block.name == "netherite_block",
 			DropRuntimeID: id, DropCountMin: 1, DropCountMax: 1,
 		})
+		if block.name == "netherite_block" {
+			definitions[len(definitions)-1].RequiredHarvestLevel = 3 // The official loot table requires a diamond-tier tool.
+		}
 		extendedBlockDisplayNames["minecraft:"+block.name] = block.display
+	}
+	return definitions
+}
+
+// additionalCommonCubeDefinitions uses the 26.3 block-model face textures for
+// another group of ordinary cube blocks. Pillars retain the vanilla vertical
+// end texture; block-axis state rotation is handled separately from this list.
+func additionalCommonCubeDefinitions() []ExtendedBlockDefinition {
+	type spec struct {
+		name, display, top, bottom, side string
+		hardness                         float64
+		tool                             ToolType
+		category                         CreativeCategory
+	}
+	blocks := [...]spec{
+		{"bone_block", "骨块", "bone_block_top", "bone_block_top", "bone_block_side", 2, ToolPickaxe, CreativeBlocks},
+		{"chiseled_quartz_block", "錾制石英块", "chiseled_quartz_block_top", "chiseled_quartz_block_top", "chiseled_quartz_block", 0.8, ToolPickaxe, CreativeBlocks},
+		{"chiseled_red_sandstone", "錾制红砂岩", "red_sandstone_top", "red_sandstone_top", "chiseled_red_sandstone", 0.8, ToolPickaxe, CreativeBlocks},
+		{"chiseled_sandstone", "錾制砂岩", "sandstone_top", "sandstone_top", "chiseled_sandstone", 0.8, ToolPickaxe, CreativeBlocks},
+		{"coarse_dirt", "砂土", "coarse_dirt", "coarse_dirt", "coarse_dirt", 0.5, ToolShovel, CreativeNatural},
+		{"end_stone_bricks", "末地石砖", "end_stone_bricks", "end_stone_bricks", "end_stone_bricks", 3, ToolPickaxe, CreativeBlocks},
+		{"honeycomb_block", "蜂巢块", "honeycomb_block", "honeycomb_block", "honeycomb_block", 0.6, ToolNone, CreativeBlocks},
+		{"lodestone", "磁石", "lodestone_top", "lodestone_top", "lodestone_side", 3.5, ToolPickaxe, CreativeFunctional},
+		{"muddy_mangrove_roots", "沾泥的红树根", "muddy_mangrove_roots_top", "muddy_mangrove_roots_top", "muddy_mangrove_roots_side", 1, ToolShovel, CreativeNatural},
+		{"purpur_pillar", "紫珀柱", "purpur_pillar_top", "purpur_pillar_top", "purpur_pillar_side", 1.5, ToolPickaxe, CreativeBlocks},
+		{"quartz_pillar", "石英柱", "quartz_pillar_top", "quartz_pillar_top", "quartz_pillar_side", 0.8, ToolPickaxe, CreativeBlocks},
+		{"rooted_dirt", "缠根泥土", "rooted_dirt", "rooted_dirt", "rooted_dirt", 0.5, ToolShovel, CreativeNatural},
+		{"shroomlight", "菌光体", "shroomlight", "shroomlight", "shroomlight", 1, ToolHoe, CreativeNatural},
+		{"smooth_quartz", "平滑石英块", "quartz_block_bottom", "quartz_block_bottom", "quartz_block_bottom", 0.8, ToolPickaxe, CreativeBlocks},
+		{"smooth_red_sandstone", "平滑红砂岩", "red_sandstone_top", "red_sandstone_top", "red_sandstone_top", 0.8, ToolPickaxe, CreativeBlocks},
+		{"smooth_sandstone", "平滑砂岩", "sandstone_top", "sandstone_top", "sandstone_top", 0.8, ToolPickaxe, CreativeBlocks},
+		{"smooth_stone", "平滑石头", "smooth_stone", "smooth_stone", "smooth_stone", 2, ToolPickaxe, CreativeBlocks},
+		{"soul_soil", "灵魂土", "soul_soil", "soul_soil", "soul_soil", 0.5, ToolShovel, CreativeNatural},
+		{"wet_sponge", "湿海绵", "wet_sponge", "wet_sponge", "wet_sponge", 0.6, ToolHoe, CreativeNatural},
+		{"red_sand", "红沙", "red_sand", "red_sand", "red_sand", 0.5, ToolShovel, CreativeNatural},
+	}
+	definitions := make([]ExtendedBlockDefinition, 0, len(blocks))
+	for i, block := range blocks {
+		id := int32(14100 + i)
+		name := "minecraft:" + block.name
+		definitions = append(definitions, ExtendedBlockDefinition{
+			RuntimeID: id, Name: name, TextureTop: block.top, TextureBottom: block.bottom, TextureSide: block.side,
+			Category: block.category, Hardness: block.hardness, HarvestTool: block.tool,
+			DropRuntimeID: id,
+		})
+		extendedBlockDisplayNames[name] = block.display
 	}
 	return definitions
 }

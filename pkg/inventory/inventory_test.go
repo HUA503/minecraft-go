@@ -828,6 +828,14 @@ func TestAdditional26FullCubesAreRegisteredAndSearchable(t *testing.T) {
 		if definition.DropRuntimeID != definition.RuntimeID {
 			t.Errorf("%q drop = %d, want itself (%d)", name, definition.DropRuntimeID, definition.RuntimeID)
 		}
+		if name == "netherite_block" {
+			diamondTool, _ := GetToolProperties(ItemDiamondPickaxe)
+			if !definition.RequiresHarvestTool || definition.RequiredHarvestLevel != diamondTool.HarvestLevel {
+				t.Errorf("netherite block harvest requirement = (%t, %d), want diamond-tier tool", definition.RequiresHarvestTool, definition.RequiredHarvestLevel)
+			}
+		} else if definition.RequiresHarvestTool {
+			t.Errorf("%q requires a tool although its 26.3 loot table has no tool condition", name)
+		}
 		matches := SearchCreativeCatalog(CreativeAll, "minecraft:"+name)
 		found := false
 		for _, match := range matches {
@@ -838,6 +846,68 @@ func TestAdditional26FullCubesAreRegisteredAndSearchable(t *testing.T) {
 		}
 		if !found {
 			t.Errorf("creative search for %q = %+v, want runtime ID %d", name, matches, definition.RuntimeID)
+		}
+	}
+}
+
+func TestAdditionalCommonVanillaCubesAreRegisteredAndSearchable(t *testing.T) {
+	want := []string{
+		"bone_block", "chiseled_quartz_block", "chiseled_red_sandstone", "chiseled_sandstone", "coarse_dirt",
+		"end_stone_bricks", "honeycomb_block", "lodestone", "muddy_mangrove_roots", "purpur_pillar",
+		"quartz_pillar", "rooted_dirt", "shroomlight", "smooth_quartz", "smooth_red_sandstone",
+		"smooth_sandstone", "smooth_stone", "soul_soil", "wet_sponge", "red_sand",
+	}
+	for _, name := range want {
+		definition, ok := ExtendedBlockByName("minecraft:" + name)
+		if !ok {
+			t.Fatalf("26.3 block %q is missing its extended definition", name)
+		}
+		if !IsPlaceableBlock(definition.RuntimeID) {
+			t.Errorf("%q is not placeable", name)
+		}
+		if definition.DropRuntimeID != definition.RuntimeID {
+			t.Errorf("%q drop = %d, want itself (%d)", name, definition.DropRuntimeID, definition.RuntimeID)
+		}
+		if definition.RequiresHarvestTool {
+			t.Errorf("%q requires a harvest tool although its 26.3 loot table has no tool condition", name)
+		}
+		found := false
+		for _, item := range SearchCreativeCatalog(CreativeAll, "minecraft:"+name) {
+			found = found || item.ID == definition.RuntimeID
+		}
+		if !found {
+			t.Errorf("%q is absent from exact-name creative search", name)
+		}
+	}
+}
+
+func TestVanillaSmoothBlockSmeltingRecipes(t *testing.T) {
+	for _, tc := range []struct {
+		input int32
+		name  string
+	}{
+		{ItemStone, "smooth_stone"},
+		{155, "smooth_quartz"},
+		{24, "smooth_sandstone"},
+		{179, "smooth_red_sandstone"},
+	} {
+		output, ok := ExtendedBlockByName("minecraft:" + tc.name)
+		if !ok {
+			t.Fatalf("missing output block %s", tc.name)
+		}
+		recipe, ok := MatchSmelting(tc.input)
+		if !ok || recipe.OutputID != output.RuntimeID {
+			t.Errorf("smelting input %d = %+v, %t; want output %d (%s)", tc.input, recipe, ok, output.RuntimeID, tc.name)
+			continue
+		}
+		furnace := NewFurnaceBlockEntity()
+		furnace.InputSlot = ItemStack{ItemID: tc.input, Count: 1}
+		furnace.FuelSlot = ItemStack{ItemID: ItemCoal, Count: 1}
+		for tick := 0; tick < furnace.CookTimeTotal; tick++ {
+			furnace.Tick()
+		}
+		if got := furnace.OutputSlot; got.ItemID != output.RuntimeID || got.Count != 1 {
+			t.Errorf("furnace output for %s = %+v, want one output block %d", tc.name, got, output.RuntimeID)
 		}
 	}
 }

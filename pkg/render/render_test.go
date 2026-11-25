@@ -8,6 +8,21 @@ import (
 	"github.com/HUA503/minecraft-go/pkg/inventory"
 )
 
+func TestCommon26CubesHaveOfficialFaceTextures(t *testing.T) {
+	for _, block := range inventory.ExtendedBlockDefinitions() {
+		if block.RuntimeID < 14100 || block.RuntimeID >= 14120 {
+			continue
+		}
+		for _, face := range []struct{ name, texture string }{
+			{"top", block.TextureTop}, {"bottom", block.TextureBottom}, {"side", block.TextureSide},
+		} {
+			if _, ok := GetOfficialTexture("block", face.texture); !ok {
+				t.Errorf("%s %s texture %q is missing from bundled vanilla assets", block.Name, face.name, face.texture)
+			}
+		}
+	}
+}
+
 func TestMeshFaceCullingIsolatedCube(t *testing.T) {
 	world := map[[3]int32]int32{
 		{0, 0, 0}: 1, // Stone
