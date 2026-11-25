@@ -951,7 +951,13 @@ func (fb *Framebuffer) DrawBlockOutline(cam *Camera, bx, by, bz int32) {
 // DrawBlockStateOutline draws the selection wireframe using a partial block's
 // actual shape, falling back to a full cube for ordinary blocks.
 func (fb *Framebuffer) DrawBlockStateOutline(cam *Camera, bx, by, bz int32, blockID int32) {
-	if boxes, ok := inventory.BlockCollisionBoxes(blockID); ok {
+	fb.DrawBlockStateOutlineAt(cam, bx, by, bz, blockID, nil)
+}
+
+// DrawBlockStateOutlineAt resolves neighbor-dependent selection shapes such as
+// fences and stair corners from the same world callback used by collision.
+func (fb *Framebuffer) DrawBlockStateOutlineAt(cam *Camera, bx, by, bz int32, blockID int32, getBlock func(int32, int32, int32) int32) {
+	if boxes, ok := inventory.BlockCollisionBoxesAt(blockID, bx, by, bz, getBlock); ok {
 		for _, box := range boxes {
 			fb.drawBlockOutlineBox(cam, bx, by, bz, box)
 		}

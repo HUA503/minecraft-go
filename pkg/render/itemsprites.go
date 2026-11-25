@@ -21,6 +21,9 @@ func applyLighting(c uint32, factor float32) uint32 {
 // RenderIsometricBlock16x16 rasterizes an authentic 16x16 3D isometric voxel block icon.
 // Light angles match vanilla Minecraft GUI: Top face (1.0x), Left face (0.8x), Right face (0.6x).
 func RenderIsometricBlock16x16(blockID int32) [16][16]uint32 {
+	if inventory.IsWoodFenceBlock(blockID) {
+		return renderIsometricFence16x16(blockID)
+	}
 	if itemID, ok := inventory.StairItemForBlockState(blockID); ok {
 		state := blockID
 		if blockID == itemID {
@@ -36,6 +39,60 @@ func RenderIsometricBlock16x16(blockID int32) [16][16]uint32 {
 		blockID = inventory.BlockItemForState(blockID)
 	}
 	return renderIsometricCube16x16(blockID)
+}
+
+func renderIsometricFence16x16(blockID int32) [16][16]uint32 {
+	texture := Textures[blockID]
+	if texture == nil {
+		return renderIsometricCube16x16(blockID)
+	}
+	blocks := map[[3]int32]int32{{0, 0, -1}: inventory.ItemOakPlanks, {1, 0, 0}: inventory.ItemOakPlanks,
+		{0, 0, 1}: inventory.ItemOakPlanks, {-1, 0, 0}: inventory.ItemOakPlanks}
+	boxes, _ := inventory.WoodFenceCollisionBoxesAt(blockID, 0, 0, 0, func(x, y, z int32) int32 {
+		return blocks[[3]int32{x, y, z}]
+	})
+	var out [16][16]uint32
+	var depthBuffer [16][16]float32
+	for y := range depthBuffer {
+		for x := range depthBuffer[y] {
+			depthBuffer[y][x] = float32(math.Inf(-1))
+		}
+	}
+	for _, box := range boxes {
+		for _, face := range []int{0, 2, 4} {
+			positions, uvs := fenceIconFace(box, face)
+			var quad [4]isoStairVertex
+			for i, p := range positions {
+				x, y, z := p[0], p[1], p[2]
+				quad[i] = isoStairVertex{
+					point: isoStairPoint{8 + (x-z)*6, 2 + (x+z)*3 + (1.5-y)*5},
+					u:     uvs[i][0], v: uvs[i][1], depth: x + z + y*(4.0/3.0),
+				}
+			}
+			shade := float32(1.05)
+			tex := texture.Top
+			if face == 0 {
+				shade, tex = .62, texture.Side
+			} else if face == 4 {
+				shade, tex = .82, texture.Side
+			}
+			rasterIsoStairTriangle(&out, &depthBuffer, quad[0], quad[1], quad[2], tex, shade)
+			rasterIsoStairTriangle(&out, &depthBuffer, quad[0], quad[2], quad[3], tex, shade)
+		}
+	}
+	return out
+}
+
+func fenceIconFace(box inventory.BlockBox, face int) ([4][3]float32, [4][2]float32) {
+	x0, x1, y0, y1, z0, z1 := box.MinX, box.MaxX, box.MinY, box.MaxY, box.MinZ, box.MaxZ
+	switch face {
+	case 0:
+		return [4][3]float32{{x1, y0, z0}, {x1, y1, z0}, {x1, y1, z1}, {x1, y0, z1}}, [4][2]float32{{z0, 1 - y0}, {z0, 1 - y1}, {z1, 1 - y1}, {z1, 1 - y0}}
+	case 2:
+		return [4][3]float32{{x0, y1, z0}, {x0, y1, z1}, {x1, y1, z1}, {x1, y1, z0}}, [4][2]float32{{x0, z0}, {x0, z1}, {x1, z1}, {x1, z0}}
+	default:
+		return [4][3]float32{{x1, y0, z1}, {x1, y1, z1}, {x0, y1, z1}, {x0, y0, z1}}, [4][2]float32{{1 - x1, 1 - y0}, {1 - x1, 1 - y1}, {1 - x0, 1 - y1}, {1 - x0, 1 - y0}}
+	}
 }
 
 type isoStairPoint struct{ x, y float32 }

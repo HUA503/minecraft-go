@@ -217,7 +217,7 @@ func RaycastBlocks(origin Vec3, dir Vec3, maxDistance float64, getBlock func(x, 
 		if distTraveled > 0 {
 			blockID := getBlock(currX, currY, currZ)
 			if blockID != 0 {
-				boxes, hasShape := inventory.BlockCollisionBoxes(blockID)
+				boxes, hasShape := inventory.BlockCollisionBoxesAt(blockID, currX, currY, currZ, getBlock)
 				if !hasShape {
 					boxes = []inventory.BlockBox{{MinX: 0, MinY: 0, MinZ: 0, MaxX: 1, MaxY: 1, MaxZ: 1}}
 				}

@@ -145,6 +145,11 @@ func BuildSectionMesh(getBlock func(x, y, z int32) int32, originX, originY, orig
 					addStairBlockMesh(mesh, originX+x, originY+y, originZ+z, blockID, getBlock)
 					continue
 				}
+				if inventory.IsWoodFenceBlock(blockID) {
+					boxes, _ := inventory.WoodFenceCollisionBoxesAt(blockID, originX+x, originY+y, originZ+z, getBlock)
+					addBlockBoxesMesh(mesh, originX+x, originY+y, originZ+z, blockID, boxes, getBlock)
+					continue
+				}
 				if boxes, ok := inventory.BlockCollisionBoxes(blockID); ok && !IsOpaqueCube(blockID) {
 					addPartialBlockMesh(mesh, originX+x, originY+y, originZ+z, blockID, boxes, getBlock)
 					continue
@@ -178,6 +183,29 @@ func BuildSectionMesh(getBlock func(x, y, z int32) int32, originX, originY, orig
 	}
 
 	return mesh
+}
+
+func addBlockBoxesMesh(mesh *Mesh, x, y, z, blockID int32, boxes []inventory.BlockBox, getBlock func(x, y, z int32) int32) {
+	for _, box := range boxes {
+		for face, offset := range NeighborOffsets {
+			neighbor := getBlock(x+offset[0], y+offset[1], z+offset[2])
+			if IsOpaqueCube(neighbor) {
+				continue
+			}
+			if inventory.IsWoodFenceBlock(neighbor) && (face == 0 || face == 1 || face == 4 || face == 5) {
+				continue
+			}
+			base := len(mesh.Vertices)
+			addFaceQuad(mesh, x, y, z, face, blockID, getBlock)
+			for i := base; i < len(mesh.Vertices); i++ {
+				vertex := &mesh.Vertices[i]
+				vertex.X = float32(x) + box.MinX + (vertex.X-float32(x))*(box.MaxX-box.MinX)
+				vertex.Y = float32(y) + box.MinY + (vertex.Y-float32(y))*(box.MaxY-box.MinY)
+				vertex.Z = float32(z) + box.MinZ + (vertex.Z-float32(z))*(box.MaxZ-box.MinZ)
+				vertex.BlockID = inventory.BlockItemForState(blockID)
+			}
+		}
+	}
 }
 
 func addStairBlockMesh(mesh *Mesh, x, y, z, blockID int32, getBlock func(x, y, z int32) int32) {

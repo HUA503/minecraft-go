@@ -591,6 +591,27 @@ func (cm *CraftingManager) registerDefaults() {
 			Output: ItemStack{ItemID: stair.ItemID, Count: 4},
 		})
 	}
+	for _, fence := range woodFenceDefinitions {
+		var planksID int32
+		if block, ok := ExtendedBlockByName(fence.Source); ok {
+			planksID = block.RuntimeID
+		} else {
+			for _, item := range CreativeCatalog(CreativeAll) {
+				if creativeItemRegistryName(item.ID) == fence.Source {
+					planksID = item.ID
+					break
+				}
+			}
+		}
+		if planksID == 0 {
+			continue
+		}
+		cm.Recipes = append(cm.Recipes, Recipe{
+			Width: 3, Height: 2,
+			Pattern: []int32{planksID, ItemStick, planksID, planksID, ItemStick, planksID},
+			Output:  ItemStack{ItemID: fence.ItemID, Count: 3},
+		})
+	}
 
 	// 23. Ladder (7 Sticks in H pattern)
 	cm.Recipes = append(cm.Recipes, Recipe{

@@ -88,6 +88,7 @@ func buildExtendedBlockDefinitions() []ExtendedBlockDefinition {
 	definitions = append(definitions, woodStairBlockDefinitions()...)
 	definitions = append(definitions, masonrySlabBlockDefinitions()...)
 	definitions = append(definitions, masonryStairBlockDefinitions()...)
+	definitions = append(definitions, woodFenceBlockDefinitions()...)
 	definitions = append(definitions, cushionBlockDefinitions()...)
 	return definitions
 }

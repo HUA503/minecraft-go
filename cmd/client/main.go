@@ -3523,7 +3523,7 @@ func (c *Client) RenderFrame() {
 	// 3. Draw targeted block wireframe outline and progressive destruction cracks
 	if c.hasTarget {
 		blockID := c.engine.GetBlockIfLoaded(c.targetedPos.X, c.targetedPos.Y, c.targetedPos.Z)
-		c.framebuf.DrawBlockStateOutline(c.camera, c.targetedPos.X, c.targetedPos.Y, c.targetedPos.Z, blockID)
+		c.framebuf.DrawBlockStateOutlineAt(c.camera, c.targetedPos.X, c.targetedPos.Y, c.targetedPos.Z, blockID, c.engine.GetBlockIfLoaded)
 		if c.isMining && c.breakProgress > 0 {
 			stage := int(c.breakProgress * 10)
 			if stage > 9 {

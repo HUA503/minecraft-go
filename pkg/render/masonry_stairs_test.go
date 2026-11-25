@@ -31,3 +31,38 @@ func TestMasonryStairTexturesAndIcons(t *testing.T) {
 		}
 	}
 }
+
+func TestJava263WoodFenceTexturesIconsAndMesh(t *testing.T) {
+	for _, fence := range inventory.ModernWoodFenceItemDefinitions() {
+		if _, ok := GetOfficialTexture("block", fence.TextureSide); !ok {
+			t.Errorf("missing fence texture %q for %s", fence.TextureSide, fence.Name)
+		}
+		icon := GetItemSprite16x16(fence.RuntimeID)
+		visible := 0
+		for _, row := range icon {
+			for _, pixel := range row {
+				if pixel>>24 != 0 {
+					visible++
+				}
+			}
+		}
+		if visible < 8 {
+			t.Errorf("fence icon %s has only %d visible pixels", fence.Name, visible)
+		}
+		blocks := map[[3]int32]int32{{8, 5, 8}: fence.RuntimeID, {8, 5, 7}: inventory.ItemOakPlanks}
+		mesh := BuildSectionMesh(func(x, y, z int32) int32 { return blocks[[3]int32{x, y, z}] }, 0, 0, 0)
+		found := false
+		for _, vertex := range mesh.Vertices {
+			if vertex.BlockID == fence.RuntimeID {
+				found = true
+				if vertex.X < 8 || vertex.X > 9 || vertex.Y < 5 || vertex.Y > 6.5 || vertex.Z < 7 || vertex.Z > 9 {
+					t.Errorf("fence mesh vertex outside fence bounds: %+v", vertex)
+					break
+				}
+			}
+		}
+		if !found {
+			t.Errorf("fence %s produced no mesh", fence.Name)
+		}
+	}
+}

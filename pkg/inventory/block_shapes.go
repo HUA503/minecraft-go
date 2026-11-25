@@ -196,6 +196,9 @@ func BlockCollisionBoxesAt(blockID, x, y, z int32, getBlock func(int32, int32, i
 	if IsCushionBlock(blockID) {
 		return cushionVisualBox, true
 	}
+	if boxes, ok := WoodFenceCollisionBoxesAt(blockID, x, y, z, getBlock); ok {
+		return boxes, true
+	}
 	if _, _, _, stair := StairStateProperties(blockID); stair {
 		shape := StairShapeAt(blockID, x, y, z, getBlock)
 		return StairCollisionBoxesWithShape(blockID, shape)
