@@ -123,6 +123,7 @@ type Client struct {
 	renderPanicCount         int
 	quitSaving               atomic.Bool
 	quitSaveFailed           atomic.Bool
+	autosaveFailed           atomic.Bool
 	quitSaveDone             chan struct{}
 	worldStarting            atomic.Bool
 	worldStartFailed         atomic.Bool
@@ -1005,6 +1006,7 @@ func (c *Client) SaveAndQuitToTitle() error {
 		return saveErr
 	}
 	c.quitSaveFailed.Store(false)
+	c.autosaveFailed.Store(false)
 	return nil
 }
 
@@ -1083,6 +1085,18 @@ func (c *Client) snapshotLevelData() *world.LevelData {
 			Armor: savedArmorStacks(c.player.Inventory),
 		},
 	}
+}
+
+func (c *Client) recordAutosaveResult(saveErrors []error) {
+	if len(saveErrors) == 0 {
+		c.autosaveFailed.Store(false)
+		return
+	}
+	saveErr := errors.Join(saveErrors...)
+	msg := fmt.Sprintf("PERIODIC AUTOSAVE FAILED: %v", saveErr)
+	log.Print(msg)
+	writeCrashLog(msg)
+	c.autosaveFailed.Store(true)
 }
 
 func NewClient(serverAddr, username string, isSingleplayer bool, width, height int) *Client {
@@ -3400,6 +3414,11 @@ func (c *Client) renderFrameSafely() bool {
 		}
 	}()
 	c.RenderFrame()
+	if c.autosaveFailed.Load() {
+		msg := "自动保存失败，世界数据可能未写入，请先退出保存"
+		textWidth := render.MeasureText5x7(msg, 1)
+		c.framebuf.DrawText5x7((c.framebuf.Width-textWidth)/2, 12, msg, 0xFFFF7777, 1)
+	}
 	if c.networkDisconnected.Load() {
 		msg := "服务器连接已断开"
 		textWidth := render.MeasureText5x7(msg, 2)
@@ -6287,12 +6306,14 @@ func runGraphicalWindow(c *Client, w, h int) {
 							writeCrashLog(msg)
 						}
 					}()
+					var saveErrors []error
 					if err := engine.SaveAll(); err != nil {
-						log.Printf("[Client] Periodic chunk autosave failed: %v", err)
+						saveErrors = append(saveErrors, fmt.Errorf("save chunks: %w", err))
 					}
 					if err := storage.SaveLevel(level); err != nil {
-						log.Printf("[Client] Periodic level autosave failed: %v", err)
+						saveErrors = append(saveErrors, fmt.Errorf("save level data: %w", err))
 					}
+					c.recordAutosaveResult(saveErrors)
 				}()
 			} else {
 				c.autosaveRunning.Store(false)
@@ -6311,12 +6332,14 @@ func runGraphicalWindow(c *Client, w, h int) {
 			time.Sleep(16 * time.Millisecond)
 			mx, my := wnd.GetCursorClientPos(c.framebuf.Width, c.framebuf.Height)
 			c.titleSpBtn, c.titleMpBtn, c.titleQuitBtn = c.framebuf.DrawTitleScreen(mx, my)
-			if c.quitSaveFailed.Load() || c.worldStartFailed.Load() || c.networkDisconnected.Load() {
+			if c.quitSaveFailed.Load() || c.autosaveFailed.Load() || c.worldStartFailed.Load() || c.networkDisconnected.Load() {
 				msg := "操作失败，请查看 crash.log"
 				if c.networkDisconnected.Load() {
 					msg = "服务器连接已断开"
 				} else if c.quitSaveFailed.Load() {
 					msg = "存档保存失败，详情见 crash.log"
+				} else if c.autosaveFailed.Load() {
+					msg = "自动保存失败，详情见 crash.log"
 				}
 				textWidth := render.MeasureText5x7(msg, 1)
 				c.framebuf.DrawText5x7((c.framebuf.Width-textWidth)/2, c.framebuf.Height-60, msg, 0xFFFF7777, 1)
