@@ -278,7 +278,7 @@ var vanillaCreativeTabOrder = map[CreativeCategory][]string{
 		"minecraft:smooth_sandstone_stairs",
 		"minecraft:smooth_sandstone_slab",
 		"minecraft:cut_sandstone",
-		"minecraft:cut_standstone_slab",
+		"minecraft:cut_sandstone_slab",
 		"minecraft:red_sandstone",
 		"minecraft:red_sandstone_stairs",
 		"minecraft:red_sandstone_slab",

@@ -59,6 +59,7 @@ func buildExtendedBlockDefinitions() []ExtendedBlockDefinition {
 	definitions = append(definitions, additionalCommonCubeDefinitions()...)
 	definitions = append(definitions, woodSlabBlockDefinitions()...)
 	definitions = append(definitions, colorSlabBlockDefinitions()...)
+	definitions = append(definitions, masonrySlabBlockDefinitions()...)
 	return definitions
 }
 
@@ -70,6 +71,19 @@ func colorSlabBlockDefinitions() []ExtendedBlockDefinition {
 			TextureTop: slab.Texture, TextureBottom: slab.Texture, TextureSide: slab.Texture,
 			Category: CreativeDecoration, Hardness: slab.Hardness,
 			HarvestTool: slab.HarvestTool, RequiresHarvestTool: slab.RequiresTool,
+		})
+	}
+	return definitions
+}
+
+func masonrySlabBlockDefinitions() []ExtendedBlockDefinition {
+	definitions := make([]ExtendedBlockDefinition, 0, len(masonrySlabDefinitions))
+	for _, slab := range masonrySlabDefinitions {
+		definitions = append(definitions, ExtendedBlockDefinition{
+			RuntimeID: slab.ItemID, Name: slab.Name,
+			TextureTop: slab.TextureTop, TextureBottom: slab.TextureBottom, TextureSide: slab.TextureSide,
+			Category: CreativeBlocks, Hardness: slab.Hardness, HarvestTool: ToolPickaxe,
+			RequiresHarvestTool: true,
 		})
 	}
 	return definitions
@@ -583,6 +597,9 @@ var extendedBlockDisplayNames = map[string]string{
 
 func init() {
 	for _, slab := range colorSlabDefinitions {
+		extendedBlockDisplayNames[slab.Name] = slab.DisplayName
+	}
+	for _, slab := range masonrySlabDefinitions {
 		extendedBlockDisplayNames[slab.Name] = slab.DisplayName
 	}
 }

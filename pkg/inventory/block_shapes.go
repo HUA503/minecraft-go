@@ -9,18 +9,22 @@ type BlockBox struct {
 }
 
 const (
-	BlockStoneSlabTop    int32 = 18000
-	BlockStoneSlabDouble int32 = 18001
-	BlockOakSlabTop      int32 = 18002
-	BlockOakSlabDouble   int32 = 18003
-	FirstWoodSlabItem    int32 = 18010
-	LastWoodSlabItem     int32 = 18022
-	FirstWoodSlabTop     int32 = 20000
-	FirstWoodSlabDouble  int32 = 21000
-	FirstColorSlabItem   int32 = 18100
-	LastColorSlabItem    int32 = 18131
-	FirstColorSlabTop    int32 = 22000
-	FirstColorSlabDouble int32 = 23000
+	BlockStoneSlabTop      int32 = 18000
+	BlockStoneSlabDouble   int32 = 18001
+	BlockOakSlabTop        int32 = 18002
+	BlockOakSlabDouble     int32 = 18003
+	FirstWoodSlabItem      int32 = 18010
+	LastWoodSlabItem       int32 = 18022
+	FirstWoodSlabTop       int32 = 20000
+	FirstWoodSlabDouble    int32 = 21000
+	FirstColorSlabItem     int32 = 18100
+	LastColorSlabItem      int32 = 18131
+	FirstColorSlabTop      int32 = 22000
+	FirstColorSlabDouble   int32 = 23000
+	FirstMasonrySlabItem   int32 = 18200
+	LastMasonrySlabItem    int32 = 18244
+	FirstMasonrySlabTop    int32 = 25000
+	FirstMasonrySlabDouble int32 = 26000
 )
 
 var bottomSlabBox = []BlockBox{{MinX: 0, MinY: 0, MinZ: 0, MaxX: 1, MaxY: .5, MaxZ: 1}}
@@ -102,6 +106,82 @@ func buildColorSlabDefinitions() []colorSlabDefinition {
 	return definitions
 }
 
+type masonrySlabDefinition struct {
+	ItemID        int32
+	Name          string
+	DisplayName   string
+	BlockName     string
+	TextureTop    string
+	TextureBottom string
+	TextureSide   string
+	Hardness      float64
+}
+
+var masonrySlabDefinitions = buildMasonrySlabDefinitions()
+
+func buildMasonrySlabDefinitions() []masonrySlabDefinition {
+	specs := [...]struct {
+		name, display, block, top, bottom, side string
+		hardness                                float64
+	}{
+		{"cobblestone_slab", "圆石台阶", "cobblestone", "cobblestone", "cobblestone", "cobblestone", 2},
+		{"mossy_cobblestone_slab", "苔石台阶", "mossy_cobblestone", "mossy_cobblestone", "mossy_cobblestone", "mossy_cobblestone", 2},
+		{"smooth_stone_slab", "平滑石台阶", "smooth_stone", "smooth_stone", "smooth_stone", "smooth_stone_slab_side", 2},
+		{"stone_brick_slab", "石砖台阶", "stone_bricks", "stone_bricks", "stone_bricks", "stone_bricks", 1.5},
+		{"mossy_stone_brick_slab", "苔石砖台阶", "mossy_stone_bricks", "mossy_stone_bricks", "mossy_stone_bricks", "mossy_stone_bricks", 1.5},
+		{"granite_slab", "花岗岩台阶", "granite", "granite", "granite", "granite", 1.5},
+		{"polished_granite_slab", "磨制花岗岩台阶", "polished_granite", "polished_granite", "polished_granite", "polished_granite", 1.5},
+		{"diorite_slab", "闪长岩台阶", "diorite", "diorite", "diorite", "diorite", 1.5},
+		{"polished_diorite_slab", "磨制闪长岩台阶", "polished_diorite", "polished_diorite", "polished_diorite", "polished_diorite", 1.5},
+		{"andesite_slab", "安山岩台阶", "andesite", "andesite", "andesite", "andesite", 1.5},
+		{"polished_andesite_slab", "磨制安山岩台阶", "polished_andesite", "polished_andesite", "polished_andesite", "polished_andesite", 1.5},
+		{"cobbled_deepslate_slab", "深板岩圆石台阶", "cobbled_deepslate", "cobbled_deepslate", "cobbled_deepslate", "cobbled_deepslate", 3.5},
+		{"polished_deepslate_slab", "磨制深板岩台阶", "polished_deepslate", "polished_deepslate", "polished_deepslate", "polished_deepslate", 3.5},
+		{"deepslate_brick_slab", "深板岩砖台阶", "deepslate_bricks", "deepslate_bricks", "deepslate_bricks", "deepslate_bricks", 3.5},
+		{"deepslate_tile_slab", "深板岩瓦台阶", "deepslate_tiles", "deepslate_tiles", "deepslate_tiles", "deepslate_tiles", 3.5},
+		{"tuff_slab", "凝灰岩台阶", "tuff", "tuff", "tuff", "tuff", 1.5},
+		{"polished_tuff_slab", "磨制凝灰岩台阶", "polished_tuff", "polished_tuff", "polished_tuff", "polished_tuff", 1.5},
+		{"tuff_brick_slab", "凝灰岩砖台阶", "tuff_bricks", "tuff_bricks", "tuff_bricks", "tuff_bricks", 1.5},
+		{"brick_slab", "砖台阶", "bricks", "bricks", "bricks", "bricks", 2},
+		{"mud_brick_slab", "泥砖台阶", "mud_bricks", "mud_bricks", "mud_bricks", "mud_bricks", 1.5},
+		{"resin_brick_slab", "树脂砖台阶", "resin_bricks", "resin_bricks", "resin_bricks", "resin_bricks", 2},
+		{"sandstone_slab", "砂岩台阶", "sandstone", "sandstone_top", "sandstone_bottom", "sandstone", .8},
+		{"smooth_sandstone_slab", "平滑砂岩台阶", "smooth_sandstone", "sandstone_top", "sandstone_top", "sandstone_top", .8},
+		{"cut_sandstone_slab", "切制砂岩台阶", "cut_sandstone", "cut_sandstone", "cut_sandstone", "cut_sandstone", .8},
+		{"red_sandstone_slab", "红砂岩台阶", "red_sandstone", "red_sandstone_top", "red_sandstone_bottom", "red_sandstone", .8},
+		{"smooth_red_sandstone_slab", "平滑红砂岩台阶", "smooth_red_sandstone", "red_sandstone_top", "red_sandstone_top", "red_sandstone_top", .8},
+		{"cut_red_sandstone_slab", "切制红砂岩台阶", "cut_red_sandstone", "cut_red_sandstone", "cut_red_sandstone", "cut_red_sandstone", .8},
+		{"cinnabar_slab", "朱砂台阶", "cinnabar", "cinnabar", "cinnabar", "cinnabar", 2},
+		{"polished_cinnabar_slab", "磨制朱砂台阶", "polished_cinnabar", "polished_cinnabar", "polished_cinnabar", "polished_cinnabar", 2},
+		{"cinnabar_brick_slab", "朱砂砖台阶", "cinnabar_bricks", "cinnabar_bricks", "cinnabar_bricks", "cinnabar_bricks", 2},
+		{"sulfur_slab", "硫磺台阶", "sulfur", "sulfur", "sulfur", "sulfur", 2},
+		{"polished_sulfur_slab", "磨制硫磺台阶", "polished_sulfur", "polished_sulfur", "polished_sulfur", "polished_sulfur", 2},
+		{"sulfur_brick_slab", "硫磺砖台阶", "sulfur_bricks", "sulfur_bricks", "sulfur_bricks", "sulfur_bricks", 2},
+		{"prismarine_slab", "海晶石台阶", "prismarine", "prismarine", "prismarine", "prismarine", 1.5},
+		{"prismarine_brick_slab", "海晶石砖台阶", "prismarine_bricks", "prismarine_bricks", "prismarine_bricks", "prismarine_bricks", 1.5},
+		{"dark_prismarine_slab", "暗海晶石台阶", "dark_prismarine", "dark_prismarine", "dark_prismarine", "dark_prismarine", 1.5},
+		{"nether_brick_slab", "下界砖台阶", "nether_bricks", "nether_bricks", "nether_bricks", "nether_bricks", 2},
+		{"red_nether_brick_slab", "红色下界砖台阶", "red_nether_bricks", "red_nether_bricks", "red_nether_bricks", "red_nether_bricks", 2},
+		{"blackstone_slab", "黑石台阶", "blackstone", "blackstone", "blackstone", "blackstone", 2},
+		{"polished_blackstone_slab", "磨制黑石台阶", "polished_blackstone", "polished_blackstone", "polished_blackstone", "polished_blackstone", 2},
+		{"polished_blackstone_brick_slab", "磨制黑石砖台阶", "polished_blackstone_bricks", "polished_blackstone_bricks", "polished_blackstone_bricks", "polished_blackstone_bricks", 1.5},
+		{"end_stone_brick_slab", "末地石砖台阶", "end_stone_bricks", "end_stone_bricks", "end_stone_bricks", "end_stone_bricks", 3},
+		{"purpur_slab", "紫珀台阶", "purpur_block", "purpur_block", "purpur_block", "purpur_block", 1.5},
+		{"quartz_slab", "石英台阶", "quartz_block", "quartz_block_top", "quartz_block_bottom", "quartz_block_side", .8},
+		{"smooth_quartz_slab", "平滑石英台阶", "smooth_quartz", "quartz_block_top", "quartz_block_top", "quartz_block_top", .8},
+	}
+	definitions := make([]masonrySlabDefinition, 0, len(specs))
+	for _, spec := range specs {
+		name := "minecraft:" + spec.name
+		definitions = append(definitions, masonrySlabDefinition{
+			ItemID: FirstMasonrySlabItem + int32(len(definitions)), Name: name,
+			DisplayName: spec.display, BlockName: "minecraft:" + spec.block,
+			TextureTop: spec.top, TextureBottom: spec.bottom, TextureSide: spec.side, Hardness: spec.hardness,
+		})
+	}
+	return definitions
+}
+
 // BlockCollisionBoxes returns the collision/model boxes for implemented
 // partial block states. A false result means the caller should use its normal
 // full-cube or non-solid rule.
@@ -152,6 +232,15 @@ func SlabItemForBlockState(blockID int32) (int32, bool) {
 	if blockID >= FirstColorSlabDouble && blockID < FirstColorSlabDouble+int32(len(colorSlabDefinitions)) {
 		return FirstColorSlabItem + (blockID - FirstColorSlabDouble), true
 	}
+	if blockID >= FirstMasonrySlabItem && blockID <= LastMasonrySlabItem {
+		return blockID, true
+	}
+	if blockID >= FirstMasonrySlabTop && blockID < FirstMasonrySlabTop+int32(len(masonrySlabDefinitions)) {
+		return FirstMasonrySlabItem + (blockID - FirstMasonrySlabTop), true
+	}
+	if blockID >= FirstMasonrySlabDouble && blockID < FirstMasonrySlabDouble+int32(len(masonrySlabDefinitions)) {
+		return FirstMasonrySlabItem + (blockID - FirstMasonrySlabDouble), true
+	}
 	return 0, false
 }
 
@@ -183,6 +272,12 @@ func SlabPlacementState(itemID int32, faceY int32, localHitY float64) (int32, bo
 		}
 		return itemID, true
 	}
+	if itemID >= FirstMasonrySlabItem && itemID < FirstMasonrySlabItem+int32(len(masonrySlabDefinitions)) {
+		if top {
+			return FirstMasonrySlabTop + (itemID - FirstMasonrySlabItem), true
+		}
+		return itemID, true
+	}
 	return itemID, false
 }
 
@@ -190,13 +285,15 @@ func SlabPlacementState(itemID int32, faceY int32, localHitY float64) (int32, bo
 func IsDoubleSlabState(blockID int32) bool {
 	return blockID == BlockStoneSlabDouble || blockID == BlockOakSlabDouble ||
 		(blockID >= FirstWoodSlabDouble && blockID < FirstWoodSlabDouble+int32(len(woodSlabDefinitions))) ||
-		(blockID >= FirstColorSlabDouble && blockID < FirstColorSlabDouble+int32(len(colorSlabDefinitions)))
+		(blockID >= FirstColorSlabDouble && blockID < FirstColorSlabDouble+int32(len(colorSlabDefinitions))) ||
+		(blockID >= FirstMasonrySlabDouble && blockID < FirstMasonrySlabDouble+int32(len(masonrySlabDefinitions)))
 }
 
 func isTopSlabState(blockID int32) bool {
 	return blockID == BlockStoneSlabTop || blockID == BlockOakSlabTop ||
 		(blockID >= FirstWoodSlabTop && blockID < FirstWoodSlabTop+int32(len(woodSlabDefinitions))) ||
-		(blockID >= FirstColorSlabTop && blockID < FirstColorSlabTop+int32(len(colorSlabDefinitions)))
+		(blockID >= FirstColorSlabTop && blockID < FirstColorSlabTop+int32(len(colorSlabDefinitions))) ||
+		(blockID >= FirstMasonrySlabTop && blockID < FirstMasonrySlabTop+int32(len(masonrySlabDefinitions)))
 }
 
 // SlabMergeState returns the double-slab state when a click on a slab of the
@@ -226,6 +323,9 @@ func SlabMergeState(existingBlockID, itemID, faceY int32, localHitY float64) (in
 	}
 	if itemID >= FirstColorSlabItem && itemID <= LastColorSlabItem {
 		return FirstColorSlabDouble + (itemID - FirstColorSlabItem), true
+	}
+	if itemID >= FirstMasonrySlabItem && itemID < FirstMasonrySlabItem+int32(len(masonrySlabDefinitions)) {
+		return FirstMasonrySlabDouble + (itemID - FirstMasonrySlabItem), true
 	}
 	return 0, false
 }

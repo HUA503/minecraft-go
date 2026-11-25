@@ -550,6 +550,22 @@ func TestSlabPlacementMergeCollisionAndDrops(t *testing.T) {
 	if drop, broken := eng.BreakBlockWithTool(player.ID, concretePos, inventory.ItemWoodenPickaxe); !broken || drop != whiteConcreteSlab {
 		t.Fatalf("breaking a double concrete slab with a wooden pickaxe returned (%d,%t), want %d", drop, broken, whiteConcreteSlab)
 	}
+
+	cobblestoneSlab := inventory.FirstMasonrySlabItem
+	cobblestoneDouble := inventory.FirstMasonrySlabDouble
+	masonryPos := world.BlockPos{X: 18, Y: 64, Z: 10}
+	if !eng.SetBlockChecked(masonryPos.X, masonryPos.Y, masonryPos.Z, cobblestoneDouble) {
+		t.Fatal("failed to install double cobblestone slab test state")
+	}
+	if _, harvested := eng.BreakBlockWithTool(player.ID, masonryPos, inventory.ItemAir); harvested {
+		t.Fatal("double cobblestone slab should not drop without a pickaxe")
+	}
+	if !eng.SetBlockChecked(masonryPos.X, masonryPos.Y, masonryPos.Z, cobblestoneDouble) {
+		t.Fatal("failed to reinstall double cobblestone slab test state")
+	}
+	if drop, harvested := eng.BreakBlockWithTool(player.ID, masonryPos, inventory.ItemWoodenPickaxe); !harvested || drop != cobblestoneSlab {
+		t.Fatalf("breaking double cobblestone slab with a wooden pickaxe returned (%d,%t), want %d", drop, harvested, cobblestoneSlab)
+	}
 }
 
 func TestSlabCollisionAndShapeAwareRaycast(t *testing.T) {
