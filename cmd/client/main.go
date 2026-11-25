@@ -1115,6 +1115,7 @@ func NewClient(serverAddr, username string, isSingleplayer bool, width, height i
 		targetFov:         70.0,
 		equipProgress:     1.0,
 		lastSelectedSlot:  1,
+		creativeTab:       inventory.CreativeBlocks,
 		creativeHotbars:   loadCreativeHotbarPresets(),
 		screenState:       ScreenTitle,
 		newWorldName:      "新世界",

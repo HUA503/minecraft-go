@@ -7,6 +7,13 @@ import (
 	"github.com/HUA503/minecraft-go/pkg/render"
 )
 
+func TestNewClientDefaultsCreativeInventoryToBuildingBlocks(t *testing.T) {
+	client := NewClient("", "test", false, 320, 240)
+	if client.creativeTab != inventory.CreativeBlocks {
+		t.Fatalf("initial creative tab = %d, want building blocks (%d)", client.creativeTab, inventory.CreativeBlocks)
+	}
+}
+
 func TestCreativeHotbarNumberKeyCopiesCatalogItem(t *testing.T) {
 	inv := inventory.NewPlayerInventory()
 	items := []inventory.CreativeItem{{ID: inventory.ItemStone}}
