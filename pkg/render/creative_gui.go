@@ -39,14 +39,14 @@ type creativeTabLayout struct {
 }
 
 // Positions and spacing match Java 26.3 CreativeModeInventoryScreen's seven
-// 27-pixel columns: five categories, Hotbar/Operator, then Search/Inventory.
+// 27-pixel columns: five categories, Saved Hotbars, then Search/Inventory.
 var creativeTabs = [...]creativeTabLayout{
 	{category: inventory.CreativeBlocks, column: 0, icon: 1, name: "建筑方块"},
 	{category: inventory.CreativeDecoration, column: 1, icon: 35, name: "有色方块"},
 	{category: inventory.CreativeNatural, column: 2, icon: 6, name: "自然方块"},
 	{category: inventory.CreativeFunctional, column: 3, icon: 54, name: "功能方块"},
 	{category: inventory.CreativeRedstone, column: 4, icon: 331, name: "红石方块"},
-	{category: inventory.CreativeHotbar, column: 5, icon: 54, name: "快捷栏预设"},
+	{category: inventory.CreativeHotbar, column: 5, icon: 47, name: "已保存的快捷栏"},
 	{category: inventory.CreativeAll, column: 6, icon: 345, name: "搜索物品"},
 	{category: inventory.CreativeTools, column: 0, bottom: true, icon: 270, name: "工具与实用物品"},
 	{category: inventory.CreativeCombat, column: 1, bottom: true, icon: 268, name: "战斗"},

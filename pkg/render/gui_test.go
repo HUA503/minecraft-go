@@ -166,6 +166,27 @@ func TestCreativeInventoryCatalogAndHitTesting(t *testing.T) {
 	}
 }
 
+func TestCreativeTabsMatchJava263VanillaRows(t *testing.T) {
+	hotbar := creativeTabForCategory(inventory.CreativeHotbar)
+	if hotbar.bottom || hotbar.column != 5 {
+		t.Fatalf("saved hotbars tab position = bottom:%v column:%d, want top row column 5", hotbar.bottom, hotbar.column)
+	}
+	if hotbar.icon != 47 || hotbar.name != "已保存的快捷栏" {
+		t.Fatalf("saved hotbars tab appearance = icon %d label %q, want bookshelf icon and vanilla label", hotbar.icon, hotbar.name)
+	}
+	if got := creativeTabSpriteVariant(hotbar); got != 6 {
+		t.Fatalf("saved hotbars sprite variant = %d, want column variant 6", got)
+	}
+
+	const width, height = 400, 300
+	scale, px, py := creativeGUIOrigin(width, height)
+	hit := HitTestCreativeInventory(width, height, inventory.CreativeAll, "", 0,
+		px+(creativeTabX(hotbar)+8)*scale, py+(creativeTabY(hotbar)-4+8)*scale)
+	if hit.Type != SlotCreativeTab || hit.Index != int(inventory.CreativeHotbar) {
+		t.Fatalf("saved hotbars tab hit = %+v, want top-row saved hotbars tab", hit)
+	}
+}
+
 func TestCreativeChineseTooltipsUseCJKTextWidth(t *testing.T) {
 	label := "工具与实用物品"
 	want := MeasureText5x7(label, 2) + 16
