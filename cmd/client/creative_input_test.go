@@ -7,10 +7,10 @@ import (
 	"github.com/HUA503/minecraft-go/pkg/render"
 )
 
-func TestNewClientDefaultsCreativeInventoryToBuildingBlocks(t *testing.T) {
+func TestNewClientDefaultsCreativeInventoryToSearch(t *testing.T) {
 	client := NewClient("", "test", false, 320, 240)
-	if client.creativeTab != inventory.CreativeBlocks {
-		t.Fatalf("initial creative tab = %d, want building blocks (%d)", client.creativeTab, inventory.CreativeBlocks)
+	if client.creativeTab != inventory.CreativeAll {
+		t.Fatalf("initial creative tab = %d, want search (%d)", client.creativeTab, inventory.CreativeAll)
 	}
 }
 

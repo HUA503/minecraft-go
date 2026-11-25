@@ -1115,7 +1115,7 @@ func NewClient(serverAddr, username string, isSingleplayer bool, width, height i
 		targetFov:         70.0,
 		equipProgress:     1.0,
 		lastSelectedSlot:  1,
-		creativeTab:       inventory.CreativeBlocks,
+		creativeTab:       inventory.CreativeAll,
 		creativeHotbars:   loadCreativeHotbarPresets(),
 		screenState:       ScreenTitle,
 		newWorldName:      "新世界",
@@ -5496,7 +5496,14 @@ func runGraphicalWindow(c *Client, w, h int) {
 					c.isCraftingTableOpen = false
 					c.isFurnaceOpen = false
 					c.creativeSearch = ""
-					c.creativeSearchActive = false
+					if c.isCreative {
+						// Java 26.3 opens the creative inventory on the Search tab
+						// with its query field ready for typing.
+						c.creativeTab = inventory.CreativeAll
+						c.creativeSearchActive = true
+					} else {
+						c.creativeSearchActive = false
+					}
 					wnd.SetMouseCaptured(false)
 				}
 			}
