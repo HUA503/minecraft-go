@@ -804,3 +804,40 @@ func TestCreativeCatalogDoesNotListNonItemBlockStates(t *testing.T) {
 		}
 	}
 }
+
+func TestAdditional26FullCubesAreRegisteredAndSearchable(t *testing.T) {
+	want := []string{
+		"amethyst_block", "bamboo_mosaic", "chiseled_nether_bricks", "chiseled_polished_blackstone",
+		"chiseled_stone_bricks", "cracked_nether_bricks", "cracked_stone_bricks", "dark_prismarine",
+		"mossy_stone_bricks", "nether_wart_block", "netherite_block", "pale_moss_block", "prismarine",
+		"prismarine_bricks", "purpur_block", "quartz_bricks", "red_nether_bricks", "resin_block",
+	}
+	seenIDs := make(map[int32]string)
+	for _, name := range want {
+		definition, ok := ExtendedBlockByName("minecraft:" + name)
+		if !ok {
+			t.Fatalf("26.3 block %q is missing its extended definition", name)
+		}
+		if previous, duplicate := seenIDs[definition.RuntimeID]; duplicate {
+			t.Fatalf("runtime ID %d is shared by %q and %q", definition.RuntimeID, previous, name)
+		}
+		seenIDs[definition.RuntimeID] = name
+		if !IsPlaceableBlock(definition.RuntimeID) {
+			t.Errorf("%q is not placeable", name)
+		}
+		if definition.DropRuntimeID != definition.RuntimeID {
+			t.Errorf("%q drop = %d, want itself (%d)", name, definition.DropRuntimeID, definition.RuntimeID)
+		}
+		matches := SearchCreativeCatalog(CreativeAll, "minecraft:"+name)
+		found := false
+		for _, match := range matches {
+			if match.ID == definition.RuntimeID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("creative search for %q = %+v, want runtime ID %d", name, matches, definition.RuntimeID)
+		}
+	}
+}

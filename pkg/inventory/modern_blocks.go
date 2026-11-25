@@ -27,33 +27,89 @@ var modernOreDropRanges = map[string][2]int{
 	"minecraft:deepslate_redstone_ore": {4, 5},
 }
 
-var extendedBlockDefinitions = append(append(append(append([]ExtendedBlockDefinition{
-	baseExtendedBlock(10000, "minecraft:cinnabar", "cinnabar", "cinnabar", "cinnabar", CreativeBlocks),
-	baseExtendedBlock(10001, "minecraft:polished_cinnabar", "polished_cinnabar", "polished_cinnabar", "polished_cinnabar", CreativeBlocks),
-	baseExtendedBlock(10002, "minecraft:chiseled_cinnabar", "chiseled_cinnabar", "chiseled_cinnabar", "chiseled_cinnabar", CreativeBlocks),
-	baseExtendedBlock(10003, "minecraft:cinnabar_bricks", "cinnabar_bricks", "cinnabar_bricks", "cinnabar_bricks", CreativeBlocks),
-	baseExtendedBlock(10004, "minecraft:sulfur", "sulfur", "sulfur", "sulfur", CreativeBlocks),
-	baseExtendedBlock(10005, "minecraft:polished_sulfur", "polished_sulfur", "polished_sulfur", "polished_sulfur", CreativeBlocks),
-	baseExtendedBlock(10006, "minecraft:chiseled_sulfur", "chiseled_sulfur", "chiseled_sulfur", "chiseled_sulfur", CreativeBlocks),
-	baseExtendedBlock(10007, "minecraft:sulfur_bricks", "sulfur_bricks", "sulfur_bricks", "sulfur_bricks", CreativeBlocks),
-	baseExtendedBlock(10008, "minecraft:potent_sulfur", "potent_sulfur", "potent_sulfur", "potent_sulfur", CreativeBlocks),
-	baseExtendedBlock(10009, "minecraft:poplar_planks", "poplar_planks", "poplar_planks", "poplar_planks", CreativeBlocks),
-	{RuntimeID: 10010, Name: "minecraft:poplar_log", TextureTop: "poplar_log_top", TextureBottom: "poplar_log_top", TextureSide: "poplar_log", Category: CreativeBlocks, Hardness: 2, HarvestTool: ToolAxe, StrippedVariantID: 10011},
-	baseExtendedBlock(10011, "minecraft:stripped_poplar_log", "stripped_poplar_log_top", "stripped_poplar_log_top", "stripped_poplar_log", CreativeBlocks),
-	{RuntimeID: 10101, Name: "minecraft:poplar_wood", TextureTop: "poplar_log", TextureBottom: "poplar_log", TextureSide: "poplar_log", Category: CreativeBlocks, Hardness: 2, HarvestTool: ToolAxe, StrippedVariantID: 10102},
-	{RuntimeID: 10102, Name: "minecraft:stripped_poplar_wood", TextureTop: "stripped_poplar_log", TextureBottom: "stripped_poplar_log", TextureSide: "stripped_poplar_log", Category: CreativeBlocks, Hardness: 2, HarvestTool: ToolAxe},
-	baseExtendedBlock(10060, "minecraft:red_poplar_leaves", "red_poplar_leaves", "red_poplar_leaves", "red_poplar_leaves", CreativeNatural),
-	baseExtendedBlock(10061, "minecraft:orange_poplar_leaves", "orange_poplar_leaves", "orange_poplar_leaves", "orange_poplar_leaves", CreativeNatural),
-	baseExtendedBlock(10062, "minecraft:yellow_poplar_leaves", "yellow_poplar_leaves", "yellow_poplar_leaves", "yellow_poplar_leaves", CreativeNatural),
-	baseExtendedBlock(10063, "minecraft:poplar_sapling", "poplar_sapling", "poplar_sapling", "poplar_sapling", CreativeNatural),
-	{RuntimeID: 10100, Name: "minecraft:red_shrub", TextureTop: "red_shrub", TextureBottom: "red_shrub", TextureSide: "red_shrub", Category: CreativeNatural, Hardness: 0.1, DropRuntimeID: 10100},
-}, modernFullCubeDefinitions()...), woodCubeDefinitions()...), coloredBlockDefinitions()...), glazedTerracottaDefinitions()...)
+var extendedBlockDefinitions = buildExtendedBlockDefinitions()
+
+func buildExtendedBlockDefinitions() []ExtendedBlockDefinition {
+	definitions := []ExtendedBlockDefinition{
+		baseExtendedBlock(10000, "minecraft:cinnabar", "cinnabar", "cinnabar", "cinnabar", CreativeBlocks),
+		baseExtendedBlock(10001, "minecraft:polished_cinnabar", "polished_cinnabar", "polished_cinnabar", "polished_cinnabar", CreativeBlocks),
+		baseExtendedBlock(10002, "minecraft:chiseled_cinnabar", "chiseled_cinnabar", "chiseled_cinnabar", "chiseled_cinnabar", CreativeBlocks),
+		baseExtendedBlock(10003, "minecraft:cinnabar_bricks", "cinnabar_bricks", "cinnabar_bricks", "cinnabar_bricks", CreativeBlocks),
+		baseExtendedBlock(10004, "minecraft:sulfur", "sulfur", "sulfur", "sulfur", CreativeBlocks),
+		baseExtendedBlock(10005, "minecraft:polished_sulfur", "polished_sulfur", "polished_sulfur", "polished_sulfur", CreativeBlocks),
+		baseExtendedBlock(10006, "minecraft:chiseled_sulfur", "chiseled_sulfur", "chiseled_sulfur", "chiseled_sulfur", CreativeBlocks),
+		baseExtendedBlock(10007, "minecraft:sulfur_bricks", "sulfur_bricks", "sulfur_bricks", "sulfur_bricks", CreativeBlocks),
+		baseExtendedBlock(10008, "minecraft:potent_sulfur", "potent_sulfur", "potent_sulfur", "potent_sulfur", CreativeBlocks),
+		baseExtendedBlock(10009, "minecraft:poplar_planks", "poplar_planks", "poplar_planks", "poplar_planks", CreativeBlocks),
+		{RuntimeID: 10010, Name: "minecraft:poplar_log", TextureTop: "poplar_log_top", TextureBottom: "poplar_log_top", TextureSide: "poplar_log", Category: CreativeBlocks, Hardness: 2, HarvestTool: ToolAxe, StrippedVariantID: 10011},
+		baseExtendedBlock(10011, "minecraft:stripped_poplar_log", "stripped_poplar_log_top", "stripped_poplar_log_top", "stripped_poplar_log", CreativeBlocks),
+		{RuntimeID: 10101, Name: "minecraft:poplar_wood", TextureTop: "poplar_log", TextureBottom: "poplar_log", TextureSide: "poplar_log", Category: CreativeBlocks, Hardness: 2, HarvestTool: ToolAxe, StrippedVariantID: 10102},
+		{RuntimeID: 10102, Name: "minecraft:stripped_poplar_wood", TextureTop: "stripped_poplar_log", TextureBottom: "stripped_poplar_log", TextureSide: "stripped_poplar_log", Category: CreativeBlocks, Hardness: 2, HarvestTool: ToolAxe},
+		baseExtendedBlock(10060, "minecraft:red_poplar_leaves", "red_poplar_leaves", "red_poplar_leaves", "red_poplar_leaves", CreativeNatural),
+		baseExtendedBlock(10061, "minecraft:orange_poplar_leaves", "orange_poplar_leaves", "orange_poplar_leaves", "orange_poplar_leaves", CreativeNatural),
+		baseExtendedBlock(10062, "minecraft:yellow_poplar_leaves", "yellow_poplar_leaves", "yellow_poplar_leaves", "yellow_poplar_leaves", CreativeNatural),
+		baseExtendedBlock(10063, "minecraft:poplar_sapling", "poplar_sapling", "poplar_sapling", "poplar_sapling", CreativeNatural),
+		{RuntimeID: 10100, Name: "minecraft:red_shrub", TextureTop: "red_shrub", TextureBottom: "red_shrub", TextureSide: "red_shrub", Category: CreativeNatural, Hardness: 0.1, DropRuntimeID: 10100},
+	}
+	definitions = append(definitions, modernFullCubeDefinitions()...)
+	definitions = append(definitions, woodCubeDefinitions()...)
+	definitions = append(definitions, coloredBlockDefinitions()...)
+	definitions = append(definitions, glazedTerracottaDefinitions()...)
+	definitions = append(definitions, additionalFullCubeDefinitions()...)
+	return definitions
+}
 
 func baseExtendedBlock(id int32, name, top, bottom, side string, category CreativeCategory) ExtendedBlockDefinition {
 	return ExtendedBlockDefinition{
 		RuntimeID: id, Name: name, TextureTop: top, TextureBottom: bottom,
 		TextureSide: side, Category: category,
 	}
+}
+
+// additionalFullCubeDefinitions adds vanilla 26.3 full-cube blocks that use
+// ordinary placement and self-drop rules. Stateful and special-drop blocks
+// stay out of this table until their behavior can be represented accurately.
+func additionalFullCubeDefinitions() []ExtendedBlockDefinition {
+	type spec struct {
+		name, display string
+		hardness      float64
+		tool          ToolType
+		category      CreativeCategory
+	}
+	blocks := [...]spec{
+		{"amethyst_block", "紫水晶块", 1.5, ToolPickaxe, CreativeBlocks},
+		{"bamboo_mosaic", "竹马赛克", 2, ToolAxe, CreativeBlocks},
+		{"chiseled_nether_bricks", "錾制下界砖块", 2, ToolPickaxe, CreativeBlocks},
+		{"chiseled_polished_blackstone", "錾制磨制黑石", 1.5, ToolPickaxe, CreativeBlocks},
+		{"chiseled_stone_bricks", "錾制石砖", 1.5, ToolPickaxe, CreativeBlocks},
+		{"cracked_nether_bricks", "裂纹下界砖块", 2, ToolPickaxe, CreativeBlocks},
+		{"cracked_stone_bricks", "裂纹石砖", 1.5, ToolPickaxe, CreativeBlocks},
+		{"dark_prismarine", "暗海晶石", 1.5, ToolPickaxe, CreativeBlocks},
+		{"mossy_stone_bricks", "苔石砖", 1.5, ToolPickaxe, CreativeBlocks},
+		{"nether_wart_block", "下界疣块", 1, ToolHoe, CreativeNatural},
+		{"netherite_block", "下界合金块", 50, ToolPickaxe, CreativeBlocks},
+		{"pale_moss_block", "苍白苔藓块", 0.1, ToolHoe, CreativeNatural},
+		{"prismarine", "海晶石", 1.5, ToolPickaxe, CreativeBlocks},
+		{"prismarine_bricks", "海晶石砖", 1.5, ToolPickaxe, CreativeBlocks},
+		{"purpur_block", "紫珀块", 1.5, ToolPickaxe, CreativeBlocks},
+		{"quartz_bricks", "石英砖", 0.8, ToolPickaxe, CreativeBlocks},
+		{"red_nether_bricks", "红色下界砖块", 2, ToolPickaxe, CreativeBlocks},
+		{"resin_block", "树脂块", 5, ToolPickaxe, CreativeBlocks},
+	}
+	definitions := make([]ExtendedBlockDefinition, 0, len(blocks))
+	for i, block := range blocks {
+		id := int32(14000 + i)
+		texture := block.name
+		definitions = append(definitions, ExtendedBlockDefinition{
+			RuntimeID: id, Name: "minecraft:" + block.name,
+			TextureTop: texture, TextureBottom: texture, TextureSide: texture,
+			Category: block.category, Hardness: block.hardness,
+			HarvestTool: block.tool, RequiresHarvestTool: true,
+			DropRuntimeID: id, DropCountMin: 1, DropCountMax: 1,
+		})
+		extendedBlockDisplayNames["minecraft:"+block.name] = block.display
+	}
+	return definitions
 }
 
 func woodCubeDefinitions() []ExtendedBlockDefinition {
