@@ -9,6 +9,10 @@ const (
 	vanillaASCIISpaceWidth = 4
 )
 
+func vanillaTextShadowColor(color uint32) uint32 {
+	return color&0xFF000000 | (color&0x00FCFCFC)>>2
+}
+
 func vanillaASCIIAtlas() (*RawImage, bool) {
 	return GetOfficialImage("font/ascii")
 }

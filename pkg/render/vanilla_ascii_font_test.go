@@ -2,6 +2,14 @@ package render
 
 import "testing"
 
+func TestVanillaTextShadowDerivesDarkenedRGBAndKeepsAlpha(t *testing.T) {
+	const foreground uint32 = 0x7FAABBCC
+	const want uint32 = 0x7F2A2E33
+	if got := vanillaTextShadowColor(foreground); got != want {
+		t.Fatalf("vanilla shadow color = %#08x, want %#08x", got, want)
+	}
+}
+
 func TestVanillaASCIIAtlasIsEmbedded(t *testing.T) {
 	data, err := EmbeddedTextures.ReadFile("assets/textures/font/ascii.png")
 	if err != nil {

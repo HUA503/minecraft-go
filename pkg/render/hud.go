@@ -820,7 +820,7 @@ func (fb *Framebuffer) DrawChar5x7(x, y int, ch rune, col uint32, scale int) int
 
 // DrawText5x7 renders an entire string with Minecraft-style drop shadow.
 func (fb *Framebuffer) DrawText5x7(x, y int, text string, col uint32, scale int) int {
-	shadowCol := uint32(0xFF222222)
+	shadowCol := vanillaTextShadowColor(col)
 	// Render drop shadow first (offset by scale)
 	curX := x + scale
 	curY := y + scale
