@@ -20,7 +20,7 @@ const (
 	maxTexturePixels       = 4 * 1024 * 1024
 )
 
-//go:embed assets/textures/item/*.png assets/textures/block/*.png assets/textures/font/*.png assets/textures/gui/container/*.png assets/textures/gui/container/creative_inventory/*.png assets/textures/gui/sprites/container/slot.png assets/textures/gui/sprites/container/creative_inventory/*.png assets/textures/gui/sprites/hud/*.png assets/textures/gui/sprites/hud/heart/*.png assets/textures/entity/*/*.png assets/textures/entity/*/*/*.png
+//go:embed assets/textures/item/*.png assets/textures/block/*.png assets/textures/font/*.png assets/textures/gui/container/*.png assets/textures/gui/container/creative_inventory/*.png assets/textures/gui/sprites/container/slot.png assets/textures/gui/sprites/container/creative_inventory/*.png assets/textures/gui/sprites/tooltip/*.png assets/textures/gui/sprites/tooltip/*.png.mcmeta assets/textures/gui/sprites/hud/*.png assets/textures/gui/sprites/hud/heart/*.png assets/textures/entity/*/*.png assets/textures/entity/*/*/*.png
 var EmbeddedTextures embed.FS
 
 var (

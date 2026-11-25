@@ -735,6 +735,9 @@ func drawCreativeTooltip(fb *Framebuffer, label string, mouseX, mouseY, scale in
 	if label == "" {
 		return
 	}
+	if scale < 1 {
+		scale = 1
+	}
 	width := creativeTooltipWidth(label, scale)
 	x, y := mouseX+10*scale, mouseY+10*scale
 	if x+width > fb.Width {
@@ -743,9 +746,79 @@ func drawCreativeTooltip(fb *Framebuffer, label string, mouseX, mouseY, scale in
 	if y+13*scale > fb.Height {
 		y = mouseY - 18*scale
 	}
-	fb.DrawRect(x, y, width, 13*scale, 0xF0100010)
-	fb.DrawRect(x+scale, y+scale, width-2*scale, 11*scale, 0xF0100010)
+	height := 13 * scale
+	background, hasBackground := GetOfficialImage("gui/sprites/tooltip/background.png")
+	frame, hasFrame := GetOfficialImage("gui/sprites/tooltip/frame.png")
+	if hasBackground {
+		drawNineSliceRawImage(fb, background, x, y, scale, width, height, 9, false)
+	} else {
+		fb.DrawRect(x, y, width, height, 0xF0100010)
+	}
+	if hasFrame {
+		drawNineSliceRawImage(fb, frame, x, y, scale, width, height, 10, true)
+	}
 	fb.DrawText5x7(x+4*scale, y+3*scale, label, 0xFFFFFFFF, scale)
+}
+
+func drawNineSliceRawImage(fb *Framebuffer, image *RawImage, x, y, scale, width, height, border int, stretchInner bool) {
+	if fb == nil || image == nil || scale < 1 || width < 1 || height < 1 || border < 1 ||
+		image.Width <= border*2 || image.Height <= border*2 || image.Height > len(image.Pixels)/image.Width {
+		return
+	}
+	logicalWidth := (width + scale - 1) / scale
+	logicalHeight := (height + scale - 1) / scale
+	borderX := min(border, logicalWidth/2)
+	borderY := min(border, logicalHeight/2)
+	sourceCoord := func(pos, dstSize, srcSize, dstBorder, srcBorder int) int {
+		if pos < dstBorder {
+			return min(srcBorder-1, pos*srcBorder/max(1, dstBorder))
+		}
+		if pos >= dstSize-dstBorder {
+			fromEdge := pos - (dstSize - dstBorder)
+			return max(srcSize-srcBorder, srcSize-srcBorder+fromEdge*srcBorder/max(1, dstBorder))
+		}
+		innerPos := pos - dstBorder
+		innerDst := max(1, dstSize-2*dstBorder)
+		innerSrc := srcSize - 2*srcBorder
+		if stretchInner {
+			return srcBorder + innerPos*innerSrc/innerDst
+		}
+		return srcBorder + innerPos%innerSrc
+	}
+	for dy := 0; dy < logicalHeight; dy++ {
+		sy := sourceCoord(dy, logicalHeight, image.Height, borderY, border)
+		for dx := 0; dx < logicalWidth; dx++ {
+			sx := sourceCoord(dx, logicalWidth, image.Width, borderX, border)
+			color := image.Pixels[sy*image.Width+sx]
+			alpha := (color >> 24) & 0xFF
+			if alpha == 0 {
+				continue
+			}
+			px, py := x+dx*scale, y+dy*scale
+			if alpha == 255 {
+				fb.DrawRect(px, py, scale, scale, color)
+				continue
+			}
+			for blockY := 0; blockY < scale; blockY++ {
+				row := (py + blockY) * fb.Width
+				if py+blockY < 0 || py+blockY >= fb.Height {
+					continue
+				}
+				for blockX := 0; blockX < scale; blockX++ {
+					if px+blockX < 0 || px+blockX >= fb.Width {
+						continue
+					}
+					index := row + px + blockX
+					background := fb.Color[index]
+					inverse := 255 - alpha
+					r := (((color>>16)&0xFF)*alpha + ((background>>16)&0xFF)*inverse) / 255
+					g := (((color>>8)&0xFF)*alpha + ((background>>8)&0xFF)*inverse) / 255
+					b := ((color&0xFF)*alpha + (background&0xFF)*inverse) / 255
+					fb.Color[index] = 0xFF000000 | (r << 16) | (g << 8) | b
+				}
+			}
+		}
+	}
 }
 
 func creativeTooltipWidth(label string, scale int) int {

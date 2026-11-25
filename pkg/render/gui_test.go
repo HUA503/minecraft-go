@@ -393,8 +393,8 @@ func TestCreativeInventoryShowsPlayerItemTooltipAndDurability(t *testing.T) {
 	fb := NewFramebuffer(width, height)
 	fb.DrawCreativeInventoryGUI(inv, inventory.ItemStack{}, inventory.CreativeAll, "", 0, mouseX, mouseY)
 	tooltipX, tooltipY := mouseX+10*scale, mouseY+10*scale
-	if got := fb.Color[tooltipY*width+tooltipX]; got != 0xF0100010 {
-		t.Fatalf("player inventory item tooltip background = %#08x, want %#08x", got, uint32(0xF0100010))
+	if got := fb.Color[tooltipY*width+tooltipX]; got == 0xF0100010 || got == 0 {
+		t.Fatalf("player inventory tooltip did not use the official nine-slice art: %#08x", got)
 	}
 
 	bar := NewFramebuffer(20, 20)
@@ -422,9 +422,18 @@ func TestCreativeInventoryUsesEmbeddedVanillaGUITextures(t *testing.T) {
 		"assets/textures/gui/container/creative_inventory/tab_items.png",
 		"assets/textures/gui/container/creative_inventory/tab_item_search.png",
 		"assets/textures/gui/container/creative_inventory/tab_inventory.png",
+		"assets/textures/gui/sprites/tooltip/background.png",
+		"assets/textures/gui/sprites/tooltip/background.png.mcmeta",
+		"assets/textures/gui/sprites/tooltip/frame.png",
+		"assets/textures/gui/sprites/tooltip/frame.png.mcmeta",
 	} {
 		if _, err := EmbeddedTextures.ReadFile(path); err != nil {
 			t.Errorf("missing embedded vanilla GUI texture %s: %v", path, err)
+		}
+	}
+	for _, path := range []string{"gui/sprites/tooltip/background.png", "gui/sprites/tooltip/frame.png"} {
+		if image, ok := GetOfficialImage(path); !ok || image.Width != 100 || image.Height != 100 {
+			t.Errorf("official tooltip sprite %s = (%v, %t), want 100x100", path, image, ok)
 		}
 	}
 }

@@ -365,3 +365,8 @@
 
 - 周期性区块或 level 数据保存错误、后台自动保存 panic 时，客户端现在追加写入 `crash.log` 并在游戏画面提示“自动保存失败，世界数据可能未写入，请先退出保存”；后续完整自动保存成功后清除警告。最终退出保存成功也会清除该警告。
 - 新增客户端回归用例验证失败状态、日志内容及成功后的恢复。`go test ./...`、`go vet ./...`、`go build ./...`、Windows 客户端构建及 `git diff --check` 通过；`bin/client.exe` SHA-256：`7CEA9FA3DC1F9971F58EF7B61E3614F3F75D389174F64E383A7A8372AA447E6C`。
+
+## 2026-11-25 Java 26.3 tooltip 贴图还原
+
+- 创造栏物品提示从纯色矩形改用 Mojang 26.3 客户端包里的官方 `gui/sprites/tooltip/background.png` 与 `frame.png`；按各自 `.mcmeta` 的 9/10 像素边缘做九切片，并保留 GUI 缩放、透明混合和屏幕裁切。
+- 将两张官方图片加入嵌入资源；回归检查资源尺寸、UI 绘制及边界。全量 `go test ./...`、`go vet ./...`、`go build ./...`、Windows 客户端构建与 `git diff --check` 通过。`bin/client.exe` SHA-256：`038274F06A9B06A9AE6CA293C33D504C5345123CBB576D6885E58489323AF6C3`。
