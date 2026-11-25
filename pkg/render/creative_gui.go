@@ -763,9 +763,9 @@ func drawCreativeSearchText(fb *Framebuffer, x, y int, text string, color uint32
 				glyph := GetCJKGlyph(ch)
 				const glyphSize = 9
 				for gy := 0; gy < glyphSize; gy++ {
-					sourceY := gy * len(glyph) / glyphSize
+					sourceY := min(len(glyph)-1, (gy*12+6)/glyphSize)
 					for gx := 0; gx < glyphSize; gx++ {
-						sourceX := gx * 12 / glyphSize
+						sourceX := min(11, (gx*12+6)/glyphSize)
 						if glyph[sourceY]&(1<<(11-sourceX)) != 0 {
 							drawCreativeSearchPixel(fb, cursorX+gx*scale, originY+gy*scale, scale, drawColor, x, x+maxWidth)
 						}
@@ -773,9 +773,6 @@ func drawCreativeSearchText(fb *Framebuffer, x, y int, text string, color uint32
 				}
 				cursorX += glyphSize * scale
 				continue
-			}
-			if ch >= 'a' && ch <= 'z' {
-				ch = ch - 'a' + 'A'
 			}
 			glyph, ok := font5x7[ch]
 			if !ok {
