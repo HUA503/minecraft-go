@@ -2,8 +2,25 @@ package nbt
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 )
+
+func TestUnmarshalRejectsExcessiveNestedLists(t *testing.T) {
+	var nested Tag = &ByteTag{Value: 1}
+	for i := 0; i < maxNBTDepth+1; i++ {
+		nested = &ListTag{ElementType: nested.Type(), Elements: []Tag{nested}}
+	}
+	root := NewCompound()
+	root.Put("nested", nested)
+	data, err := Marshal("", root)
+	if err != nil {
+		t.Fatalf("encode nested-list fixture: %v", err)
+	}
+	if _, _, err := Unmarshal(data); err == nil || !strings.Contains(err.Error(), "NBT nesting depth exceeds maximum") {
+		t.Fatalf("nested-list decode error = %v, want depth-limit error", err)
+	}
+}
 
 func TestNBTRoundTripAllTypes(t *testing.T) {
 	root := NewCompound()

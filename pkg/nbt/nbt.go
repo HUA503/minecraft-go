@@ -357,6 +357,12 @@ func (d *Decoder) readPayload(tagType TagType) (Tag, error) {
 		s, err := d.readString()
 		return &StringTag{Value: s}, err
 	case TagList:
+		if d.depth >= maxNBTDepth {
+			return nil, fmt.Errorf("NBT nesting depth exceeds maximum %d", maxNBTDepth)
+		}
+		d.depth++
+		defer func() { d.depth-- }()
+
 		var elemTypeByte byte
 		if err := binary.Read(d.r, binary.BigEndian, &elemTypeByte); err != nil {
 			return nil, err
