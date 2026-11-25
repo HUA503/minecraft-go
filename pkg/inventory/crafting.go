@@ -566,6 +566,31 @@ func (cm *CraftingManager) registerDefaults() {
 			Output: ItemStack{ItemID: stair.ItemID, Count: 4},
 		})
 	}
+	for _, stair := range masonryStairDefinitions {
+		var blockID int32
+		if block, ok := ExtendedBlockByName(stair.SourceBlock); ok {
+			blockID = block.RuntimeID
+		} else {
+			for _, item := range CreativeCatalog(CreativeAll) {
+				if creativeItemRegistryName(item.ID) == stair.SourceBlock {
+					blockID = item.ID
+					break
+				}
+			}
+		}
+		if blockID == 0 {
+			continue
+		}
+		cm.Recipes = append(cm.Recipes, Recipe{
+			Width: 3, Height: 3,
+			Pattern: []int32{
+				blockID, ItemAir, ItemAir,
+				blockID, blockID, ItemAir,
+				blockID, blockID, blockID,
+			},
+			Output: ItemStack{ItemID: stair.ItemID, Count: 4},
+		})
+	}
 
 	// 23. Ladder (7 Sticks in H pattern)
 	cm.Recipes = append(cm.Recipes, Recipe{
