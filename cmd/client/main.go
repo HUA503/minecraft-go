@@ -3255,7 +3255,7 @@ func (c *Client) UpdateRightClick(isRightDown bool, dt float64) {
 	}
 
 	// 1. Food Consumption
-	if !sel.IsEmpty() && inventory.IsFood(sel.ItemID) && c.player.Hunger < 20 {
+	if !sel.IsEmpty() && canConsumeSelectedFood(sel.ItemID, c.player.Hunger) {
 		if isRightDown {
 			c.isEating = true
 			c.eatTimer += dt
@@ -3323,6 +3323,11 @@ func (c *Client) UpdateRightClick(isRightDown bool, dt float64) {
 			}
 		}
 	}
+}
+
+func canConsumeSelectedFood(itemID int32, hunger int) bool {
+	food, ok := inventory.FoodRegistry[itemID]
+	return ok && (hunger < 20 || food.AlwaysEdible)
 }
 
 func spawnEggMobType(entityName string) (sim.MobType, bool) {
