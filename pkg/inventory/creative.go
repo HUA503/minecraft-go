@@ -52,6 +52,9 @@ func CreativeCatalog(category CreativeCategory) []CreativeItem {
 	for _, definition := range java263FoodItems {
 		items = append(items, CreativeItem{ID: definition.RuntimeID, Name: definition.DisplayName, Category: CreativeFood})
 	}
+	for _, definition := range modernCreativeItemDefinitions {
+		items = append(items, CreativeItem{ID: definition.RuntimeID, Name: definition.Display, Category: definition.Category})
+	}
 	if category == CreativeAll {
 		return items
 	}
@@ -98,6 +101,9 @@ func normalizeCreativeSearch(value string) string {
 }
 
 func creativeItemRegistryName(itemID int32) string {
+	if item, ok := ModernCreativeItemByID(itemID); ok {
+		return item.Name
+	}
 	if item, ok := FoodItemByID(itemID); ok {
 		return item.Name
 	}

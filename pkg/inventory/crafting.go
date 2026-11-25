@@ -469,6 +469,28 @@ func (cm *CraftingManager) registerDefaults() {
 		},
 		Output: ItemStack{ItemID: ItemLadder, Count: 3},
 	})
+
+	// Modern material conversions supported by the vanilla crafting grid.
+	cm.Recipes = append(cm.Recipes,
+		Recipe{Width: 1, Height: 1, Pattern: []int32{ItemBlazeRod}, Output: ItemStack{ItemID: ItemBlazePowder, Count: 2}},
+		Recipe{Width: 1, Height: 1, Pattern: []int32{ItemCopperIngot}, Output: ItemStack{ItemID: ItemCopperNugget, Count: 9}},
+		Recipe{Width: 3, Height: 3, Pattern: []int32{ItemCopperNugget, ItemCopperNugget, ItemCopperNugget, ItemCopperNugget, ItemCopperNugget, ItemCopperNugget, ItemCopperNugget, ItemCopperNugget, ItemCopperNugget}, Output: ItemStack{ItemID: ItemCopperIngot, Count: 1}},
+		Recipe{Width: 1, Height: 2, Pattern: []int32{ItemCharcoal, ItemStick}, Output: ItemStack{ItemID: ItemTorch, Count: 4}},
+	)
+	if amethystBlock, ok := ExtendedBlockByName("minecraft:amethyst_block"); ok {
+		cm.Recipes = append(cm.Recipes, Recipe{
+			Width: 2, Height: 2,
+			Pattern: []int32{ItemAmethystShard, ItemAmethystShard, ItemAmethystShard, ItemAmethystShard},
+			Output:  ItemStack{ItemID: amethystBlock.RuntimeID, Count: 1},
+		})
+	}
+	if honeycombBlock, ok := ExtendedBlockByName("minecraft:honeycomb_block"); ok {
+		cm.Recipes = append(cm.Recipes, Recipe{
+			Width: 2, Height: 2,
+			Pattern: []int32{ItemHoneycomb, ItemHoneycomb, ItemHoneycomb, ItemHoneycomb},
+			Output:  ItemStack{ItemID: honeycombBlock.RuntimeID, Count: 1},
+		})
+	}
 }
 
 // MatchCrafting finds matching recipe for grid (gridSize = 2 for 2x2, 3 for 3x3).

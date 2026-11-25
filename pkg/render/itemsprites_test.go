@@ -36,6 +36,31 @@ func TestRenderIsometricBlock16x16(t *testing.T) {
 	}
 }
 
+func TestModernCreativeMaterialItemsUseOfficialIcons(t *testing.T) {
+	for _, item := range inventory.ModernCreativeItemDefinitions() {
+		t.Run(item.Name, func(t *testing.T) {
+			if got := GetOfficialItemTextureName(item.RuntimeID); got != item.Texture {
+				t.Fatalf("official texture = %q, want %q", got, item.Texture)
+			}
+			if _, ok := GetOfficialItemSprite(item.RuntimeID); !ok {
+				t.Fatalf("official sprite %q is missing", item.Texture)
+			}
+			sprite := GetItemSprite16x16(item.RuntimeID)
+			nonTransparent := 0
+			for y := range sprite {
+				for x := range sprite[y] {
+					if sprite[y][x]>>24 != 0 {
+						nonTransparent++
+					}
+				}
+			}
+			if nonTransparent == 0 {
+				t.Fatal("generated item icon is empty")
+			}
+		})
+	}
+}
+
 func TestGetItemSprite16x16(t *testing.T) {
 	items := []int32{
 		inventory.ItemWoodenPickaxe,

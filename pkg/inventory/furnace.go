@@ -1,5 +1,7 @@
 package inventory
 
+import "strings"
+
 // SmeltingRecipe holds input item, output product, and experience earned.
 type SmeltingRecipe struct {
 	InputID    int32
@@ -12,7 +14,7 @@ var SmeltingRecipes = map[int32]SmeltingRecipe{
 	15:              {InputID: 15, OutputID: ItemIronIngot, Experience: 0.7},          // Raw Iron / Iron Ore -> Iron Ingot
 	14:              {InputID: 14, OutputID: 266, Experience: 1.0},                    // Gold Ore -> Gold Ingot (ID 266)
 	ItemCobblestone: {InputID: ItemCobblestone, OutputID: ItemStone, Experience: 0.1}, // Cobblestone -> Smooth Stone
-	ItemOakLog:      {InputID: ItemOakLog, OutputID: 263, Experience: 0.15},           // Oak Log -> Charcoal (ID 263)
+	ItemOakLog:      {InputID: ItemOakLog, OutputID: ItemCharcoal, Experience: 0.15},  // Oak Log -> Charcoal
 	12:              {InputID: 12, OutputID: 20, Experience: 0.1},                     // Sand -> Glass (ID 20)
 	319:             {InputID: 319, OutputID: 320, Experience: 0.35},                  // Raw Porkchop -> Cooked Porkchop
 	363:             {InputID: 363, OutputID: 364, Experience: 0.35},                  // Raw Beef -> Steak
@@ -24,6 +26,13 @@ func init() {
 	SmeltingRecipes[ItemRawCopper] = SmeltingRecipe{InputID: ItemRawCopper, OutputID: ItemCopperIngot, Experience: 0.7}
 	if ancientDebris, ok := ExtendedBlockByName("minecraft:ancient_debris"); ok {
 		SmeltingRecipes[ancientDebris.RuntimeID] = SmeltingRecipe{InputID: ancientDebris.RuntimeID, OutputID: ItemNetheriteScrap, Experience: 2.0}
+	}
+	for _, block := range ExtendedBlockDefinitions() {
+		name := strings.TrimPrefix(block.Name, "minecraft:")
+		if (strings.HasSuffix(name, "_log") || strings.HasSuffix(name, "_wood")) &&
+			!strings.HasPrefix(name, "crimson_") && !strings.HasPrefix(name, "warped_") {
+			SmeltingRecipes[block.RuntimeID] = SmeltingRecipe{InputID: block.RuntimeID, OutputID: ItemCharcoal, Experience: 0.15}
+		}
 	}
 	for _, recipe := range []struct {
 		inputID int32
@@ -50,7 +59,9 @@ func MatchSmelting(inputID int32) (SmeltingRecipe, bool) {
 
 // Fuel burn duration in ticks (20 ticks = 1 second)
 var FuelBurnTimes = map[int32]int{
-	ItemCoal:          1600,  // Coal / Charcoal: 80 seconds (smelts 8 items)
+	ItemCoal:          1600,  // Coal: 80 seconds (smelts 8 items)
+	ItemCharcoal:      1600,  // Charcoal: 80 seconds (smelts 8 items)
+	ItemBlazeRod:      2400,  // Blaze rod: 120 seconds (smelts 12 items)
 	ItemOakLog:        300,   // Wood log: 15 seconds (smelts 1.5 items)
 	ItemOakPlanks:     300,   // Wood plank: 15 seconds (smelts 1.5 items)
 	ItemStick:         100,   // Stick: 5 seconds (smelts 0.5 items)

@@ -872,6 +872,68 @@ func TestAddedVanillaFullCubesHaveCreativeItemsAndCorrectHarvestRules(t *testing
 	}
 }
 
+func TestModernCreativeMaterialsHaveRegistryNamesAndUsefulRecipes(t *testing.T) {
+	for _, definition := range ModernCreativeItemDefinitions() {
+		if definition.Category != CreativeMaterials || definition.MaxStack != 64 {
+			t.Errorf("item %s has category/stack limit %d/%d", definition.Name, definition.Category, definition.MaxStack)
+		}
+		if got := GetMaxStackSize(definition.RuntimeID); got != definition.MaxStack {
+			t.Errorf("item %s stack limit = %d, want %d", definition.Name, got, definition.MaxStack)
+		}
+		matches := SearchCreativeCatalog(CreativeMaterials, definition.Name)
+		var exact []CreativeItem
+		for _, item := range matches {
+			if creativeItemRegistryName(item.ID) == definition.Name {
+				exact = append(exact, item)
+			}
+		}
+		if len(exact) != 1 || exact[0].ID != definition.RuntimeID || exact[0].Name != definition.Display {
+			t.Errorf("creative catalog lookup for %s = %+v", definition.Name, exact)
+		}
+	}
+
+	crafting := NewCraftingManager()
+	for _, tc := range []struct {
+		name   string
+		grid   []int32
+		size   int
+		output ItemStack
+	}{
+		{"blaze powder", []int32{ItemBlazeRod, 0, 0, 0}, 2, ItemStack{ItemID: ItemBlazePowder, Count: 2}},
+		{"torch from charcoal", []int32{ItemCharcoal, 0, ItemStick, 0}, 2, ItemStack{ItemID: ItemTorch, Count: 4}},
+		{"copper nuggets", []int32{ItemCopperIngot, 0, 0, 0}, 2, ItemStack{ItemID: ItemCopperNugget, Count: 9}},
+		{"copper ingot", []int32{ItemCopperNugget, ItemCopperNugget, ItemCopperNugget, ItemCopperNugget, ItemCopperNugget, ItemCopperNugget, ItemCopperNugget, ItemCopperNugget, ItemCopperNugget}, 3, ItemStack{ItemID: ItemCopperIngot, Count: 1}},
+		{"amethyst block", []int32{ItemAmethystShard, ItemAmethystShard, ItemAmethystShard, ItemAmethystShard}, 2, ItemStack{ItemID: 14000, Count: 1}},
+		{"honeycomb block", []int32{ItemHoneycomb, ItemHoneycomb, ItemHoneycomb, ItemHoneycomb}, 2, ItemStack{ItemID: 14106, Count: 1}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := crafting.MatchCrafting(tc.grid, tc.size)
+			if !ok || got != tc.output {
+				t.Fatalf("craft result = %+v, matched=%t; want %+v", got, ok, tc.output)
+			}
+		})
+	}
+
+	if smelt, ok := MatchSmelting(ItemOakLog); !ok || smelt.OutputID != ItemCharcoal {
+		t.Errorf("oak log smelting = %+v, matched=%t; want distinct charcoal", smelt, ok)
+	}
+	for _, name := range []string{"minecraft:birch_log", "minecraft:stripped_oak_log", "minecraft:oak_wood"} {
+		block, ok := ExtendedBlockByName(name)
+		if !ok {
+			t.Fatalf("missing log block %s", name)
+		}
+		if smelt, ok := MatchSmelting(block.RuntimeID); !ok || smelt.OutputID != ItemCharcoal {
+			t.Errorf("%s smelting = %+v, matched=%t; want charcoal", name, smelt, ok)
+		}
+	}
+	if got := GetFuelBurnTime(ItemCharcoal); got != 1600 {
+		t.Errorf("charcoal burn time = %d, want 1600", got)
+	}
+	if got := GetFuelBurnTime(ItemBlazeRod); got != 2400 {
+		t.Errorf("blaze rod burn time = %d, want 2400", got)
+	}
+}
+
 func TestNewOreMaterialsHaveSmeltingRecipesAndCreativeEntries(t *testing.T) {
 	want := map[int32]int32{
 		ItemRawCopper: ItemCopperIngot,

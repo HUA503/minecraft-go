@@ -324,6 +324,9 @@ func GetOfficialItemSprite(itemID int32) ([16][16]uint32, bool) {
 
 // GetOfficialItemTextureName maps item IDs to official Mojang vanilla texture filenames.
 func GetOfficialItemTextureName(itemID int32) string {
+	if item, ok := inventory.ModernCreativeItemByID(itemID); ok {
+		return item.Texture
+	}
 	if item, ok := inventory.FoodItemByID(itemID); ok {
 		return item.Texture
 	}
