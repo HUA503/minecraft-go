@@ -17,6 +17,10 @@ const (
 	LastWoodSlabItem     int32 = 18022
 	FirstWoodSlabTop     int32 = 20000
 	FirstWoodSlabDouble  int32 = 21000
+	FirstColorSlabItem   int32 = 18100
+	LastColorSlabItem    int32 = 18131
+	FirstColorSlabTop    int32 = 22000
+	FirstColorSlabDouble int32 = 23000
 )
 
 var bottomSlabBox = []BlockBox{{MinX: 0, MinY: 0, MinZ: 0, MaxX: 1, MaxY: .5, MaxZ: 1}}
@@ -54,6 +58,49 @@ var woodSlabByItem = func() map[int32]woodSlabDefinition {
 	}
 	return defs
 }()
+
+type colorSlabDefinition struct {
+	ItemID       int32
+	Name         string
+	DisplayName  string
+	Texture      string
+	BlockName    string
+	Hardness     float64
+	HarvestTool  ToolType
+	RequiresTool bool
+}
+
+var colorSlabDefinitions = buildColorSlabDefinitions()
+
+func buildColorSlabDefinitions() []colorSlabDefinition {
+	colors := [...]struct{ id, name string }{
+		{"white", "白"}, {"orange", "橙"}, {"magenta", "品红"}, {"light_blue", "淡蓝"},
+		{"yellow", "黄"}, {"lime", "黄绿"}, {"pink", "粉红"}, {"gray", "灰"},
+		{"light_gray", "淡灰"}, {"cyan", "青"}, {"purple", "紫"}, {"blue", "蓝"},
+		{"brown", "棕"}, {"green", "绿"}, {"red", "红"}, {"black", "黑"},
+	}
+	definitions := make([]colorSlabDefinition, 0, len(colors)*2)
+	for _, color := range colors {
+		for _, kind := range []struct {
+			suffix, display string
+			hardness        float64
+			tool            ToolType
+			requiresTool    bool
+		}{
+			{"wool", "羊毛台阶", .8, ToolNone, false},
+			{"concrete", "混凝土台阶", 1.8, ToolPickaxe, true},
+		} {
+			blockName := "minecraft:" + color.id + "_" + kind.suffix
+			itemName := blockName + "_slab"
+			definitions = append(definitions, colorSlabDefinition{
+				ItemID: FirstColorSlabItem + int32(len(definitions)), Name: itemName,
+				DisplayName: color.name + kind.display, Texture: color.id + "_" + kind.suffix,
+				BlockName: blockName, Hardness: kind.hardness, HarvestTool: kind.tool, RequiresTool: kind.requiresTool,
+			})
+		}
+	}
+	return definitions
+}
 
 // BlockCollisionBoxes returns the collision/model boxes for implemented
 // partial block states. A false result means the caller should use its normal
@@ -96,6 +143,15 @@ func SlabItemForBlockState(blockID int32) (int32, bool) {
 	if blockID >= FirstWoodSlabDouble && blockID < FirstWoodSlabDouble+int32(len(woodSlabDefinitions)) {
 		return FirstWoodSlabItem + (blockID - FirstWoodSlabDouble), true
 	}
+	if blockID >= FirstColorSlabItem && blockID <= LastColorSlabItem {
+		return blockID, true
+	}
+	if blockID >= FirstColorSlabTop && blockID < FirstColorSlabTop+int32(len(colorSlabDefinitions)) {
+		return FirstColorSlabItem + (blockID - FirstColorSlabTop), true
+	}
+	if blockID >= FirstColorSlabDouble && blockID < FirstColorSlabDouble+int32(len(colorSlabDefinitions)) {
+		return FirstColorSlabItem + (blockID - FirstColorSlabDouble), true
+	}
 	return 0, false
 }
 
@@ -121,18 +177,26 @@ func SlabPlacementState(itemID int32, faceY int32, localHitY float64) (int32, bo
 		}
 		return itemID, true
 	}
+	if itemID >= FirstColorSlabItem && itemID <= LastColorSlabItem {
+		if top {
+			return FirstColorSlabTop + (itemID - FirstColorSlabItem), true
+		}
+		return itemID, true
+	}
 	return itemID, false
 }
 
 // IsDoubleSlabState reports whether the state is a full double slab.
 func IsDoubleSlabState(blockID int32) bool {
 	return blockID == BlockStoneSlabDouble || blockID == BlockOakSlabDouble ||
-		(blockID >= FirstWoodSlabDouble && blockID < FirstWoodSlabDouble+int32(len(woodSlabDefinitions)))
+		(blockID >= FirstWoodSlabDouble && blockID < FirstWoodSlabDouble+int32(len(woodSlabDefinitions))) ||
+		(blockID >= FirstColorSlabDouble && blockID < FirstColorSlabDouble+int32(len(colorSlabDefinitions)))
 }
 
 func isTopSlabState(blockID int32) bool {
 	return blockID == BlockStoneSlabTop || blockID == BlockOakSlabTop ||
-		(blockID >= FirstWoodSlabTop && blockID < FirstWoodSlabTop+int32(len(woodSlabDefinitions)))
+		(blockID >= FirstWoodSlabTop && blockID < FirstWoodSlabTop+int32(len(woodSlabDefinitions))) ||
+		(blockID >= FirstColorSlabTop && blockID < FirstColorSlabTop+int32(len(colorSlabDefinitions)))
 }
 
 // SlabMergeState returns the double-slab state when a click on a slab of the
@@ -159,6 +223,9 @@ func SlabMergeState(existingBlockID, itemID, faceY int32, localHitY float64) (in
 	}
 	if _, ok := woodSlabByItem[itemID]; ok {
 		return FirstWoodSlabDouble + (itemID - FirstWoodSlabItem), true
+	}
+	if itemID >= FirstColorSlabItem && itemID <= LastColorSlabItem {
+		return FirstColorSlabDouble + (itemID - FirstColorSlabItem), true
 	}
 	return 0, false
 }

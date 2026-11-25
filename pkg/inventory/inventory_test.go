@@ -84,6 +84,45 @@ func TestSlabBlockStatesShareCanonicalItemsAndShapes(t *testing.T) {
 			t.Errorf("same-material merge for %s = (%d,%t)", slab.Name, got, ok)
 		}
 	}
+	for _, slab := range colorSlabDefinitions {
+		definition, ok := ExtendedBlockByID(slab.ItemID)
+		if !ok || definition.Name != slab.Name || definition.TextureTop != slab.Texture {
+			t.Fatalf("colored slab %s is not registered with its texture: %+v, found=%t", slab.Name, definition, ok)
+		}
+		foundInDecorationTab := false
+		for _, item := range CreativeCatalog(CreativeDecoration) {
+			if item.ID == slab.ItemID && creativeItemRegistryName(item.ID) == slab.Name {
+				foundInDecorationTab = true
+				break
+			}
+		}
+		if !foundInDecorationTab {
+			t.Errorf("colored slab %s missing from Decoration creative tab", slab.Name)
+		}
+		if slab.RequiresTool && CanHarvestBlock(ItemAir, slab.ItemID) {
+			t.Errorf("colored slab %s should require a pickaxe to drop", slab.Name)
+		}
+		if slab.RequiresTool && !CanHarvestBlock(ItemWoodenPickaxe, slab.ItemID) {
+			t.Errorf("colored slab %s should drop with a wooden pickaxe", slab.Name)
+		}
+		for _, state := range []struct {
+			id   int32
+			minY float32
+			maxY float32
+		}{
+			{slab.ItemID, 0, .5},
+			{FirstColorSlabTop + (slab.ItemID - FirstColorSlabItem), .5, 1},
+			{FirstColorSlabDouble + (slab.ItemID - FirstColorSlabItem), 0, 1},
+		} {
+			boxes, found := BlockCollisionBoxes(state.id)
+			if !found || len(boxes) != 1 || boxes[0].MinY != state.minY || boxes[0].MaxY != state.maxY {
+				t.Errorf("colored slab %s state %d shape = %+v, found=%t", slab.Name, state.id, boxes, found)
+			}
+			if got, found := SlabItemForBlockState(state.id); !found || got != slab.ItemID {
+				t.Errorf("colored slab %s state %d canonical item = %d, found=%t", slab.Name, state.id, got, found)
+			}
+		}
+	}
 	for _, tc := range []struct {
 		state int32
 		item  int32
@@ -477,6 +516,22 @@ func TestCraftingRecipes(t *testing.T) {
 		crafted, ok := cm.MatchCrafting([]int32{planks.RuntimeID, planks.RuntimeID, planks.RuntimeID, ItemAir, ItemAir, ItemAir, ItemAir, ItemAir, ItemAir}, 3)
 		if !ok || crafted.ItemID != slab.ItemID || crafted.Count != 6 {
 			t.Errorf("three %s planks craft %+v (ok=%t), want six %s", slab.PlankBlock, crafted, ok, slab.Name)
+		}
+	}
+	for _, slab := range colorSlabDefinitions {
+		var blockID int32
+		for _, item := range CreativeCatalog(CreativeAll) {
+			if creativeItemRegistryName(item.ID) == slab.BlockName {
+				blockID = item.ID
+				break
+			}
+		}
+		if blockID == 0 {
+			t.Fatalf("block %s missing for slab recipe", slab.BlockName)
+		}
+		crafted, ok := cm.MatchCrafting([]int32{blockID, blockID, blockID, ItemAir, ItemAir, ItemAir, ItemAir, ItemAir, ItemAir}, 3)
+		if !ok || crafted.ItemID != slab.ItemID || crafted.Count != 6 {
+			t.Errorf("three %s blocks craft %+v (ok=%t), want six %s", slab.BlockName, crafted, ok, slab.Name)
 		}
 	}
 	boneMeal, ok := cm.MatchCrafting([]int32{ItemBone, ItemAir, ItemAir, ItemAir}, 2)
@@ -1112,8 +1167,8 @@ func TestCreativeTabsIncludeVanillaCrossCategoryItems(t *testing.T) {
 		}
 		seen[item.ID] = struct{}{}
 	}
-	if all := CreativeCatalog(CreativeAll); len(all) != 586 {
-		t.Fatalf("canonical Search tab has %d items after adding 13 wood slab variants, want 586", len(all))
+	if all := CreativeCatalog(CreativeAll); len(all) != 618 {
+		t.Fatalf("canonical Search tab has %d items after adding 13 wood and 32 colored slab variants, want 618", len(all))
 	}
 }
 

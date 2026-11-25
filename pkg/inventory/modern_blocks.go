@@ -58,6 +58,20 @@ func buildExtendedBlockDefinitions() []ExtendedBlockDefinition {
 	definitions = append(definitions, additionalFullCubeDefinitions()...)
 	definitions = append(definitions, additionalCommonCubeDefinitions()...)
 	definitions = append(definitions, woodSlabBlockDefinitions()...)
+	definitions = append(definitions, colorSlabBlockDefinitions()...)
+	return definitions
+}
+
+func colorSlabBlockDefinitions() []ExtendedBlockDefinition {
+	definitions := make([]ExtendedBlockDefinition, 0, len(colorSlabDefinitions))
+	for _, slab := range colorSlabDefinitions {
+		definitions = append(definitions, ExtendedBlockDefinition{
+			RuntimeID: slab.ItemID, Name: slab.Name,
+			TextureTop: slab.Texture, TextureBottom: slab.Texture, TextureSide: slab.Texture,
+			Category: CreativeDecoration, Hardness: slab.Hardness,
+			HarvestTool: slab.HarvestTool, RequiresHarvestTool: slab.RequiresTool,
+		})
+	}
 	return definitions
 }
 
@@ -565,4 +579,10 @@ var extendedBlockDisplayNames = map[string]string{
 	"minecraft:yellow_poplar_leaves":    "黄色杨木树叶",
 	"minecraft:poplar_sapling":          "杨木树苗",
 	"minecraft:red_shrub":               "红灌木",
+}
+
+func init() {
+	for _, slab := range colorSlabDefinitions {
+		extendedBlockDisplayNames[slab.Name] = slab.DisplayName
+	}
 }

@@ -1041,7 +1041,7 @@ func (e *Engine) BreakBlock(playerID int32, pos world.BlockPos) int32 {
 	case 129: // Emerald Ore -> Emerald
 		dropItem = inventory.ItemEmerald
 	}
-	if definition, ok := inventory.ExtendedBlockByID(origBlock); ok {
+	if definition, ok := inventory.ExtendedBlockByID(inventory.BlockItemForState(origBlock)); ok {
 		if definition.DropRuntimeID != 0 {
 			dropItem = definition.DropRuntimeID
 		}

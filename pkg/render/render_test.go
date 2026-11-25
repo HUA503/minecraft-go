@@ -132,6 +132,30 @@ func TestSlabMeshUsesTheSamePartialShapesAsCollision(t *testing.T) {
 			}
 		}
 	}
+	for _, block := range inventory.ExtendedBlockDefinitions() {
+		if block.RuntimeID < inventory.FirstColorSlabItem || block.RuntimeID > inventory.LastColorSlabItem {
+			continue
+		}
+		if Textures[block.RuntimeID] == nil {
+			t.Errorf("colored slab %s has no loaded texture", block.Name)
+		}
+		mesh := BuildSectionMesh(func(x, y, z int32) int32 {
+			if x == 0 && y == 0 && z == 0 {
+				return block.RuntimeID
+			}
+			return 0
+		}, 0, 0, 0)
+		if len(mesh.Vertices) != 24 {
+			t.Errorf("colored slab %s generated %d vertices, want 24", block.Name, len(mesh.Vertices))
+			continue
+		}
+		for _, vertex := range mesh.Vertices {
+			if vertex.BlockID != block.RuntimeID {
+				t.Errorf("colored slab %s mesh uses texture ID %d, want %d", block.Name, vertex.BlockID, block.RuntimeID)
+				break
+			}
+		}
+	}
 	if !IsOpaqueCube(inventory.BlockStoneSlabDouble) {
 		t.Error("double slab should occlude neighbors as a full cube")
 	}
