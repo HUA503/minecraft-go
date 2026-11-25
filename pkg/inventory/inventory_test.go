@@ -891,6 +891,15 @@ func TestModernCreativeMaterialsHaveRegistryNamesAndUsefulRecipes(t *testing.T) 
 			t.Errorf("creative catalog lookup for %s = %+v", definition.Name, exact)
 		}
 	}
+	var materialOrder []string
+	for _, item := range CreativeCatalog(CreativeMaterials) {
+		materialOrder = append(materialOrder, creativeItemRegistryName(item.ID))
+	}
+	for i, want := range []string{"minecraft:iron_ingot", "minecraft:coal", "minecraft:charcoal", "minecraft:emerald", "minecraft:lapis_lazuli", "minecraft:amethyst_shard", "minecraft:quartz"} {
+		if i >= len(materialOrder) || materialOrder[i] != want {
+			t.Fatalf("Java 26.3 material tab order prefix = %v, want item %d %s", materialOrder[:min(len(materialOrder), 8)], i, want)
+		}
+	}
 
 	crafting := NewCraftingManager()
 	for _, tc := range []struct {

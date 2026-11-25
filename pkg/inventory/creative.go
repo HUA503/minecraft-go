@@ -2,6 +2,7 @@ package inventory
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -63,6 +64,24 @@ func CreativeCatalog(category CreativeCategory) []CreativeItem {
 		if item.Category == category {
 			filtered = append(filtered, item)
 		}
+	}
+	if category == CreativeMaterials {
+		originalOrder := make(map[int32]int, len(filtered))
+		for i, item := range filtered {
+			originalOrder[item.ID] = i
+		}
+		sort.SliceStable(filtered, func(i, j int) bool {
+			itemI, itemJ := filtered[i], filtered[j]
+			rankI, okI := vanillaCreativeMaterialRank[creativeItemRegistryName(itemI.ID)]
+			rankJ, okJ := vanillaCreativeMaterialRank[creativeItemRegistryName(itemJ.ID)]
+			if !okI {
+				rankI = len(vanillaCreativeMaterialRank) + originalOrder[itemI.ID]
+			}
+			if !okJ {
+				rankJ = len(vanillaCreativeMaterialRank) + originalOrder[itemJ.ID]
+			}
+			return rankI < rankJ
+		})
 	}
 	return filtered
 }
