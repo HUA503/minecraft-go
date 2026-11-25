@@ -1238,8 +1238,8 @@ func TestCreativeTabsIncludeVanillaCrossCategoryItems(t *testing.T) {
 		}
 		seen[item.ID] = struct{}{}
 	}
-	if all := CreativeCatalog(CreativeAll); len(all) != 780 {
-		t.Fatalf("canonical Search tab has %d items after adding wood fences, want 780", len(all))
+	if all := CreativeCatalog(CreativeAll); len(all) != 812 {
+		t.Fatalf("canonical Search tab has %d items after adding masonry walls, want 812", len(all))
 	}
 }
 
@@ -1392,8 +1392,8 @@ func TestJava263WoolAndConcreteStairItemsAndStates(t *testing.T) {
 			}
 		}
 	}
-	if len(catalog) != 780 {
-		t.Fatalf("all-items search catalog length = %d, want 780", len(catalog))
+	if len(catalog) != 812 {
+		t.Fatalf("all-items search catalog length = %d, want 812", len(catalog))
 	}
 	whiteWoolCount := 0
 	for _, item := range catalog {

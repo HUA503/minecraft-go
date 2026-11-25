@@ -612,6 +612,23 @@ func (cm *CraftingManager) registerDefaults() {
 			Output:  ItemStack{ItemID: fence.ItemID, Count: 3},
 		})
 	}
+	for _, wall := range masonryWallDefinitions {
+		var sourceID int32
+		for _, item := range CreativeCatalog(CreativeAll) {
+			if creativeItemRegistryName(item.ID) == wall.Source {
+				sourceID = item.ID
+				break
+			}
+		}
+		if sourceID == 0 {
+			continue
+		}
+		cm.Recipes = append(cm.Recipes, Recipe{
+			Width: 3, Height: 2,
+			Pattern: []int32{sourceID, sourceID, sourceID, sourceID, sourceID, sourceID},
+			Output:  ItemStack{ItemID: wall.ItemID, Count: 6},
+		})
+	}
 
 	// 23. Ladder (7 Sticks in H pattern)
 	cm.Recipes = append(cm.Recipes, Recipe{

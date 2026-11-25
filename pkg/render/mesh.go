@@ -150,6 +150,11 @@ func BuildSectionMesh(getBlock func(x, y, z int32) int32, originX, originY, orig
 					addBlockBoxesMesh(mesh, originX+x, originY+y, originZ+z, blockID, boxes, getBlock)
 					continue
 				}
+				if inventory.IsMasonryWallBlock(blockID) {
+					boxes, _ := inventory.MasonryWallCollisionBoxesAt(blockID, originX+x, originY+y, originZ+z, getBlock)
+					addBlockBoxesMesh(mesh, originX+x, originY+y, originZ+z, blockID, boxes, getBlock)
+					continue
+				}
 				if boxes, ok := inventory.BlockCollisionBoxes(blockID); ok && !IsOpaqueCube(blockID) {
 					addPartialBlockMesh(mesh, originX+x, originY+y, originZ+z, blockID, boxes, getBlock)
 					continue

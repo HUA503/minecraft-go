@@ -21,8 +21,8 @@ func applyLighting(c uint32, factor float32) uint32 {
 // RenderIsometricBlock16x16 rasterizes an authentic 16x16 3D isometric voxel block icon.
 // Light angles match vanilla Minecraft GUI: Top face (1.0x), Left face (0.8x), Right face (0.6x).
 func RenderIsometricBlock16x16(blockID int32) [16][16]uint32 {
-	if inventory.IsWoodFenceBlock(blockID) {
-		return renderIsometricFence16x16(blockID)
+	if inventory.IsWoodFenceBlock(blockID) || inventory.IsMasonryWallBlock(blockID) {
+		return renderIsometricConnectedBlock16x16(blockID)
 	}
 	if itemID, ok := inventory.StairItemForBlockState(blockID); ok {
 		state := blockID
@@ -41,16 +41,20 @@ func RenderIsometricBlock16x16(blockID int32) [16][16]uint32 {
 	return renderIsometricCube16x16(blockID)
 }
 
-func renderIsometricFence16x16(blockID int32) [16][16]uint32 {
+func renderIsometricConnectedBlock16x16(blockID int32) [16][16]uint32 {
 	texture := Textures[blockID]
 	if texture == nil {
 		return renderIsometricCube16x16(blockID)
 	}
 	blocks := map[[3]int32]int32{{0, 0, -1}: inventory.ItemOakPlanks, {1, 0, 0}: inventory.ItemOakPlanks,
 		{0, 0, 1}: inventory.ItemOakPlanks, {-1, 0, 0}: inventory.ItemOakPlanks}
-	boxes, _ := inventory.WoodFenceCollisionBoxesAt(blockID, 0, 0, 0, func(x, y, z int32) int32 {
+	neighbors := func(x, y, z int32) int32 {
 		return blocks[[3]int32{x, y, z}]
-	})
+	}
+	boxes, _ := inventory.WoodFenceCollisionBoxesAt(blockID, 0, 0, 0, neighbors)
+	if inventory.IsMasonryWallBlock(blockID) {
+		boxes, _ = inventory.MasonryWallCollisionBoxesAt(blockID, 0, 0, 0, neighbors)
+	}
 	var out [16][16]uint32
 	var depthBuffer [16][16]float32
 	for y := range depthBuffer {
