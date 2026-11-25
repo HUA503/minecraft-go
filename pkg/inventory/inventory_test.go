@@ -988,6 +988,22 @@ func TestCreativeCategoriesFollowJava263DirectItemOrder(t *testing.T) {
 	}
 }
 
+func TestCreativeSearchTabUsesVanillaCategoryAndItemOrder(t *testing.T) {
+	items := CreativeCatalog(CreativeAll)
+	if len(items) == 0 || creativeItemRegistryName(items[0].ID) != "minecraft:bricks" {
+		var first string
+		if len(items) > 0 {
+			first = creativeItemRegistryName(items[0].ID)
+		}
+		t.Fatalf("search tab first item = %q, want minecraft:bricks", first)
+	}
+	for i := 1; i < len(items); i++ {
+		if items[i-1].Category > items[i].Category {
+			t.Fatalf("search tab category order regressed at %d: %d after %d", i, items[i].Category, items[i-1].Category)
+		}
+	}
+}
+
 func TestNewOreMaterialsHaveSmeltingRecipesAndCreativeEntries(t *testing.T) {
 	want := map[int32]int32{
 		ItemRawCopper: ItemCopperIngot,

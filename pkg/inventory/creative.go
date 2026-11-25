@@ -56,34 +56,46 @@ func CreativeCatalog(category CreativeCategory) []CreativeItem {
 	for _, definition := range modernCreativeItemDefinitions {
 		items = append(items, CreativeItem{ID: definition.RuntimeID, Name: definition.Display, Category: definition.Category})
 	}
-	if category == CreativeAll {
-		return items
-	}
-	filtered := make([]CreativeItem, 0, len(items))
-	for _, item := range items {
-		if item.Category == category {
-			filtered = append(filtered, item)
-		}
-	}
-	if vanillaRank, hasVanillaOrder := vanillaCreativeTabRanks[category]; hasVanillaOrder {
-		originalOrder := make(map[int32]int, len(filtered))
-		for i, item := range filtered {
-			originalOrder[item.ID] = i
-		}
-		sort.SliceStable(filtered, func(i, j int) bool {
-			itemI, itemJ := filtered[i], filtered[j]
-			rankI, okI := vanillaRank[creativeItemRegistryName(itemI.ID)]
-			rankJ, okJ := vanillaRank[creativeItemRegistryName(itemJ.ID)]
-			if !okI {
-				rankI = len(vanillaRank) + originalOrder[itemI.ID]
+	if category != CreativeAll {
+		filtered := make([]CreativeItem, 0, len(items))
+		for _, item := range items {
+			if item.Category == category {
+				filtered = append(filtered, item)
 			}
-			if !okJ {
-				rankJ = len(vanillaRank) + originalOrder[itemJ.ID]
-			}
-			return rankI < rankJ
-		})
+		}
+		items = filtered
 	}
-	return filtered
+	sortCreativeItemsByVanillaOrder(items, category == CreativeAll)
+	return items
+}
+
+func sortCreativeItemsByVanillaOrder(items []CreativeItem, groupByCategory bool) {
+	if len(items) < 2 {
+		return
+	}
+	originalOrder := make(map[int32]int, len(items))
+	for i, item := range items {
+		originalOrder[item.ID] = i
+	}
+	categoryOrder := map[CreativeCategory]int{
+		CreativeBlocks: 0, CreativeDecoration: 1, CreativeNatural: 2, CreativeFunctional: 3,
+		CreativeRedstone: 4, CreativeTools: 5, CreativeCombat: 6, CreativeFood: 7,
+		CreativeMaterials: 8, CreativeSpawnEggs: 9,
+	}
+	itemRank := func(item CreativeItem) int {
+		rank := vanillaCreativeTabRanks[item.Category]
+		if position, ok := rank[creativeItemRegistryName(item.ID)]; ok {
+			return position
+		}
+		return len(rank) + originalOrder[item.ID]
+	}
+	sort.SliceStable(items, func(i, j int) bool {
+		itemI, itemJ := items[i], items[j]
+		if groupByCategory && itemI.Category != itemJ.Category {
+			return categoryOrder[itemI.Category] < categoryOrder[itemJ.Category]
+		}
+		return itemRank(itemI) < itemRank(itemJ)
+	})
 }
 
 // SearchCreativeCatalog filters the selected category by its localized item name.
