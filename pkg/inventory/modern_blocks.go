@@ -40,6 +40,8 @@ var extendedBlockDefinitions = append(append(append([]ExtendedBlockDefinition{
 	baseExtendedBlock(10009, "minecraft:poplar_planks", "poplar_planks", "poplar_planks", "poplar_planks", CreativeBlocks),
 	{RuntimeID: 10010, Name: "minecraft:poplar_log", TextureTop: "poplar_log_top", TextureBottom: "poplar_log_top", TextureSide: "poplar_log", Category: CreativeBlocks, Hardness: 2, HarvestTool: ToolAxe, StrippedVariantID: 10011},
 	baseExtendedBlock(10011, "minecraft:stripped_poplar_log", "stripped_poplar_log_top", "stripped_poplar_log_top", "stripped_poplar_log", CreativeBlocks),
+	{RuntimeID: 10101, Name: "minecraft:poplar_wood", TextureTop: "poplar_log", TextureBottom: "poplar_log", TextureSide: "poplar_log", Category: CreativeBlocks, Hardness: 2, HarvestTool: ToolAxe, StrippedVariantID: 10102},
+	{RuntimeID: 10102, Name: "minecraft:stripped_poplar_wood", TextureTop: "stripped_poplar_log", TextureBottom: "stripped_poplar_log", TextureSide: "stripped_poplar_log", Category: CreativeBlocks, Hardness: 2, HarvestTool: ToolAxe},
 	baseExtendedBlock(10060, "minecraft:red_poplar_leaves", "red_poplar_leaves", "red_poplar_leaves", "red_poplar_leaves", CreativeNatural),
 	baseExtendedBlock(10061, "minecraft:orange_poplar_leaves", "orange_poplar_leaves", "orange_poplar_leaves", "orange_poplar_leaves", CreativeNatural),
 	baseExtendedBlock(10062, "minecraft:yellow_poplar_leaves", "yellow_poplar_leaves", "yellow_poplar_leaves", "yellow_poplar_leaves", CreativeNatural),
@@ -354,9 +356,12 @@ var extendedBlockDisplayNames = map[string]string{
 	"minecraft:poplar_planks":        "杨木木板",
 	"minecraft:poplar_log":           "杨木原木",
 	"minecraft:stripped_poplar_log":  "去皮杨木原木",
+	"minecraft:poplar_wood":          "杨木",
+	"minecraft:stripped_poplar_wood": "去皮杨木",
 	"minecraft:red_poplar_leaves":    "红色杨木树叶",
 	"minecraft:orange_poplar_leaves": "橙色杨木树叶",
 	"minecraft:yellow_poplar_leaves": "黄色杨木树叶",
 	"minecraft:poplar_sapling":       "杨木树苗",
 	"minecraft:red_shrub":            "红灌木",
 }
+
