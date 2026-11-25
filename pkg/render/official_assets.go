@@ -553,6 +553,14 @@ func GetOfficialItemTextureName(itemID int32) string {
 		return "netherite_boots"
 	case inventory.ItemNetheriteSword:
 		return "netherite_sword"
+	case inventory.ItemNetheriteAxe:
+		return "netherite_axe"
+	case inventory.ItemNetheritePickaxe:
+		return "netherite_pickaxe"
+	case inventory.ItemNetheriteShovel:
+		return "netherite_shovel"
+	case inventory.ItemNetheriteHoe:
+		return "netherite_hoe"
 
 	// --- Other Essentials ---
 	case 322:

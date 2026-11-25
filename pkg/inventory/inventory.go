@@ -124,6 +124,10 @@ const (
 	ItemNetheriteLeggings   int32 = 13014
 	ItemNetheriteBoots      int32 = 13015
 	ItemNetheriteSword      int32 = 13016
+	ItemNetheriteAxe        int32 = 13017
+	ItemNetheritePickaxe    int32 = 13018
+	ItemNetheriteShovel     int32 = 13019
+	ItemNetheriteHoe        int32 = 13020
 
 	// Utility, materials, and blocks
 	ItemBucket        int32 = 325

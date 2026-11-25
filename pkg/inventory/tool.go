@@ -45,12 +45,16 @@ var ToolRegistry = map[int32]ToolProperties{
 	285:                {Type: ToolPickaxe, Tier: TierGold, MaxDurability: 32, MiningSpeed: 12.0, HarvestLevel: 0, AttackDamage: 2.0}, // Golden Pickaxe
 
 	// Swords (ID: 268 Wood, 272 Stone, 267 Iron, 276 Diamond, 283 Gold)
-	268:                {Type: ToolSword, Tier: TierWood, MaxDurability: 59, MiningSpeed: 1.5, HarvestLevel: 0, AttackDamage: 4.0},
-	272:                {Type: ToolSword, Tier: TierStone, MaxDurability: 131, MiningSpeed: 1.5, HarvestLevel: 0, AttackDamage: 5.0},
-	267:                {Type: ToolSword, Tier: TierIron, MaxDurability: 250, MiningSpeed: 1.5, HarvestLevel: 0, AttackDamage: 6.0},
-	276:                {Type: ToolSword, Tier: TierDiamond, MaxDurability: 1561, MiningSpeed: 1.5, HarvestLevel: 0, AttackDamage: 7.0},
-	283:                {Type: ToolSword, Tier: TierGold, MaxDurability: 32, MiningSpeed: 1.5, HarvestLevel: 0, AttackDamage: 4.0}, // Golden Sword
-	ItemNetheriteSword: {Type: ToolSword, Tier: TierNetherite, MaxDurability: 2031, MiningSpeed: 1.5, HarvestLevel: 0, AttackDamage: 8.0},
+	268:                  {Type: ToolSword, Tier: TierWood, MaxDurability: 59, MiningSpeed: 1.5, HarvestLevel: 0, AttackDamage: 4.0},
+	272:                  {Type: ToolSword, Tier: TierStone, MaxDurability: 131, MiningSpeed: 1.5, HarvestLevel: 0, AttackDamage: 5.0},
+	267:                  {Type: ToolSword, Tier: TierIron, MaxDurability: 250, MiningSpeed: 1.5, HarvestLevel: 0, AttackDamage: 6.0},
+	276:                  {Type: ToolSword, Tier: TierDiamond, MaxDurability: 1561, MiningSpeed: 1.5, HarvestLevel: 0, AttackDamage: 7.0},
+	283:                  {Type: ToolSword, Tier: TierGold, MaxDurability: 32, MiningSpeed: 1.5, HarvestLevel: 0, AttackDamage: 4.0}, // Golden Sword
+	ItemNetheriteSword:   {Type: ToolSword, Tier: TierNetherite, MaxDurability: 2031, MiningSpeed: 1.5, HarvestLevel: 0, AttackDamage: 8.0},
+	ItemNetheritePickaxe: {Type: ToolPickaxe, Tier: TierNetherite, MaxDurability: 2031, MiningSpeed: 9.0, HarvestLevel: 3, AttackDamage: 6.0},
+	ItemNetheriteAxe:     {Type: ToolAxe, Tier: TierNetherite, MaxDurability: 2031, MiningSpeed: 9.0, HarvestLevel: 3, AttackDamage: 10.0},
+	ItemNetheriteShovel:  {Type: ToolShovel, Tier: TierNetherite, MaxDurability: 2031, MiningSpeed: 9.0, HarvestLevel: 3, AttackDamage: 6.5},
+	ItemNetheriteHoe:     {Type: ToolHoe, Tier: TierNetherite, MaxDurability: 2031, MiningSpeed: 9.0, HarvestLevel: 3, AttackDamage: 1.0},
 
 	// Axes (ID: 271 Wood, 275 Stone, 258 Iron, 279 Diamond, 286 Gold)
 	271: {Type: ToolAxe, Tier: TierWood, MaxDurability: 59, MiningSpeed: 2.0, HarvestLevel: 0, AttackDamage: 7.0},

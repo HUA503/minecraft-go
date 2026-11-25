@@ -683,16 +683,44 @@ func TestNetheriteArmorHasCreativeItemsStackLimitsAndVanillaProtection(t *testin
 }
 
 func TestNetheriteSwordIsAFunctionalCreativeCombatItem(t *testing.T) {
-	items := SearchCreativeCatalog(CreativeCombat, "minecraft:netherite_sword")
-	if len(items) != 1 || items[0].ID != ItemNetheriteSword || items[0].Name != "下界合金剑" {
-		t.Fatalf("netherite sword creative search = %+v", items)
+	for _, tc := range []struct {
+		id       int32
+		name     string
+		display  string
+		category CreativeCategory
+		typeID   ToolType
+		speed    float64
+		level    int
+		damage   float32
+	}{
+		{ItemNetheriteSword, "netherite_sword", "下界合金剑", CreativeCombat, ToolSword, 1.5, 0, 8},
+		{ItemNetheritePickaxe, "netherite_pickaxe", "下界合金镐", CreativeTools, ToolPickaxe, 9, 3, 6},
+		{ItemNetheriteAxe, "netherite_axe", "下界合金斧", CreativeTools, ToolAxe, 9, 3, 10},
+		{ItemNetheriteShovel, "netherite_shovel", "下界合金锹", CreativeTools, ToolShovel, 9, 3, 6.5},
+		{ItemNetheriteHoe, "netherite_hoe", "下界合金锄", CreativeTools, ToolHoe, 9, 3, 1},
+	} {
+		items := SearchCreativeCatalog(tc.category, "minecraft:"+tc.name)
+		if len(items) != 1 || items[0].ID != tc.id || items[0].Name != tc.display {
+			t.Errorf("netherite item %q creative search = %+v", tc.name, items)
+		}
+		props, ok := GetToolProperties(tc.id)
+		if !ok || props.Type != tc.typeID || props.Tier != TierNetherite || props.MaxDurability != 2031 || props.MiningSpeed != tc.speed || props.HarvestLevel != tc.level || props.AttackDamage != tc.damage {
+			t.Errorf("netherite item %q properties = %+v, found=%t", tc.name, props, ok)
+		}
+		if got := GetMaxStackSize(tc.id); got != 1 {
+			t.Errorf("netherite item %q max stack = %d, want 1", tc.name, got)
+		}
 	}
-	props, ok := GetToolProperties(ItemNetheriteSword)
-	if !ok || props.Type != ToolSword || props.Tier != TierNetherite || props.MaxDurability != 2031 || props.AttackDamage != 8 {
-		t.Fatalf("netherite sword properties = %+v, found=%t", props, ok)
+	netheriteBlock, ok := ExtendedBlockByName("minecraft:netherite_block")
+	if !ok || !CanHarvestBlock(ItemNetheritePickaxe, netheriteBlock.RuntimeID) {
+		t.Fatalf("netherite pickaxe cannot harvest the netherite block: block=%+v found=%t", netheriteBlock, ok)
 	}
-	if got := GetMaxStackSize(ItemNetheriteSword); got != 1 {
-		t.Fatalf("netherite sword max stack = %d, want 1", got)
+	if got := CalculateMiningSpeedMultiplier(ItemNetheritePickaxe, ItemStone); got != 9 {
+		t.Fatalf("netherite pickaxe mining speed multiplier = %v, want 9", got)
+	}
+	stack := ItemStack{ItemID: ItemNetheritePickaxe, Count: 1}
+	if ApplyToolWear(&stack) || stack.Damage != 1 {
+		t.Fatalf("netherite pickaxe wear result = %+v, want one durability used", stack)
 	}
 }
 
