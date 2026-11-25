@@ -82,6 +82,29 @@ func TestPalettedContainerPacking(t *testing.T) {
 	}
 }
 
+func TestPalettedContainerRejectsInvalidPackingDimensions(t *testing.T) {
+	for _, bpe := range []int{-1, 33, 65, 128} {
+		pc := NewPalettedContainer(4, 0)
+		pc.Set(0, 7)
+		pc.UnpackFromBitStorage([]uint64{^uint64(0)}, []int32{0, 1}, bpe)
+		if got := pc.Get(0); got != 7 {
+			t.Fatalf("invalid bpe %d mutated container value to %d", bpe, got)
+		}
+		if packed := pc.PackToBitStorage([]int32{0, 7}, bpe); packed != nil {
+			t.Fatalf("invalid bpe %d unexpectedly packed data: %v", bpe, packed)
+		}
+	}
+
+	undersized := &PalettedContainer{Capacity: 4, Data: []int32{1}}
+	if packed := undersized.PackToBitStorage([]int32{1}, 1); packed != nil {
+		t.Fatalf("undersized data unexpectedly packed: %v", packed)
+	}
+	undersized.UnpackFromBitStorage([]uint64{1}, []int32{1}, 1)
+	if palette, bpe := undersized.CompactPalette(); len(palette) != 1 || palette[0] != 0 || bpe != 0 {
+		t.Fatalf("undersized data compacted to (%v,%d), want safe empty default", palette, bpe)
+	}
+}
+
 func TestRegionFileRoundTrip(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "region_test")
 	if err != nil {

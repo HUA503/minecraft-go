@@ -41,9 +41,12 @@ func (pc *PalettedContainer) Set(index int, value int32) {
 
 // CompactPalette computes unique palette entries and bits per entry.
 func (pc *PalettedContainer) CompactPalette() ([]int32, int) {
+	if pc == nil || pc.Capacity < 0 || len(pc.Data) < pc.Capacity {
+		return []int32{0}, 0
+	}
 	seen := make(map[int32]struct{})
 	var palette []int32
-	for _, v := range pc.Data {
+	for _, v := range pc.Data[:pc.Capacity] {
 		if _, ok := seen[v]; !ok {
 			seen[v] = struct{}{}
 			palette = append(palette, v)
@@ -65,7 +68,7 @@ func (pc *PalettedContainer) CompactPalette() ([]int32, int) {
 
 // PackToBitStorage packs the container data into uint64 array given bitsPerEntry.
 func (pc *PalettedContainer) PackToBitStorage(palette []int32, bpe int) []uint64 {
-	if bpe == 0 {
+	if pc == nil || pc.Capacity <= 0 || len(pc.Data) < pc.Capacity || bpe <= 0 || bpe > 32 || len(palette) == 0 {
 		return nil
 	}
 
@@ -78,7 +81,7 @@ func (pc *PalettedContainer) PackToBitStorage(palette []int32, bpe int) []uint64
 	numLongs := (pc.Capacity + entriesPerLong - 1) / entriesPerLong
 	storage := make([]uint64, numLongs)
 
-	for i, val := range pc.Data {
+	for i, val := range pc.Data[:pc.Capacity] {
 		longIdx := i / entriesPerLong
 		entryIdx := i % entriesPerLong
 		shift := entryIdx * bpe
@@ -90,6 +93,9 @@ func (pc *PalettedContainer) PackToBitStorage(palette []int32, bpe int) []uint64
 
 // UnpackFromBitStorage unpacks uint64 array into container data.
 func (pc *PalettedContainer) UnpackFromBitStorage(storage []uint64, palette []int32, bpe int) {
+	if pc == nil || pc.Capacity < 0 || len(pc.Data) < pc.Capacity || bpe < 0 || bpe > 32 {
+		return
+	}
 	if bpe == 0 {
 		val := int32(0)
 		if len(palette) > 0 {
@@ -98,6 +104,10 @@ func (pc *PalettedContainer) UnpackFromBitStorage(storage []uint64, palette []in
 		for i := range pc.Data {
 			pc.Data[i] = val
 		}
+		return
+	}
+	if len(palette) == 0 {
+		clear(pc.Data[:pc.Capacity])
 		return
 	}
 
