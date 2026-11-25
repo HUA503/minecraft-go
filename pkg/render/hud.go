@@ -764,6 +764,12 @@ var font5x7 = map[rune][7]uint8{
 
 // DrawChar5x7 renders a single 5x7 character scaled with optional drop shadow, or 12x12 CJK glyph.
 func (fb *Framebuffer) DrawChar5x7(x, y int, ch rune, col uint32, scale int) int {
+	if ch >= 0x20 && ch <= 0x7E {
+		if width, ok := fb.drawVanillaASCIIChar(x, y, byte(ch), col, scale); ok {
+			return width
+		}
+	}
+
 	if ch > 0x7F {
 		glyph := GetCJKGlyph(ch)
 		for row := 0; row < 12; row++ {
@@ -837,6 +843,16 @@ func MeasureText5x7(text string, scale int) int {
 	for _, ch := range text {
 		if ch > 0x7F {
 			width += 12 * scale
+		} else if ch >= 0x20 && ch <= 0x7E {
+			atlas, ok := vanillaASCIIAtlas()
+			if ok {
+				glyphWidth := vanillaASCIICharWidth(atlas, byte(ch))
+				if glyphWidth > 0 {
+					width += glyphWidth * scale
+					continue
+				}
+			}
+			width += 6 * scale
 		} else {
 			width += 6 * scale
 		}
