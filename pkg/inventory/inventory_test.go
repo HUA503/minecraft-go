@@ -419,6 +419,25 @@ func TestCraftingRecipes(t *testing.T) {
 		t.Fatalf("stone pickaxe recipe failed: %+v", out)
 	}
 
+	for _, tc := range []struct {
+		name   string
+		grid   []int32
+		itemID int32
+	}{
+		{"copper pickaxe", []int32{ItemCopperIngot, ItemCopperIngot, ItemCopperIngot, ItemAir, ItemStick, ItemAir, ItemAir, ItemStick, ItemAir}, ItemCopperPickaxe},
+		{"copper sword", []int32{ItemAir, ItemCopperIngot, ItemAir, ItemAir, ItemCopperIngot, ItemAir, ItemAir, ItemStick, ItemAir}, ItemCopperSword},
+		{"copper shovel", []int32{ItemAir, ItemCopperIngot, ItemAir, ItemAir, ItemStick, ItemAir, ItemAir, ItemStick, ItemAir}, ItemCopperShovel},
+		{"copper axe", []int32{ItemCopperIngot, ItemCopperIngot, ItemAir, ItemCopperIngot, ItemStick, ItemAir, ItemAir, ItemStick, ItemAir}, ItemCopperAxe},
+		{"copper hoe", []int32{ItemCopperIngot, ItemCopperIngot, ItemAir, ItemAir, ItemStick, ItemAir, ItemAir, ItemStick, ItemAir}, ItemCopperHoe},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			crafted, found := cm.MatchCrafting(tc.grid, 3)
+			if !found || crafted.ItemID != tc.itemID || crafted.Count != 1 {
+				t.Fatalf("%s recipe = %+v, found=%t", tc.name, crafted, found)
+			}
+		})
+	}
+
 	// Test 4: Furnace recipe (donut of cobblestone) in 3x3 grid
 	gridFurnace := []int32{
 		ItemCobblestone, ItemCobblestone, ItemCobblestone,

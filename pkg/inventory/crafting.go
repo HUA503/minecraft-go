@@ -77,6 +77,11 @@ func (cm *CraftingManager) registerDefaults() {
 		},
 		Output: ItemStack{ItemID: ItemStonePickaxe, Count: 1},
 	})
+	cm.Recipes = append(cm.Recipes, Recipe{
+		Width: 3, Height: 3,
+		Pattern: []int32{ItemCopperIngot, ItemCopperIngot, ItemCopperIngot, ItemAir, ItemStick, ItemAir, ItemAir, ItemStick, ItemAir},
+		Output:  ItemStack{ItemID: ItemCopperPickaxe, Count: 1},
+	})
 
 	// 6. Diamond Pickaxe (3x3)
 	cm.Recipes = append(cm.Recipes, Recipe{
@@ -127,6 +132,12 @@ func (cm *CraftingManager) registerDefaults() {
 		Recipe{
 			Width:   1,
 			Height:  3,
+			Pattern: []int32{ItemCopperIngot, ItemCopperIngot, ItemStick},
+			Output:  ItemStack{ItemID: ItemCopperSword, Count: 1},
+		},
+		Recipe{
+			Width:   1,
+			Height:  3,
 			Pattern: []int32{ItemIronIngot, ItemIronIngot, ItemStick},
 			Output:  ItemStack{ItemID: ItemIronSword, Count: 1},
 		},
@@ -151,6 +162,12 @@ func (cm *CraftingManager) registerDefaults() {
 			Height:  3,
 			Pattern: []int32{ItemCobblestone, ItemStick, ItemStick},
 			Output:  ItemStack{ItemID: ItemStoneShovel, Count: 1},
+		},
+		Recipe{
+			Width:   1,
+			Height:  3,
+			Pattern: []int32{ItemCopperIngot, ItemStick, ItemStick},
+			Output:  ItemStack{ItemID: ItemCopperShovel, Count: 1},
 		},
 		Recipe{
 			Width:   1,
@@ -192,6 +209,16 @@ func (cm *CraftingManager) registerDefaults() {
 			Width:  2,
 			Height: 3,
 			Pattern: []int32{
+				ItemCopperIngot, ItemCopperIngot,
+				ItemCopperIngot, ItemStick,
+				ItemAir, ItemStick,
+			},
+			Output: ItemStack{ItemID: ItemCopperAxe, Count: 1},
+		},
+		Recipe{
+			Width:  2,
+			Height: 3,
+			Pattern: []int32{
 				ItemIronIngot, ItemIronIngot,
 				ItemIronIngot, ItemStick,
 				ItemAir, ItemStick,
@@ -209,6 +236,11 @@ func (cm *CraftingManager) registerDefaults() {
 			Output: ItemStack{ItemID: ItemDiamondAxe, Count: 1},
 		},
 	)
+	cm.Recipes = append(cm.Recipes, Recipe{
+		Width: 3, Height: 3,
+		Pattern: []int32{ItemCopperIngot, ItemCopperIngot, ItemAir, ItemAir, ItemStick, ItemAir, ItemAir, ItemStick, ItemAir},
+		Output:  ItemStack{ItemID: ItemCopperHoe, Count: 1},
+	})
 
 	// 12. Iron Pickaxe (3x3)
 	cm.Recipes = append(cm.Recipes, Recipe{
