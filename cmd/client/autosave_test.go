@@ -29,3 +29,20 @@ func TestAutosaveFailureIsVisibleAndRecorded(t *testing.T) {
 		t.Fatal("successful autosave did not clear the warning")
 	}
 }
+
+func TestAutosavePanicIsVisibleAndRecorded(t *testing.T) {
+	configRoot := t.TempDir()
+	t.Setenv("APPDATA", configRoot)
+	client := &Client{}
+	client.recordAutosavePanic("simulated panic")
+	if !client.autosaveFailed.Load() {
+		t.Fatal("autosave panic was not retained for the UI warning")
+	}
+	contents, err := os.ReadFile(filepath.Join(configRoot, "minecraft-go", "crash.log"))
+	if err != nil {
+		t.Fatalf("read crash log: %v", err)
+	}
+	if !strings.Contains(string(contents), "PERIODIC AUTOSAVE PANIC: simulated panic") {
+		t.Fatalf("crash log missing autosave panic: %s", contents)
+	}
+}

@@ -1099,6 +1099,13 @@ func (c *Client) recordAutosaveResult(saveErrors []error) {
 	c.autosaveFailed.Store(true)
 }
 
+func (c *Client) recordAutosavePanic(panicValue any) {
+	msg := fmt.Sprintf("PERIODIC AUTOSAVE PANIC: %v\n\nStack:\n%s", panicValue, debug.Stack())
+	log.Print(msg)
+	writeCrashLog(msg)
+	c.autosaveFailed.Store(true)
+}
+
 func NewClient(serverAddr, username string, isSingleplayer bool, width, height int) *Client {
 	var u [16]byte
 	rand.Read(u[:])
@@ -6301,9 +6308,7 @@ func runGraphicalWindow(c *Client, w, h int) {
 					defer c.autosaveRunning.Store(false)
 					defer func() {
 						if recovered := recover(); recovered != nil {
-							msg := fmt.Sprintf("PERIODIC AUTOSAVE PANIC: %v\n\nStack:\n%s", recovered, debug.Stack())
-							log.Print(msg)
-							writeCrashLog(msg)
+							c.recordAutosavePanic(recovered)
 						}
 					}()
 					var saveErrors []error
