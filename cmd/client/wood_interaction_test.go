@@ -88,3 +88,33 @@ func TestAxeStripsPoplarWood(t *testing.T) {
 	}
 }
 
+func TestAxeStripsWoodBlocksAndHyphae(t *testing.T) {
+	for _, name := range []string{
+		"oak_wood", "spruce_wood", "birch_wood", "jungle_wood", "acacia_wood", "dark_oak_wood",
+		"mangrove_wood", "cherry_wood", "pale_oak_wood", "crimson_hyphae", "warped_hyphae", "poplar_wood",
+	} {
+		t.Run(name, func(t *testing.T) {
+			wood, ok := inventory.ExtendedBlockByName("minecraft:" + name)
+			if !ok {
+				t.Fatalf("wood block %s is not registered", name)
+			}
+			engine := sim.NewEngine()
+			player := engine.AddPlayer("test", [16]byte{}, sim.Vec3{X: 0.5, Y: 64, Z: 0.5})
+			engine.SetBlock(0, 64, 0, wood.RuntimeID)
+			player.Inventory.Slots[0] = inventory.ItemStack{ItemID: inventory.ItemWoodenAxe, Count: 1}
+			client := &Client{
+				engine: engine, player: player, isLocal: true, hasTarget: true,
+				targetedPos: world.BlockPos{X: 0, Y: 64, Z: 0},
+			}
+
+			client.UpdateRightClick(true, 0.05)
+
+			if engine.GetBlock(0, 64, 0) != wood.StrippedVariantID {
+				t.Fatalf("block after axe use = %d, want stripped block %d", engine.GetBlock(0, 64, 0), wood.StrippedVariantID)
+			}
+			if axe := player.Inventory.Slots[0]; axe.Damage != 1 {
+				t.Fatalf("axe damage after stripping = %d, want 1", axe.Damage)
+			}
+		})
+	}
+}

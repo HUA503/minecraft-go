@@ -207,6 +207,35 @@ func TestModernDeepslateHarvestAndDropRules(t *testing.T) {
 	}
 }
 
+func TestWoodBlockVariantsDropTheirOwnItems(t *testing.T) {
+	for _, name := range []string{
+		"oak_wood", "stripped_oak_wood", "spruce_wood", "stripped_spruce_wood",
+		"birch_wood", "stripped_birch_wood", "jungle_wood", "stripped_jungle_wood",
+		"acacia_wood", "stripped_acacia_wood", "dark_oak_wood", "stripped_dark_oak_wood",
+		"mangrove_wood", "stripped_mangrove_wood", "cherry_wood", "stripped_cherry_wood",
+		"pale_oak_wood", "stripped_pale_oak_wood", "crimson_hyphae", "stripped_crimson_hyphae",
+		"warped_hyphae", "stripped_warped_hyphae",
+	} {
+		t.Run(name, func(t *testing.T) {
+			block, ok := inventory.ExtendedBlockByName("minecraft:" + name)
+			if !ok {
+				t.Fatalf("wood block %s is not registered", name)
+			}
+			eng := NewEngine()
+			player := eng.AddPlayer("wood miner", [16]byte{}, Vec3{X: 0.5, Y: 64, Z: 0.5})
+			pos := world.BlockPos{X: 1, Y: 64, Z: 1}
+			eng.SetBlock(pos.X, pos.Y, pos.Z, block.RuntimeID)
+			if got, harvested := eng.BreakBlockWithTool(player.ID, pos, inventory.ItemWoodenAxe); !harvested || got != block.RuntimeID {
+				t.Fatalf("breaking %s returned (%d, %t), want itself (%d, true)", name, got, harvested, block.RuntimeID)
+			}
+			drops := eng.GetItemDrops()
+			if len(drops) != 1 || drops[0].ItemID != block.RuntimeID || drops[0].Count != 1 {
+				t.Fatalf("breaking %s produced drops %+v, want one of block ID %d", name, drops, block.RuntimeID)
+			}
+		})
+	}
+}
+
 func TestAddedOresRequireTheRightPickaxeAndDropTheirMaterials(t *testing.T) {
 	eng := NewEngine()
 	player := eng.AddPlayer("ore miner", [16]byte{}, Vec3{X: 0.5, Y: 64, Z: 0.5})

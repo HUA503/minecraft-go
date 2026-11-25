@@ -170,6 +170,63 @@ func TestPoplarWoodVariantsAreCreativePlaceableAndStrippable(t *testing.T) {
 	}
 }
 
+func TestWoodBlockVariantsAreCreativePlaceableAndStrippable(t *testing.T) {
+	for _, tc := range []struct {
+		wood, stripped, texture, display string
+	}{
+		{"oak_wood", "stripped_oak_wood", "oak_log", "橡木"},
+		{"spruce_wood", "stripped_spruce_wood", "spruce_log", "云杉木"},
+		{"birch_wood", "stripped_birch_wood", "birch_log", "白桦木"},
+		{"jungle_wood", "stripped_jungle_wood", "jungle_log", "丛林木"},
+		{"acacia_wood", "stripped_acacia_wood", "acacia_log", "金合欢木"},
+		{"dark_oak_wood", "stripped_dark_oak_wood", "dark_oak_log", "深色橡木"},
+		{"mangrove_wood", "stripped_mangrove_wood", "mangrove_log", "红树木"},
+		{"cherry_wood", "stripped_cherry_wood", "cherry_log", "樱花木"},
+		{"pale_oak_wood", "stripped_pale_oak_wood", "pale_oak_log", "苍白橡木"},
+		{"crimson_hyphae", "stripped_crimson_hyphae", "crimson_stem", "绯红菌核"},
+		{"warped_hyphae", "stripped_warped_hyphae", "warped_stem", "诡异菌核"},
+	} {
+		wood, ok := ExtendedBlockByName("minecraft:" + tc.wood)
+		if !ok {
+			t.Fatalf("missing wood block %s", tc.wood)
+		}
+		stripped, ok := ExtendedBlockByName("minecraft:" + tc.stripped)
+		if !ok {
+			t.Fatalf("missing stripped wood block %s", tc.stripped)
+		}
+		if wood.StrippedVariantID != stripped.RuntimeID || wood.TextureSide != tc.texture || wood.DropRuntimeID != wood.RuntimeID {
+			t.Errorf("wood definition is inconsistent: %+v; stripped=%+v", wood, stripped)
+		}
+		if stripped.TextureSide != "stripped_"+tc.texture || stripped.DropRuntimeID != stripped.RuntimeID {
+			t.Errorf("stripped wood definition is inconsistent: %+v", stripped)
+		}
+		for _, definition := range []ExtendedBlockDefinition{wood, stripped} {
+			if !IsPlaceableBlock(definition.RuntimeID) || definition.Hardness != 2 || definition.HarvestTool != ToolAxe {
+				t.Errorf("wood block has incorrect placement/mining data: %+v", definition)
+			}
+			found := false
+			for _, item := range SearchCreativeCatalog(CreativeAll, definition.Name) {
+				if item.ID == definition.RuntimeID {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Errorf("wood block %s is missing from the creative catalog", definition.Name)
+			}
+		}
+		if got := CreativeItemDisplayName(wood.RuntimeID); got != tc.display {
+			t.Errorf("%s display name = %q, want %q", wood.Name, got, tc.display)
+		}
+		if got := CreativeItemDisplayName(stripped.RuntimeID); got != "去皮"+tc.display {
+			t.Errorf("%s display name = %q, want 去皮%s", stripped.Name, got, tc.display)
+		}
+		if got, ok := StrippedWoodBlockVariant(wood.RuntimeID); !ok || got != stripped.RuntimeID {
+			t.Errorf("stripping %s returned (%d, %t), want %d", wood.Name, got, ok, stripped.RuntimeID)
+		}
+	}
+}
+
 func TestColoredGlazedTerracottaIsPlaceableAndSearchable(t *testing.T) {
 	items := CreativeCatalog(CreativeDecoration)
 	count := 0
@@ -747,4 +804,3 @@ func TestCreativeCatalogDoesNotListNonItemBlockStates(t *testing.T) {
 		}
 	}
 }
-

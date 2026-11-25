@@ -27,7 +27,7 @@ var modernOreDropRanges = map[string][2]int{
 	"minecraft:deepslate_redstone_ore": {4, 5},
 }
 
-var extendedBlockDefinitions = append(append(append([]ExtendedBlockDefinition{
+var extendedBlockDefinitions = append(append(append(append([]ExtendedBlockDefinition{
 	baseExtendedBlock(10000, "minecraft:cinnabar", "cinnabar", "cinnabar", "cinnabar", CreativeBlocks),
 	baseExtendedBlock(10001, "minecraft:polished_cinnabar", "polished_cinnabar", "polished_cinnabar", "polished_cinnabar", CreativeBlocks),
 	baseExtendedBlock(10002, "minecraft:chiseled_cinnabar", "chiseled_cinnabar", "chiseled_cinnabar", "chiseled_cinnabar", CreativeBlocks),
@@ -47,13 +47,51 @@ var extendedBlockDefinitions = append(append(append([]ExtendedBlockDefinition{
 	baseExtendedBlock(10062, "minecraft:yellow_poplar_leaves", "yellow_poplar_leaves", "yellow_poplar_leaves", "yellow_poplar_leaves", CreativeNatural),
 	baseExtendedBlock(10063, "minecraft:poplar_sapling", "poplar_sapling", "poplar_sapling", "poplar_sapling", CreativeNatural),
 	{RuntimeID: 10100, Name: "minecraft:red_shrub", TextureTop: "red_shrub", TextureBottom: "red_shrub", TextureSide: "red_shrub", Category: CreativeNatural, Hardness: 0.1, DropRuntimeID: 10100},
-}, modernFullCubeDefinitions()...), coloredBlockDefinitions()...), glazedTerracottaDefinitions()...)
+}, modernFullCubeDefinitions()...), woodCubeDefinitions()...), coloredBlockDefinitions()...), glazedTerracottaDefinitions()...)
 
 func baseExtendedBlock(id int32, name, top, bottom, side string, category CreativeCategory) ExtendedBlockDefinition {
 	return ExtendedBlockDefinition{
 		RuntimeID: id, Name: name, TextureTop: top, TextureBottom: bottom,
 		TextureSide: side, Category: category,
 	}
+}
+
+func woodCubeDefinitions() []ExtendedBlockDefinition {
+	type woodType struct {
+		name, texture string
+	}
+	woods := [...]woodType{
+		{"oak_wood", "oak_log"},
+		{"spruce_wood", "spruce_log"},
+		{"birch_wood", "birch_log"},
+		{"jungle_wood", "jungle_log"},
+		{"acacia_wood", "acacia_log"},
+		{"dark_oak_wood", "dark_oak_log"},
+		{"mangrove_wood", "mangrove_log"},
+		{"cherry_wood", "cherry_log"},
+		{"pale_oak_wood", "pale_oak_log"},
+		{"crimson_hyphae", "crimson_stem"},
+		{"warped_hyphae", "warped_stem"},
+	}
+	definitions := make([]ExtendedBlockDefinition, 0, len(woods)*2)
+	for i, wood := range woods {
+		id := int32(10200 + i*2)
+		name := "minecraft:" + wood.name
+		strippedName := "minecraft:stripped_" + wood.name
+		strippedTexture := "stripped_" + wood.texture
+		definitions = append(definitions,
+			ExtendedBlockDefinition{
+				RuntimeID: id, Name: name, TextureTop: wood.texture, TextureBottom: wood.texture, TextureSide: wood.texture,
+				Category: CreativeBlocks, Hardness: 2, HarvestTool: ToolAxe, DropRuntimeID: id,
+				StrippedVariantID: id + 1,
+			},
+			ExtendedBlockDefinition{
+				RuntimeID: id + 1, Name: strippedName, TextureTop: strippedTexture, TextureBottom: strippedTexture, TextureSide: strippedTexture,
+				Category: CreativeBlocks, Hardness: 2, HarvestTool: ToolAxe, DropRuntimeID: id + 1,
+			},
+		)
+	}
+	return definitions
 }
 
 func modernFullCubeDefinitions() []ExtendedBlockDefinition {
@@ -344,24 +382,45 @@ func ExtendedBlockItemTextureName(runtimeID int32) string {
 }
 
 var extendedBlockDisplayNames = map[string]string{
-	"minecraft:cinnabar":             "朱砂块",
-	"minecraft:polished_cinnabar":    "磨制朱砂块",
-	"minecraft:chiseled_cinnabar":    "錾制朱砂块",
-	"minecraft:cinnabar_bricks":      "朱砂砖",
-	"minecraft:sulfur":               "硫磺块",
-	"minecraft:polished_sulfur":      "磨制硫磺块",
-	"minecraft:chiseled_sulfur":      "錾制硫磺块",
-	"minecraft:sulfur_bricks":        "硫磺砖",
-	"minecraft:potent_sulfur":        "强效硫磺块",
-	"minecraft:poplar_planks":        "杨木木板",
-	"minecraft:poplar_log":           "杨木原木",
-	"minecraft:stripped_poplar_log":  "去皮杨木原木",
-	"minecraft:poplar_wood":          "杨木",
-	"minecraft:stripped_poplar_wood": "去皮杨木",
-	"minecraft:red_poplar_leaves":    "红色杨木树叶",
-	"minecraft:orange_poplar_leaves": "橙色杨木树叶",
-	"minecraft:yellow_poplar_leaves": "黄色杨木树叶",
-	"minecraft:poplar_sapling":       "杨木树苗",
-	"minecraft:red_shrub":            "红灌木",
+	"minecraft:cinnabar":                "朱砂块",
+	"minecraft:polished_cinnabar":       "磨制朱砂块",
+	"minecraft:chiseled_cinnabar":       "錾制朱砂块",
+	"minecraft:cinnabar_bricks":         "朱砂砖",
+	"minecraft:sulfur":                  "硫磺块",
+	"minecraft:polished_sulfur":         "磨制硫磺块",
+	"minecraft:chiseled_sulfur":         "錾制硫磺块",
+	"minecraft:sulfur_bricks":           "硫磺砖",
+	"minecraft:potent_sulfur":           "强效硫磺块",
+	"minecraft:poplar_planks":           "杨木木板",
+	"minecraft:poplar_log":              "杨木原木",
+	"minecraft:stripped_poplar_log":     "去皮杨木原木",
+	"minecraft:poplar_wood":             "杨木",
+	"minecraft:stripped_poplar_wood":    "去皮杨木",
+	"minecraft:oak_wood":                "橡木",
+	"minecraft:stripped_oak_wood":       "去皮橡木",
+	"minecraft:spruce_wood":             "云杉木",
+	"minecraft:stripped_spruce_wood":    "去皮云杉木",
+	"minecraft:birch_wood":              "白桦木",
+	"minecraft:stripped_birch_wood":     "去皮白桦木",
+	"minecraft:jungle_wood":             "丛林木",
+	"minecraft:stripped_jungle_wood":    "去皮丛林木",
+	"minecraft:acacia_wood":             "金合欢木",
+	"minecraft:stripped_acacia_wood":    "去皮金合欢木",
+	"minecraft:dark_oak_wood":           "深色橡木",
+	"minecraft:stripped_dark_oak_wood":  "去皮深色橡木",
+	"minecraft:mangrove_wood":           "红树木",
+	"minecraft:stripped_mangrove_wood":  "去皮红树木",
+	"minecraft:cherry_wood":             "樱花木",
+	"minecraft:stripped_cherry_wood":    "去皮樱花木",
+	"minecraft:pale_oak_wood":           "苍白橡木",
+	"minecraft:stripped_pale_oak_wood":  "去皮苍白橡木",
+	"minecraft:crimson_hyphae":          "绯红菌核",
+	"minecraft:stripped_crimson_hyphae": "去皮绯红菌核",
+	"minecraft:warped_hyphae":           "诡异菌核",
+	"minecraft:stripped_warped_hyphae":  "去皮诡异菌核",
+	"minecraft:red_poplar_leaves":       "红色杨木树叶",
+	"minecraft:orange_poplar_leaves":    "橙色杨木树叶",
+	"minecraft:yellow_poplar_leaves":    "黄色杨木树叶",
+	"minecraft:poplar_sapling":          "杨木树苗",
+	"minecraft:red_shrub":               "红灌木",
 }
-
