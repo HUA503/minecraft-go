@@ -958,6 +958,36 @@ func TestModernCreativeMaterialsHaveRegistryNamesAndUsefulRecipes(t *testing.T) 
 	}
 }
 
+func TestCreativeCategoriesFollowJava263DirectItemOrder(t *testing.T) {
+	for _, category := range []CreativeCategory{
+		CreativeBlocks, CreativeDecoration, CreativeNatural, CreativeFunctional, CreativeRedstone,
+		CreativeTools, CreativeCombat, CreativeFood, CreativeMaterials, CreativeSpawnEggs,
+	} {
+		catalog := CreativeCatalog(category)
+		if len(catalog) == 0 {
+			continue
+		}
+		var expected string
+		for _, name := range vanillaCreativeTabOrder[category] {
+			for _, item := range catalog {
+				if creativeItemRegistryName(item.ID) == name {
+					expected = name
+					break
+				}
+			}
+			if expected != "" {
+				break
+			}
+		}
+		if expected == "" {
+			continue
+		}
+		if got := creativeItemRegistryName(catalog[0].ID); got != expected {
+			t.Errorf("creative category %d begins with %s; Java 26.3's first implemented entry is %s", category, got, expected)
+		}
+	}
+}
+
 func TestNewOreMaterialsHaveSmeltingRecipesAndCreativeEntries(t *testing.T) {
 	want := map[int32]int32{
 		ItemRawCopper: ItemCopperIngot,

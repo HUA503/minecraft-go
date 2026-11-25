@@ -65,20 +65,20 @@ func CreativeCatalog(category CreativeCategory) []CreativeItem {
 			filtered = append(filtered, item)
 		}
 	}
-	if category == CreativeMaterials {
+	if vanillaRank, hasVanillaOrder := vanillaCreativeTabRanks[category]; hasVanillaOrder {
 		originalOrder := make(map[int32]int, len(filtered))
 		for i, item := range filtered {
 			originalOrder[item.ID] = i
 		}
 		sort.SliceStable(filtered, func(i, j int) bool {
 			itemI, itemJ := filtered[i], filtered[j]
-			rankI, okI := vanillaCreativeMaterialRank[creativeItemRegistryName(itemI.ID)]
-			rankJ, okJ := vanillaCreativeMaterialRank[creativeItemRegistryName(itemJ.ID)]
+			rankI, okI := vanillaRank[creativeItemRegistryName(itemI.ID)]
+			rankJ, okJ := vanillaRank[creativeItemRegistryName(itemJ.ID)]
 			if !okI {
-				rankI = len(vanillaCreativeMaterialRank) + originalOrder[itemI.ID]
+				rankI = len(vanillaRank) + originalOrder[itemI.ID]
 			}
 			if !okJ {
-				rankJ = len(vanillaCreativeMaterialRank) + originalOrder[itemJ.ID]
+				rankJ = len(vanillaRank) + originalOrder[itemJ.ID]
 			}
 			return rankI < rankJ
 		})
