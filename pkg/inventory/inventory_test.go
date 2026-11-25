@@ -1238,8 +1238,47 @@ func TestCreativeTabsIncludeVanillaCrossCategoryItems(t *testing.T) {
 		}
 		seen[item.ID] = struct{}{}
 	}
-	if all := CreativeCatalog(CreativeAll); len(all) != 694 {
-		t.Fatalf("canonical Search tab has %d items after adding 32 colored stair variants and removing a duplicate white wool item, want 694", len(all))
+	if all := CreativeCatalog(CreativeAll); len(all) != 710 {
+		t.Fatalf("canonical Search tab has %d items after adding 16 colored cushions, want 710", len(all))
+	}
+}
+
+func TestJava263ColoredCushionsHaveCatalogEntriesAndSprites(t *testing.T) {
+	colors := []string{
+		"white", "orange", "magenta", "light_blue", "yellow", "lime", "pink", "gray",
+		"light_gray", "cyan", "purple", "blue", "brown", "green", "red", "black",
+	}
+	for i, color := range colors {
+		id := FirstCushionBlock + int32(i)
+		name := "minecraft:" + color + "_cushion"
+		item, ok := ExtendedBlockByID(id)
+		if !ok || item.Name != name || item.Category != CreativeDecoration || item.Hardness <= 0 || item.DropRuntimeID != id {
+			t.Fatalf("cushion %s definition = %+v, %t", name, item, ok)
+		}
+		if !IsPlaceableBlock(id) || GetMaxStackSize(id) != 16 {
+			t.Fatalf("cushion %s is not placeable or has stack size %d", name, GetMaxStackSize(id))
+		}
+		matches := SearchCreativeCatalog(CreativeDecoration, name)
+		if len(matches) != 1 || matches[0].ID != id {
+			t.Fatalf("search %q = %+v, want one item with id %d", name, matches, id)
+		}
+		if got := ExtendedBlockItemTextureName(id); got != color+"_cushion" {
+			t.Errorf("item texture for %s = %q", name, got)
+		}
+		var slabID int32
+		for _, slab := range colorSlabDefinitions {
+			if slab.Name == "minecraft:"+color+"_wool_slab" {
+				slabID = slab.ItemID
+				break
+			}
+		}
+		if slabID == 0 {
+			t.Fatalf("matching wool slab for %s is missing", name)
+		}
+		crafted, ok := NewCraftingManager().MatchCrafting([]int32{slabID, slabID, slabID, 0, 0, 0, 0, 0, 0}, 3)
+		if !ok || crafted.ItemID != id || crafted.Count != 1 {
+			t.Errorf("recipe for %s = %+v, %t; want one cushion from three matching wool slabs", name, crafted, ok)
+		}
 	}
 }
 
@@ -1306,8 +1345,8 @@ func TestJava263WoolAndConcreteStairItemsAndStates(t *testing.T) {
 			}
 		}
 	}
-	if len(catalog) != 694 {
-		t.Fatalf("all-items search catalog length = %d, want 694", len(catalog))
+	if len(catalog) != 710 {
+		t.Fatalf("all-items search catalog length = %d, want 710", len(catalog))
 	}
 	whiteWoolCount := 0
 	for _, item := range catalog {

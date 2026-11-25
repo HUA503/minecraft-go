@@ -968,7 +968,13 @@ func initOfficialBlockTextures() {
 	loadBlock(24, "sandstone_top", "sandstone_bottom", "sandstone")
 	loadSingle(25, "note_block")
 	for _, block := range inventory.ExtendedBlockDefinitions() {
-		loadBlock(block.RuntimeID, block.TextureTop, block.TextureBottom, block.TextureSide)
+		if inventory.IsCushionBlock(block.RuntimeID) {
+			if texture, ok := GetOfficialTexture("entity/cushion", block.TextureTop); ok {
+				Textures[block.RuntimeID] = &BlockFaceTextures{Top: texture, Bottom: texture, Side: texture}
+			}
+		} else {
+			loadBlock(block.RuntimeID, block.TextureTop, block.TextureBottom, block.TextureSide)
+		}
 	}
 	loadSingle(35, "white_wool")
 	loadSingle(43, "stone")

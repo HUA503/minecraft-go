@@ -670,6 +670,47 @@ func TestRedShrubPlacementCollisionAndDrop(t *testing.T) {
 	}
 }
 
+func TestColoredCushionPlacementCollisionAndDrop(t *testing.T) {
+	eng := NewEngine()
+	player := eng.AddPlayer("Steve", [16]byte{77}, Vec3{X: 10.5, Y: 64, Z: 10.5})
+	stone := world.BlockPos{X: 11, Y: 63, Z: 10}
+	pos := world.BlockPos{X: 11, Y: 64, Z: 10}
+	if eng.PlaceBlock(player.ID, pos, inventory.FirstCushionBlock) {
+		t.Fatal("cushion should not place without support")
+	}
+	eng.SetBlock(stone.X, stone.Y, stone.Z, inventory.ItemStone)
+	if !eng.PlaceBlock(player.ID, pos, inventory.FirstCushionBlock) {
+		t.Fatal("cushion should place on a solid surface")
+	}
+	if IsSolidBlock(inventory.FirstCushionBlock) || len(BlockCollisionAABBs(inventory.FirstCushionBlock, pos.X, pos.Y, pos.Z)) != 0 {
+		t.Fatal("cushion must not collide with players")
+	}
+	if boxes, ok := inventory.BlockCollisionBoxes(inventory.FirstCushionBlock); !ok || len(boxes) != 1 || boxes[0].MaxY != .25 {
+		t.Fatalf("cushion selection/render shape = %+v, %t", boxes, ok)
+	}
+	if got := eng.BreakBlock(player.ID, pos); got != inventory.FirstCushionBlock {
+		t.Fatalf("breaking cushion dropped %d, want %d", got, inventory.FirstCushionBlock)
+	}
+	if !eng.PlaceBlock(player.ID, pos, inventory.FirstCushionBlock) {
+		t.Fatal("cushion should be placeable again on the supported surface")
+	}
+	if got := eng.BreakBlock(player.ID, stone); got != inventory.ItemCobblestone {
+		t.Fatalf("breaking cushion support dropped %d, want cobblestone", got)
+	}
+	if got := eng.GetBlock(pos.X, pos.Y, pos.Z); got != inventory.ItemAir {
+		t.Fatalf("cushion remained after support was broken: block ID %d", got)
+	}
+	count := 0
+	for _, stack := range player.Inventory.Slots {
+		if stack.ItemID == inventory.FirstCushionBlock {
+			count += stack.Count
+		}
+	}
+	if count != 1 {
+		t.Fatalf("cushion inventory count after replacing one cushion and losing support = %d, want 1", count)
+	}
+}
+
 func TestBoneMealGrowsRedShrubAndConsumesOnlyInSurvival(t *testing.T) {
 	for _, gameMode := range []int{0, 1} {
 		eng := NewEngine()

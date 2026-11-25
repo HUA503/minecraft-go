@@ -486,6 +486,24 @@ func (cm *CraftingManager) registerDefaults() {
 			Output:  ItemStack{ItemID: slab.ItemID, Count: 6},
 		})
 	}
+	for i, color := range cushionColors {
+		woolSlabName := "minecraft:" + color.name + "_wool_slab"
+		var woolSlabID int32
+		for _, slab := range colorSlabDefinitions {
+			if slab.Name == woolSlabName {
+				woolSlabID = slab.ItemID
+				break
+			}
+		}
+		if woolSlabID == 0 {
+			continue
+		}
+		cm.Recipes = append(cm.Recipes, Recipe{
+			Width: 3, Height: 1,
+			Pattern: []int32{woolSlabID, woolSlabID, woolSlabID},
+			Output:  ItemStack{ItemID: FirstCushionBlock + int32(i), Count: 1},
+		})
+	}
 	for _, slab := range masonrySlabDefinitions {
 		var blockID int32
 		for _, item := range CreativeCatalog(CreativeAll) {

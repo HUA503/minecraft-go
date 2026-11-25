@@ -29,6 +29,31 @@ var modernOreDropRanges = map[string][2]int{
 
 var extendedBlockDefinitions = buildExtendedBlockDefinitions()
 
+const (
+	FirstCushionBlock int32 = 16200
+	LastCushionBlock  int32 = FirstCushionBlock + 15
+)
+
+var cushionColors = [...]struct {
+	name, display string
+}{
+	{"white", "\u767d\u8272"}, {"orange", "\u6a59\u8272"}, {"magenta", "\u54c1\u7ea2\u8272"}, {"light_blue", "\u6d45\u84dd\u8272"},
+	{"yellow", "\u9ec4\u8272"}, {"lime", "\u9ec4\u7eff\u8272"}, {"pink", "\u7c89\u8272"}, {"gray", "\u7070\u8272"},
+	{"light_gray", "\u6d45\u7070\u8272"}, {"cyan", "\u9752\u8272"}, {"purple", "\u7d2b\u8272"}, {"blue", "\u84dd\u8272"},
+	{"brown", "\u68d5\u8272"}, {"green", "\u7eff\u8272"}, {"red", "\u7ea2\u8272"}, {"black", "\u9ed1\u8272"},
+}
+
+func IsCushionBlock(runtimeID int32) bool {
+	return runtimeID >= FirstCushionBlock && runtimeID <= LastCushionBlock
+}
+
+func CushionItemID(colorIndex int) (int32, bool) {
+	if colorIndex < 0 || colorIndex >= len(cushionColors) {
+		return 0, false
+	}
+	return FirstCushionBlock + int32(colorIndex), true
+}
+
 func buildExtendedBlockDefinitions() []ExtendedBlockDefinition {
 	definitions := []ExtendedBlockDefinition{
 		baseExtendedBlock(10000, "minecraft:cinnabar", "cinnabar", "cinnabar", "cinnabar", CreativeBlocks),
@@ -61,6 +86,22 @@ func buildExtendedBlockDefinitions() []ExtendedBlockDefinition {
 	definitions = append(definitions, colorSlabBlockDefinitions()...)
 	definitions = append(definitions, colorStairBlockDefinitions()...)
 	definitions = append(definitions, masonrySlabBlockDefinitions()...)
+	definitions = append(definitions, cushionBlockDefinitions()...)
+	return definitions
+}
+
+func cushionBlockDefinitions() []ExtendedBlockDefinition {
+	definitions := make([]ExtendedBlockDefinition, 0, len(cushionColors))
+	for i, color := range cushionColors {
+		name := "minecraft:" + color.name + "_cushion"
+		texture := color.name + "_cushion"
+		definitions = append(definitions, ExtendedBlockDefinition{
+			RuntimeID: FirstCushionBlock + int32(i), Name: name,
+			TextureTop: texture, TextureBottom: texture, TextureSide: texture,
+			Category: CreativeDecoration, Hardness: 0.2, DropRuntimeID: FirstCushionBlock + int32(i),
+		})
+		extendedBlockDisplayNames[name] = color.display + "\u5750\u57ab"
+	}
 	return definitions
 }
 
@@ -529,6 +570,9 @@ func IsExtendedFoliage(runtimeID int32) bool {
 }
 
 func ExtendedBlockItemTextureName(runtimeID int32) string {
+	if IsCushionBlock(runtimeID) {
+		return cushionColors[runtimeID-FirstCushionBlock].name + "_cushion"
+	}
 	switch runtimeID {
 	case 10060:
 		return "red_poplar_leaves"

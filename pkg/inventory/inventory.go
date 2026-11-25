@@ -440,6 +440,9 @@ func (inv *PlayerInventory) SwapSelectedWithOffhand() bool {
 
 // GetMaxStackSize returns the canonical maximum stack size for the given item.
 func GetMaxStackSize(itemID int32) int {
+	if IsCushionBlock(itemID) {
+		return 16
+	}
 	if item, ok := ModernCreativeItemByID(itemID); ok {
 		return item.MaxStack
 	}

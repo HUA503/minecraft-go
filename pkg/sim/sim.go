@@ -991,6 +991,21 @@ func (e *Engine) BreakBlock(playerID int32, pos world.BlockPos) int32 {
 	if !e.SetBlockChecked(pos.X, pos.Y, pos.Z, 0) {
 		return 0
 	}
+	// Java 26.3 cushions are destroyed when their supporting block is broken.
+	// Remove the unsupported block and return its item to the player as well.
+	if pos.Y < world.MaxWorldY {
+		above := world.BlockPos{X: pos.X, Y: pos.Y + 1, Z: pos.Z}
+		unsupported := e.GetBlock(above.X, above.Y, above.Z)
+		if inventory.IsCushionBlock(unsupported) && !IsSolidBlock(e.GetBlock(pos.X, pos.Y, pos.Z)) {
+			if e.SetBlockChecked(above.X, above.Y, above.Z, 0) {
+				e.mu.Lock()
+				if player, ok := e.Players[playerID]; ok && player.Inventory != nil {
+					player.Inventory.AddItem(unsupported, 1)
+				}
+				e.mu.Unlock()
+			}
+		}
+	}
 	if origBlock == 61 || origBlock == 62 {
 		e.mu.Lock()
 		if f, ok := e.Furnaces[pos]; ok && f != nil {
@@ -1109,8 +1124,8 @@ func (e *Engine) PlaceBlock(playerID int32, pos world.BlockPos, blockID int32) b
 		e.consumePlacedBlockItem(playerID, placedItem)
 		return true
 	}
-	if blockID == 10100 && (pos.Y <= 0 || !IsSolidBlock(e.GetBlock(pos.X, pos.Y-1, pos.Z))) {
-		return false // Red shrubs need a solid block beneath them.
+	if (blockID == 10100 || inventory.IsCushionBlock(blockID)) && (pos.Y <= 0 || !IsSolidBlock(e.GetBlock(pos.X, pos.Y-1, pos.Z))) {
+		return false // Red shrubs and cushions need a solid block beneath them.
 	}
 
 	// For solid blocks, prevent placing inside living players

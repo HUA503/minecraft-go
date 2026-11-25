@@ -69,6 +69,20 @@ func TestJava263ColoredStairItemIconsUseTheirShape(t *testing.T) {
 	}
 }
 
+func TestJava263ColoredCushionItemsUseOfficialSprites(t *testing.T) {
+	for id := inventory.FirstCushionBlock; id <= inventory.LastCushionBlock; id++ {
+		if name := GetOfficialItemTextureName(id); name == "" {
+			t.Fatalf("cushion %d has no item texture mapping", id)
+		}
+		if _, ok := GetOfficialItemSprite(id); !ok {
+			t.Errorf("official cushion sprite for item %d is missing", id)
+		}
+		if texture := Textures[id]; texture == nil {
+			t.Errorf("cushion %d has no world texture", id)
+		}
+	}
+}
+
 func TestSlabItemIconsUsePartialBlockSilhouettes(t *testing.T) {
 	full := RenderIsometricBlock16x16(inventory.ItemStone)
 	bottom := RenderIsometricBlock16x16(inventory.ItemStoneSlab)

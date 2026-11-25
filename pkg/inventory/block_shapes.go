@@ -30,6 +30,7 @@ const (
 var bottomSlabBox = []BlockBox{{MinX: 0, MinY: 0, MinZ: 0, MaxX: 1, MaxY: .5, MaxZ: 1}}
 var topSlabBox = []BlockBox{{MinX: 0, MinY: .5, MinZ: 0, MaxX: 1, MaxY: 1, MaxZ: 1}}
 var fullBlockBox = []BlockBox{{MinX: 0, MinY: 0, MinZ: 0, MaxX: 1, MaxY: 1, MaxZ: 1}}
+var cushionVisualBox = []BlockBox{{MinX: 0, MinY: 0, MinZ: 0, MaxX: 1, MaxY: .25, MaxZ: 1}}
 
 type woodSlabDefinition struct {
 	ItemID      int32
@@ -186,6 +187,9 @@ func buildMasonrySlabDefinitions() []masonrySlabDefinition {
 // partial block states. A false result means the caller should use its normal
 // full-cube or non-solid rule.
 func BlockCollisionBoxes(blockID int32) ([]BlockBox, bool) {
+	if IsCushionBlock(blockID) {
+		return cushionVisualBox, true
+	}
 	if boxes, ok := StairCollisionBoxes(blockID); ok {
 		return boxes, true
 	}
