@@ -1186,14 +1186,7 @@ func saveCreativeHotbarPresets(presets inventory.CreativeHotbarPresets) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	if err := os.Rename(tmpName, path); err == nil {
-		return nil
-	}
-	// Windows does not replace an existing destination with Rename.
-	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-		return err
-	}
-	return os.Rename(tmpName, path)
+	return world.ReplaceFile(tmpName, path)
 }
 
 func (c *Client) getGenerator() *gen.Generator {
