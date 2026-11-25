@@ -133,6 +133,7 @@ const (
 	ItemCopperPickaxe       int32 = 13023
 	ItemCopperAxe           int32 = 13024
 	ItemCopperHoe           int32 = 13025
+	ItemCyanWool            int32 = 10039 // runtime ID of minecraft:cyan_wool in the extended block registry
 
 	// Utility, materials, and blocks
 	ItemBucket        int32 = 325

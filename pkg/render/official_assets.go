@@ -334,6 +334,8 @@ func GetOfficialItemTextureName(itemID int32) string {
 		return texture
 	}
 	switch itemID {
+	case 323:
+		return "oak_sign"
 	case 345:
 		return "compass_00"
 	case 346:

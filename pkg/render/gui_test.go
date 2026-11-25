@@ -210,31 +210,39 @@ func TestCreativeTabsMatchJava263VanillaRows(t *testing.T) {
 
 func TestCreativeTabIconsUseJava263ReferenceItems(t *testing.T) {
 	for _, tc := range []struct {
-		category inventory.CreativeCategory
-		icon     int32
-		texture  string
+		category  inventory.CreativeCategory
+		icon      int32
+		texture   string
+		blockIcon bool
 	}{
-		{inventory.CreativeTools, inventory.ItemDiamondPickaxe, "diamond_pickaxe"},
-		{inventory.CreativeCombat, inventory.ItemNetheriteSword, "netherite_sword"},
-		{inventory.CreativeFood, inventory.ItemGoldenApple, "golden_apple"},
-		{inventory.CreativeMaterials, inventory.ItemIronIngot, "iron_ingot"},
-		{inventory.CreativeSpawnEggs, 11002, "creeper_spawn_egg"},
-		{inventory.CreativeHotbar, 47, "bookshelf"},
-		{inventory.CreativeAll, 345, "compass_00"},
-		{inventory.CreativeInventory, 54, "chest"},
+		{inventory.CreativeBlocks, 45, "bricks", true},
+		{inventory.CreativeDecoration, inventory.ItemCyanWool, "cyan_wool", true},
+		{inventory.CreativeFunctional, 323, "oak_sign", false},
+		{inventory.CreativeTools, inventory.ItemDiamondPickaxe, "diamond_pickaxe", false},
+		{inventory.CreativeCombat, inventory.ItemNetheriteSword, "netherite_sword", false},
+		{inventory.CreativeFood, inventory.ItemGoldenApple, "golden_apple", false},
+		{inventory.CreativeMaterials, inventory.ItemIronIngot, "iron_ingot", false},
+		{inventory.CreativeSpawnEggs, 11002, "creeper_spawn_egg", false},
+		{inventory.CreativeHotbar, 47, "bookshelf", true},
+		{inventory.CreativeAll, 345, "compass_00", false},
+		{inventory.CreativeInventory, 54, "chest", true},
 	} {
 		tab := creativeTabForCategory(tc.category)
 		if tab.icon != tc.icon {
 			t.Errorf("creative tab %d icon = %d, want %d", tc.category, tab.icon, tc.icon)
 		}
-		if tc.category == inventory.CreativeHotbar {
-			if _, ok := GetOfficialTexture("block", tc.texture); !ok {
-				t.Errorf("creative tab %d block icon %q has no official texture", tc.category, tc.texture)
-			}
-		} else if tc.category == inventory.CreativeInventory {
+		if tc.category == inventory.CreativeInventory {
 			// Chest item rendering still uses the project's generic block sprite;
 			// the vanilla chest atlas has not yet been wired into item rendering.
 			continue
+		} else if tc.blockIcon {
+			if _, ok := GetOfficialTexture("block", tc.texture); !ok {
+				t.Errorf("creative tab %d block icon %q has no official texture", tc.category, tc.texture)
+			}
+			sprite := GetItemSprite16x16(tab.icon)
+			if sprite[8][8] == 0 {
+				t.Errorf("creative tab %d block icon %q rendered empty", tc.category, tc.texture)
+			}
 		} else {
 			if got := GetOfficialItemTextureName(tab.icon); got != tc.texture {
 				t.Errorf("creative tab %d texture = %q, want %q", tc.category, got, tc.texture)
@@ -636,4 +644,3 @@ func TestVisualScreenRenders(t *testing.T) {
 		t.Fatalf("new world screen framebuffer has too few rendered pixels: %d", nonZeroNew)
 	}
 }
-
