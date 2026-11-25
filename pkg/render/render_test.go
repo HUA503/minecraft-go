@@ -185,6 +185,46 @@ func TestSlabMeshUsesTheSamePartialShapesAsCollision(t *testing.T) {
 	}
 }
 
+func TestJava263ColoredStairMeshesFollowOrientedVoxelShape(t *testing.T) {
+	for _, stair := range inventory.ModernStairItemDefinitions() {
+		if Textures[stair.RuntimeID] == nil {
+			t.Errorf("stair %s has no block texture", stair.Name)
+			continue
+		}
+		for facing := inventory.StairFacing(0); facing < 4; facing++ {
+			for _, upsideDown := range []bool{false, true} {
+				state, ok := inventory.StairBlockState(stair.RuntimeID, facing, upsideDown)
+				if !ok {
+					t.Fatalf("failed to construct stair state for %s", stair.Name)
+				}
+				mesh := BuildSectionMesh(func(x, y, z int32) int32 {
+					if x == 0 && y == 0 && z == 0 {
+						return state
+					}
+					return 0
+				}, 0, 0, 0)
+				if len(mesh.Vertices) != 88 {
+					t.Errorf("stair %s state (%d,%t) generated %d vertices, want 88 exposed half-cell faces", stair.Name, facing, upsideDown, len(mesh.Vertices))
+					continue
+				}
+				var minX, minY, minZ = float32(math.Inf(1)), float32(math.Inf(1)), float32(math.Inf(1))
+				var maxX, maxY, maxZ = float32(math.Inf(-1)), float32(math.Inf(-1)), float32(math.Inf(-1))
+				for _, vertex := range mesh.Vertices {
+					minX, minY, minZ = min(minX, vertex.X), min(minY, vertex.Y), min(minZ, vertex.Z)
+					maxX, maxY, maxZ = max(maxX, vertex.X), max(maxY, vertex.Y), max(maxZ, vertex.Z)
+					if vertex.BlockID != stair.RuntimeID {
+						t.Errorf("stair %s mesh texture ID = %d, want canonical item %d", stair.Name, vertex.BlockID, stair.RuntimeID)
+						break
+					}
+				}
+				if minX != 0 || minY != 0 || minZ != 0 || maxX != 1 || maxY != 1 || maxZ != 1 {
+					t.Errorf("stair %s state (%d,%t) mesh bounds = [%g,%g]x[%g,%g]x[%g,%g]", stair.Name, facing, upsideDown, minX, maxX, minY, maxY, minZ, maxZ)
+				}
+			}
+		}
+	}
+}
+
 func TestMeshFaceCullingAdjacentCubes(t *testing.T) {
 	world := map[[3]int32]int32{
 		{0, 0, 0}: 1,

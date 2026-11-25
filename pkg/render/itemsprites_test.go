@@ -1,6 +1,7 @@
 package render
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/HUA503/minecraft-go/pkg/inventory"
@@ -32,6 +33,38 @@ func TestRenderIsometricBlock16x16(t *testing.T) {
 		// A 16x16 isometric voxel cube occupies ~120 to 180 pixels inside the 256 pixel grid
 		if nonZeroCount < 100 || nonZeroCount > 230 {
 			t.Fatalf("block %d produced abnormal pixel count %d in 16x16 isometric cube", b, nonZeroCount)
+		}
+	}
+}
+
+func TestJava263ColoredStairItemIconsUseTheirShape(t *testing.T) {
+	for _, stair := range inventory.ModernStairItemDefinitions() {
+		source, ok := inventory.ExtendedBlockByName(strings.TrimSuffix(stair.Name, "_stairs"))
+		if !ok {
+			if stair.Name == "minecraft:white_wool_stairs" {
+				source = inventory.ExtendedBlockDefinition{RuntimeID: 35} // legacy white-wool runtime ID
+				ok = true
+			}
+			if !ok {
+				t.Fatalf("stair %s source block is not registered", stair.Name)
+			}
+		}
+		stairIcon := RenderIsometricBlock16x16(stair.RuntimeID)
+		blockIcon := RenderIsometricBlock16x16(source.RuntimeID)
+		visible := 0
+		different := false
+		for y := range stairIcon {
+			for x := range stairIcon[y] {
+				if stairIcon[y][x] != 0 {
+					visible++
+				}
+				if stairIcon[y][x] != blockIcon[y][x] {
+					different = true
+				}
+			}
+		}
+		if visible == 0 || !different {
+			t.Errorf("stair %s icon has %d visible pixels and differs from its source block=%t", stair.Name, visible, different)
 		}
 	}
 }

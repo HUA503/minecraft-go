@@ -1238,8 +1238,137 @@ func TestCreativeTabsIncludeVanillaCrossCategoryItems(t *testing.T) {
 		}
 		seen[item.ID] = struct{}{}
 	}
-	if all := CreativeCatalog(CreativeAll); len(all) != 663 {
-		t.Fatalf("canonical Search tab has %d items after adding 13 wood, 32 colored, and 45 masonry slab variants, want 663", len(all))
+	if all := CreativeCatalog(CreativeAll); len(all) != 694 {
+		t.Fatalf("canonical Search tab has %d items after adding 32 colored stair variants and removing a duplicate white wool item, want 694", len(all))
+	}
+}
+
+func TestJava263WoolAndConcreteStairItemsAndStates(t *testing.T) {
+	if len(colorStairDefinitions) != 32 {
+		t.Fatalf("colored stair family has %d definitions, want 32", len(colorStairDefinitions))
+	}
+	catalog := CreativeCatalog(CreativeAll)
+	for _, stair := range colorStairDefinitions {
+		definition, ok := ExtendedBlockByID(stair.ItemID)
+		if !ok || definition.Name != stair.Name || definition.TextureTop != stair.Texture {
+			t.Fatalf("stair %s registration = %+v, found=%t", stair.Name, definition, ok)
+		}
+		if got := SearchCreativeCatalog(CreativeAll, stair.Name); len(got) != 1 || got[0].ID != stair.ItemID {
+			t.Errorf("registry search for %s = %+v", stair.Name, got)
+		}
+		foundDecoration := false
+		for _, item := range CreativeCatalog(CreativeDecoration) {
+			if item.ID == stair.ItemID {
+				foundDecoration = true
+				break
+			}
+		}
+		if !foundDecoration {
+			t.Errorf("stair %s missing from decoration tab", stair.Name)
+		}
+		if GetMaxStackSize(stair.ItemID) != 64 {
+			t.Errorf("stair %s max stack = %d, want 64", stair.Name, GetMaxStackSize(stair.ItemID))
+		}
+		if stair.RequiresTool {
+			if CanHarvestBlock(ItemAir, stair.ItemID) || !CanHarvestBlock(ItemWoodenPickaxe, stair.ItemID) {
+				t.Errorf("concrete stair %s should require a pickaxe", stair.Name)
+			}
+		} else if !CanHarvestBlock(ItemAir, stair.ItemID) {
+			t.Errorf("wool stair %s should not require a tool", stair.Name)
+		}
+		for facing := StairFacing(0); facing < 4; facing++ {
+			for _, upsideDown := range []bool{false, true} {
+				state, ok := StairBlockState(stair.ItemID, facing, upsideDown)
+				if !ok {
+					t.Fatalf("failed to create state for %s", stair.Name)
+				}
+				item, gotFacing, gotUpsideDown, ok := StairStateProperties(state)
+				if !ok || item != stair.ItemID || gotFacing != facing || gotUpsideDown != upsideDown || BlockItemForState(state) != stair.ItemID {
+					t.Errorf("stair %s state %d decoded as (%d,%d,%t,%t)", stair.Name, state, item, gotFacing, gotUpsideDown, ok)
+				}
+				boxes, found := BlockCollisionBoxes(state)
+				if !found || len(boxes) != 2 {
+					t.Errorf("stair %s state %d collision boxes = %+v, found=%t", stair.Name, state, boxes, found)
+				}
+				occupied := 0
+				for y := 0; y < 2; y++ {
+					for z := 0; z < 2; z++ {
+						for x := 0; x < 2; x++ {
+							if StairVoxelOccupied(state, x, y, z) {
+								occupied++
+							}
+						}
+					}
+				}
+				if occupied != 6 {
+					t.Errorf("stair %s state %d occupies %d half-block cells, want 6", stair.Name, state, occupied)
+				}
+			}
+		}
+	}
+	if len(catalog) != 694 {
+		t.Fatalf("all-items search catalog length = %d, want 694", len(catalog))
+	}
+	whiteWoolCount := 0
+	for _, item := range catalog {
+		if creativeItemRegistryName(item.ID) == "minecraft:white_wool" {
+			whiteWoolCount++
+		}
+	}
+	if whiteWoolCount != 1 {
+		t.Errorf("white wool appears %d times in the canonical catalog, want once", whiteWoolCount)
+	}
+	for _, tc := range []struct {
+		yaw    float64
+		facing StairFacing
+	}{{0, 2}, {90, 1}, {180, 0}, {270, 3}} {
+		state, ok := StairPlacementState(FirstColorStairItem, tc.yaw, 0, .25)
+		_, facing, upsideDown, decoded := StairStateProperties(state)
+		if !ok || !decoded || facing != tc.facing || upsideDown {
+			t.Errorf("yaw %.0f stair placement = (%d,%t,%t), want facing %d lower", tc.yaw, facing, upsideDown, decoded, tc.facing)
+		}
+	}
+	stairRecipes := 0
+	for _, recipe := range NewCraftingManager().Recipes {
+		if recipe.Output.ItemID < FirstColorStairItem || recipe.Output.ItemID > LastColorStairItem {
+			continue
+		}
+		stairRecipes++
+		if recipe.Width != 3 || recipe.Height != 3 || len(recipe.Pattern) != 9 || recipe.Output.Count != 4 {
+			t.Errorf("stair recipe for item %d = %+v, want 3x3 yielding 4", recipe.Output.ItemID, recipe)
+		}
+		var sourceID int32
+		for _, item := range catalog {
+			if creativeItemRegistryName(item.ID) == colorStairDefinitions[recipe.Output.ItemID-FirstColorStairItem].SourceBlock {
+				sourceID = item.ID
+				break
+			}
+		}
+		wantPattern := []int32{sourceID, ItemAir, ItemAir, sourceID, sourceID, ItemAir, sourceID, sourceID, sourceID}
+		for i := range wantPattern {
+			if i >= len(recipe.Pattern) || recipe.Pattern[i] != wantPattern[i] {
+				t.Errorf("stair recipe for item %d pattern = %v, want %v", recipe.Output.ItemID, recipe.Pattern, wantPattern)
+				break
+			}
+		}
+	}
+	if stairRecipes != 32 {
+		t.Errorf("registered %d colored stair recipes, want 32", stairRecipes)
+	}
+	var whiteWool int32
+	for _, item := range catalog {
+		if creativeItemRegistryName(item.ID) == "minecraft:white_wool" {
+			whiteWool = item.ID
+			break
+		}
+	}
+	mirrored := []int32{
+		ItemAir, ItemAir, whiteWool,
+		ItemAir, whiteWool, whiteWool,
+		whiteWool, whiteWool, whiteWool,
+	}
+	if output, ok := NewCraftingManager().MatchCrafting(mirrored, 3); !ok || output.ItemID != FirstColorStairItem || output.Count != 4 {
+		t.Errorf("mirrored wool stair recipe output = %+v, matched=%t", output, ok)
 	}
 }
 

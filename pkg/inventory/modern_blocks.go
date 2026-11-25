@@ -59,6 +59,7 @@ func buildExtendedBlockDefinitions() []ExtendedBlockDefinition {
 	definitions = append(definitions, additionalCommonCubeDefinitions()...)
 	definitions = append(definitions, woodSlabBlockDefinitions()...)
 	definitions = append(definitions, colorSlabBlockDefinitions()...)
+	definitions = append(definitions, colorStairBlockDefinitions()...)
 	definitions = append(definitions, masonrySlabBlockDefinitions()...)
 	return definitions
 }
@@ -411,6 +412,12 @@ func coloredBlockDefinitions() []ExtendedBlockDefinition {
 			{"terracotta", color.id + "_terracotta"},
 		} {
 			name := "minecraft:" + color.id + "_" + blockType.suffix
+			if name == "minecraft:white_wool" {
+				// White wool already has the legacy runtime ID 35; keep its
+				// modern-colored-block slot reserved without exposing a duplicate item.
+				nextID++
+				continue
+			}
 			definitions = append(definitions, ExtendedBlockDefinition{
 				RuntimeID: nextID, Name: name, TextureTop: blockType.texture,
 				TextureBottom: blockType.texture, TextureSide: blockType.texture,
@@ -601,5 +608,8 @@ func init() {
 	}
 	for _, slab := range masonrySlabDefinitions {
 		extendedBlockDisplayNames[slab.Name] = slab.DisplayName
+	}
+	for _, stair := range colorStairDefinitions {
+		extendedBlockDisplayNames[stair.Name] = stair.DisplayName
 	}
 }

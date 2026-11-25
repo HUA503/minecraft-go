@@ -21,6 +21,13 @@ func applyLighting(c uint32, factor float32) uint32 {
 // RenderIsometricBlock16x16 rasterizes an authentic 16x16 3D isometric voxel block icon.
 // Light angles match vanilla Minecraft GUI: Top face (1.0x), Left face (0.8x), Right face (0.6x).
 func RenderIsometricBlock16x16(blockID int32) [16][16]uint32 {
+	if itemID, ok := inventory.StairItemForBlockState(blockID); ok {
+		state := blockID
+		if blockID == itemID {
+			state, _ = inventory.StairBlockState(itemID, 0, false)
+		}
+		return renderIsometricStair16x16(state)
+	}
 	if boxes, ok := inventory.BlockCollisionBoxes(blockID); ok && len(boxes) == 1 {
 		box := boxes[0]
 		if box.MinY > 0 || box.MaxY < 1 {
@@ -29,6 +36,127 @@ func RenderIsometricBlock16x16(blockID int32) [16][16]uint32 {
 		blockID = inventory.BlockItemForState(blockID)
 	}
 	return renderIsometricCube16x16(blockID)
+}
+
+type isoStairPoint struct{ x, y float32 }
+type isoStairVertex struct {
+	point isoStairPoint
+	u, v  float32
+	depth float32
+}
+
+func renderIsometricStair16x16(state int32) [16][16]uint32 {
+	itemID, _, _, ok := inventory.StairStateProperties(state)
+	if !ok {
+		return renderIsometricCube16x16(inventory.BlockItemForState(state))
+	}
+	texture := Textures[itemID]
+	if texture == nil {
+		return renderIsometricCube16x16(itemID)
+	}
+	var out [16][16]uint32
+	var depthBuffer [16][16]float32
+	for y := range depthBuffer {
+		for x := range depthBuffer[y] {
+			depthBuffer[y][x] = float32(math.Inf(-1))
+		}
+	}
+	faces := []int{0, 2, 4} // +X, top, +Z are the visible isometric faces.
+	for cy := 0; cy < 2; cy++ {
+		for cz := 0; cz < 2; cz++ {
+			for cx := 0; cx < 2; cx++ {
+				if !inventory.StairVoxelOccupied(state, cx, cy, cz) {
+					continue
+				}
+				for _, face := range faces {
+					dx, dy, dz := 0, 0, 0
+					switch face {
+					case 0:
+						dx = 1
+					case 2:
+						dy = 1
+					case 4:
+						dz = 1
+					}
+					if inventory.StairVoxelOccupied(state, cx+dx, cy+dy, cz+dz) {
+						continue
+					}
+					x0, x1 := float32(cx)*.5, float32(cx+1)*.5
+					y0, y1 := float32(cy)*.5, float32(cy+1)*.5
+					z0, z1 := float32(cz)*.5, float32(cz+1)*.5
+					var positions [4][3]float32
+					switch face {
+					case 0:
+						positions = [4][3]float32{{x1, y0, z0}, {x1, y1, z0}, {x1, y1, z1}, {x1, y0, z1}}
+					case 2:
+						positions = [4][3]float32{{x0, y1, z0}, {x0, y1, z1}, {x1, y1, z1}, {x1, y1, z0}}
+					case 4:
+						positions = [4][3]float32{{x1, y0, z1}, {x1, y1, z1}, {x0, y1, z1}, {x0, y0, z1}}
+					}
+					var quad [4]isoStairVertex
+					for i, p := range positions {
+						x, y, z := p[0], p[1], p[2]
+						u, v := x, z
+						if face == 0 {
+							u, v = z, 1-y
+						} else if face == 4 {
+							u, v = 1-x, 1-y
+						}
+						quad[i] = isoStairVertex{
+							point: isoStairPoint{8 + (x-z)*7.5, 1 + (x+z)*4 + (1-y)*6},
+							u:     u, v: v, depth: x + z + y*(4.0/3.0),
+						}
+					}
+					shade := float32(1.05)
+					tex := texture.Top
+					if face == 0 {
+						shade, tex = .62, texture.Side
+					} else if face == 4 {
+						shade, tex = .82, texture.Side
+					}
+					rasterIsoStairTriangle(&out, &depthBuffer, quad[0], quad[1], quad[2], tex, shade)
+					rasterIsoStairTriangle(&out, &depthBuffer, quad[0], quad[2], quad[3], tex, shade)
+				}
+			}
+		}
+	}
+	return out
+}
+
+func rasterIsoStairTriangle(out *[16][16]uint32, depthBuffer *[16][16]float32, a, b, c isoStairVertex, texture BlockTexture, shade float32) {
+	minX := max(0, int(math.Floor(float64(min(a.point.x, min(b.point.x, c.point.x))))))
+	maxX := min(15, int(math.Ceil(float64(max(a.point.x, max(b.point.x, c.point.x))))))
+	minY := max(0, int(math.Floor(float64(min(a.point.y, min(b.point.y, c.point.y))))))
+	maxY := min(15, int(math.Ceil(float64(max(a.point.y, max(b.point.y, c.point.y))))))
+	area := isoStairEdge(a.point, b.point, c.point.x, c.point.y)
+	if math.Abs(float64(area)) < 1e-7 {
+		return
+	}
+	for py := minY; py <= maxY; py++ {
+		for px := minX; px <= maxX; px++ {
+			x, y := float32(px)+.5, float32(py)+.5
+			wa := isoStairEdge(b.point, c.point, x, y) / area
+			wb := isoStairEdge(c.point, a.point, x, y) / area
+			wc := isoStairEdge(a.point, b.point, x, y) / area
+			if wa < -1e-5 || wb < -1e-5 || wc < -1e-5 {
+				continue
+			}
+			depth := wa*a.depth + wb*b.depth + wc*c.depth
+			if depth <= depthBuffer[py][px] {
+				continue
+			}
+			u := wa*a.u + wb*b.u + wc*c.u
+			v := wa*a.v + wb*b.v + wc*c.v
+			sx := max(0, min(15, int(u*16)))
+			sy := max(0, min(15, int(v*16)))
+			depthBuffer[py][px] = depth
+			out[py][px] = applyLighting(texture[sy][sx], shade)
+		}
+	}
+}
+
+func isoStairEdge(a, b isoStairPoint, x, y float32) float32 {
+	return (x-a.x)*(b.y-a.y) - (y-a.y)*(b.x-a.x)
 }
 
 func renderIsometricPartialBlock16x16(blockID int32, box inventory.BlockBox) [16][16]uint32 {

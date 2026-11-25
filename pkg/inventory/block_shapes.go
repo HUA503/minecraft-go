@@ -186,6 +186,9 @@ func buildMasonrySlabDefinitions() []masonrySlabDefinition {
 // partial block states. A false result means the caller should use its normal
 // full-cube or non-solid rule.
 func BlockCollisionBoxes(blockID int32) ([]BlockBox, bool) {
+	if boxes, ok := StairCollisionBoxes(blockID); ok {
+		return boxes, true
+	}
 	switch blockID {
 	case ItemStoneSlab, ItemOakSlab:
 		return bottomSlabBox, true
@@ -333,6 +336,9 @@ func SlabMergeState(existingBlockID, itemID, faceY int32, localHitY float64) (in
 // BlockItemForState returns the placeable item represented by a runtime block
 // state, leaving ordinary block IDs unchanged.
 func BlockItemForState(blockID int32) int32 {
+	if itemID, ok := StairItemForBlockState(blockID); ok {
+		return itemID
+	}
 	if itemID, ok := SlabItemForBlockState(blockID); ok {
 		return itemID
 	}

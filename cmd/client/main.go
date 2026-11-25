@@ -3160,6 +3160,9 @@ func (c *Client) PlaceBlockInFront() bool {
 			mergeSlab = true
 		}
 	}
+	if stairState, isStair := inventory.StairPlacementState(selected.ItemID, c.camera.Yaw, res.FaceY, localHitY); isStair {
+		placedBlockID = stairState
+	}
 	if mergeSlab {
 		// The engine replaces the clicked half slab with a matching double slab.
 	} else if inventory.IsReplaceableBlock(hitBlockID) {

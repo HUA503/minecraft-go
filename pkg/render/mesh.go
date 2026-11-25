@@ -141,6 +141,10 @@ func BuildSectionMesh(getBlock func(x, y, z int32) int32, originX, originY, orig
 					addLadderQuad(mesh, originX+x, originY+y, originZ+z, getBlock)
 					continue
 				}
+				if _, _, _, isStair := inventory.StairStateProperties(blockID); isStair {
+					addStairBlockMesh(mesh, originX+x, originY+y, originZ+z, blockID, getBlock)
+					continue
+				}
 				if boxes, ok := inventory.BlockCollisionBoxes(blockID); ok && !IsOpaqueCube(blockID) {
 					addPartialBlockMesh(mesh, originX+x, originY+y, originZ+z, blockID, boxes, getBlock)
 					continue
@@ -174,6 +178,52 @@ func BuildSectionMesh(getBlock func(x, y, z int32) int32, originX, originY, orig
 	}
 
 	return mesh
+}
+
+func addStairBlockMesh(mesh *Mesh, x, y, z, blockID int32, getBlock func(x, y, z int32) int32) {
+	for cy := 0; cy < 2; cy++ {
+		for cz := 0; cz < 2; cz++ {
+			for cx := 0; cx < 2; cx++ {
+				if !inventory.StairVoxelOccupied(blockID, cx, cy, cz) {
+					continue
+				}
+				for face, offset := range [6][3]int{{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}} {
+					nx, ny, nz := cx+offset[0], cy+offset[1], cz+offset[2]
+					if nx >= 0 && nx < 2 && ny >= 0 && ny < 2 && nz >= 0 && nz < 2 {
+						if inventory.StairVoxelOccupied(blockID, nx, ny, nz) {
+							continue
+						}
+					} else {
+						neighbor := getBlock(x+int32(offset[0]), y+int32(offset[1]), z+int32(offset[2]))
+						if IsOpaqueCube(neighbor) {
+							continue
+						}
+					}
+
+					base := len(mesh.Vertices)
+					addFaceQuad(mesh, x, y, z, face, blockID, getBlock)
+					for i := base; i < len(mesh.Vertices); i++ {
+						vertex := &mesh.Vertices[i]
+						vertex.X = float32(x) + float32(cx)*.5 + (vertex.X-float32(x))*.5
+						vertex.Y = float32(y) + float32(cy)*.5 + (vertex.Y-float32(y))*.5
+						vertex.Z = float32(z) + float32(cz)*.5 + (vertex.Z-float32(z))*.5
+						lx, ly, lz := vertex.X-float32(x), vertex.Y-float32(y), vertex.Z-float32(z)
+						switch face {
+						case 0, 1:
+							vertex.U, vertex.V = lz, 1-ly
+						case 2, 3:
+							vertex.U, vertex.V = lx, lz
+						case 4:
+							vertex.U, vertex.V = 1-lx, 1-ly
+						case 5:
+							vertex.U, vertex.V = lx, 1-ly
+						}
+						vertex.BlockID = inventory.BlockItemForState(blockID)
+					}
+				}
+			}
+		}
+	}
 }
 
 func addPartialBlockMesh(mesh *Mesh, x, y, z int32, blockID int32, boxes []inventory.BlockBox, getBlock func(x, y, z int32) int32) {

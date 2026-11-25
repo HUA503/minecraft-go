@@ -503,6 +503,30 @@ func (cm *CraftingManager) registerDefaults() {
 			Output:  ItemStack{ItemID: slab.ItemID, Count: 6},
 		})
 	}
+	for _, stair := range colorStairDefinitions {
+		block, ok := ExtendedBlockByName(stair.SourceBlock)
+		if !ok {
+			for _, item := range CreativeCatalog(CreativeAll) {
+				if creativeItemRegistryName(item.ID) == stair.SourceBlock {
+					block = ExtendedBlockDefinition{RuntimeID: item.ID}
+					ok = true
+					break
+				}
+			}
+		}
+		if !ok {
+			continue
+		}
+		cm.Recipes = append(cm.Recipes, Recipe{
+			Width: 3, Height: 3,
+			Pattern: []int32{
+				block.RuntimeID, ItemAir, ItemAir,
+				block.RuntimeID, block.RuntimeID, ItemAir,
+				block.RuntimeID, block.RuntimeID, block.RuntimeID,
+			},
+			Output: ItemStack{ItemID: stair.ItemID, Count: 4},
+		})
+	}
 
 	// 23. Ladder (7 Sticks in H pattern)
 	cm.Recipes = append(cm.Recipes, Recipe{
@@ -571,7 +595,7 @@ func (cm *CraftingManager) MatchCrafting(grid []int32, gridSize int) (ItemStack,
 
 		for ox := 0; ox <= maxOX; ox++ {
 			for oy := 0; oy <= maxOY; oy++ {
-				if matchAtOffset(grid, gridSize, recipe, ox, oy) {
+				if matchAtOffset(grid, gridSize, recipe, ox, oy, false) || matchAtOffset(grid, gridSize, recipe, ox, oy, true) {
 					return recipe.Output, true
 				}
 			}
@@ -580,7 +604,7 @@ func (cm *CraftingManager) MatchCrafting(grid []int32, gridSize int) (ItemStack,
 	return ItemStack{}, false
 }
 
-func matchAtOffset(grid []int32, gridSize int, r Recipe, ox, oy int) bool {
+func matchAtOffset(grid []int32, gridSize int, r Recipe, ox, oy int, mirrored bool) bool {
 	for gy := 0; gy < gridSize; gy++ {
 		for gx := 0; gx < gridSize; gx++ {
 			expectedItem := ItemAir
@@ -588,6 +612,9 @@ func matchAtOffset(grid []int32, gridSize int, r Recipe, ox, oy int) bool {
 			ry := gy - oy
 
 			if rx >= 0 && rx < r.Width && ry >= 0 && ry < r.Height {
+				if mirrored {
+					rx = r.Width - 1 - rx
+				}
 				expectedItem = r.Pattern[ry*r.Width+rx]
 			}
 

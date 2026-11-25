@@ -589,6 +589,63 @@ func TestSlabCollisionAndShapeAwareRaycast(t *testing.T) {
 	}
 }
 
+func TestJava263ColoredStairPlacementCollisionAndDrops(t *testing.T) {
+	eng := NewEngine()
+	player := eng.AddPlayer("Builder", [16]byte{43}, Vec3{X: 20.5, Y: 64, Z: 20.5})
+	woolStair := inventory.FirstColorStairItem
+	woolState, ok := inventory.StairBlockState(woolStair, inventory.StairFacing(0), false)
+	if !ok {
+		t.Fatal("failed to create white wool stair state")
+	}
+	player.Inventory.Slots[0] = inventory.ItemStack{ItemID: woolStair, Count: 2}
+	woolPos := world.BlockPos{X: 10, Y: 64, Z: 10}
+	if !eng.PlaceBlock(player.ID, woolPos, woolState) {
+		t.Fatal("white wool stair placement failed")
+	}
+	if got := eng.GetBlock(woolPos.X, woolPos.Y, woolPos.Z); got != woolState {
+		t.Fatalf("placed wool stair state = %d, want %d", got, woolState)
+	}
+	if got := player.Inventory.Slots[0].Count; got != 1 {
+		t.Fatalf("wool stair placement left %d items, want 1", got)
+	}
+	if drop, harvested := eng.BreakBlockWithTool(player.ID, woolPos, inventory.ItemAir); !harvested || drop != woolStair {
+		t.Fatalf("breaking wool stair by hand returned (%d,%t), want item %d", drop, harvested, woolStair)
+	}
+
+	concreteStair := woolStair + 1
+	concreteState, ok := inventory.StairBlockState(concreteStair, inventory.StairFacing(1), true)
+	if !ok {
+		t.Fatal("failed to create white concrete stair state")
+	}
+	concretePos := world.BlockPos{X: 12, Y: 64, Z: 10}
+	if !eng.SetBlockChecked(concretePos.X, concretePos.Y, concretePos.Z, concreteState) {
+		t.Fatal("failed to install concrete stair test state")
+	}
+	if drop, harvested := eng.BreakBlockWithTool(player.ID, concretePos, inventory.ItemAir); harvested || drop != 0 {
+		t.Fatalf("breaking concrete stair by hand returned (%d,%t), want no drop", drop, harvested)
+	}
+	if !eng.SetBlockChecked(concretePos.X, concretePos.Y, concretePos.Z, concreteState) {
+		t.Fatal("failed to reinstall concrete stair test state")
+	}
+	if drop, harvested := eng.BreakBlockWithTool(player.ID, concretePos, inventory.ItemWoodenPickaxe); !harvested || drop != concreteStair {
+		t.Fatalf("breaking concrete stair with wooden pickaxe returned (%d,%t), want item %d", drop, harvested, concreteStair)
+	}
+
+	lower, ok := inventory.StairBlockState(woolStair, inventory.StairFacing(2), false)
+	if !ok {
+		t.Fatal("failed to construct lower stair state")
+	}
+	boxes := BlockCollisionAABBs(lower, 0, 0, 0)
+	if len(boxes) != 2 || boxes[0].Max.Y != .5 || boxes[1].Min.Y != .5 || boxes[1].Max.Y != 1 {
+		t.Fatalf("lower stair collision boxes = %+v", boxes)
+	}
+	upper, _ := inventory.StairBlockState(woolStair, inventory.StairFacing(2), true)
+	upperBoxes := BlockCollisionAABBs(upper, 0, 0, 0)
+	if len(upperBoxes) != 2 || upperBoxes[0].Min.Y != .5 || upperBoxes[1].Max.Y != .5 {
+		t.Fatalf("upper stair collision boxes = %+v", upperBoxes)
+	}
+}
+
 func TestRedShrubPlacementCollisionAndDrop(t *testing.T) {
 	eng := NewEngine()
 	player := eng.AddPlayer("Steve", [16]byte{1}, Vec3{X: 10.5, Y: 64, Z: 10.5})

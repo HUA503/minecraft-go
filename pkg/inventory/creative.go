@@ -123,9 +123,21 @@ func sortCreativeItemsByVanillaOrder(items []CreativeItem, groupByCategory bool)
 // SearchCreativeCatalog filters the selected category by its localized item name.
 func SearchCreativeCatalog(category CreativeCategory, query string) []CreativeItem {
 	items := CreativeCatalog(category)
+	rawQuery := strings.ToLower(strings.TrimSpace(query))
 	query = normalizeCreativeSearch(query)
 	if query == "" {
 		return items
+	}
+	if strings.Contains(rawQuery, ":") {
+		exact := make([]CreativeItem, 0, 1)
+		for _, item := range items {
+			if normalizeCreativeSearch(creativeItemRegistryName(item.ID)) == query {
+				exact = append(exact, item)
+			}
+		}
+		if len(exact) != 0 {
+			return exact
+		}
 	}
 	filtered := make([]CreativeItem, 0, len(items))
 	for _, item := range items {
