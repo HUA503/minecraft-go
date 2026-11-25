@@ -96,6 +96,11 @@ func additionalFullCubeDefinitions() []ExtendedBlockDefinition {
 		{"quartz_bricks", "石英砖", 0.8, ToolPickaxe, CreativeBlocks},
 		{"red_nether_bricks", "红色下界砖块", 2, ToolPickaxe, CreativeBlocks},
 		{"resin_block", "树脂块", 5, ToolNone, CreativeBlocks},
+		{"resin_bricks", "树脂砖", 1.5, ToolPickaxe, CreativeBlocks},
+		{"chiseled_resin_bricks", "錾制树脂砖", 1.5, ToolPickaxe, CreativeBlocks},
+		{"lapis_block", "青金石块", 3, ToolPickaxe, CreativeBlocks},
+		{"cut_sandstone", "切制砂岩", 0.8, ToolPickaxe, CreativeBlocks},
+		{"cut_red_sandstone", "切制红砂岩", 0.8, ToolPickaxe, CreativeBlocks},
 	}
 	definitions := make([]ExtendedBlockDefinition, 0, len(blocks))
 	for i, block := range blocks {
@@ -105,11 +110,13 @@ func additionalFullCubeDefinitions() []ExtendedBlockDefinition {
 			RuntimeID: id, Name: "minecraft:" + block.name,
 			TextureTop: texture, TextureBottom: texture, TextureSide: texture,
 			Category: block.category, Hardness: block.hardness,
-			HarvestTool: block.tool, RequiresHarvestTool: block.name == "netherite_block",
+			HarvestTool: block.tool, RequiresHarvestTool: block.name == "netherite_block" || block.name == "lapis_block" || block.name == "cut_sandstone" || block.name == "cut_red_sandstone",
 			DropRuntimeID: id, DropCountMin: 1, DropCountMax: 1,
 		})
 		if block.name == "netherite_block" {
 			definitions[len(definitions)-1].RequiredHarvestLevel = 3 // The official loot table requires a diamond-tier tool.
+		} else if block.name == "lapis_block" {
+			definitions[len(definitions)-1].RequiredHarvestLevel = 1 // Lapis blocks require a stone-tier pickaxe for drops.
 		}
 		extendedBlockDisplayNames["minecraft:"+block.name] = block.display
 	}

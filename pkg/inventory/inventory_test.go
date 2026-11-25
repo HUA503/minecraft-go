@@ -827,6 +827,51 @@ func TestAddedOreBlocksAreSearchableAndHaveHarvestDrops(t *testing.T) {
 	}
 }
 
+func TestAddedVanillaFullCubesHaveCreativeItemsAndCorrectHarvestRules(t *testing.T) {
+	want := map[string]struct {
+		display  string
+		hardness float64
+		level    int
+		requires bool
+	}{
+		"minecraft:resin_bricks":          {"树脂砖", 1.5, 0, false},
+		"minecraft:chiseled_resin_bricks": {"錾制树脂砖", 1.5, 0, false},
+		"minecraft:lapis_block":           {"青金石块", 3, 1, true},
+		"minecraft:cut_sandstone":         {"切制砂岩", 0.8, 0, true},
+		"minecraft:cut_red_sandstone":     {"切制红砂岩", 0.8, 0, true},
+	}
+	for name, expected := range want {
+		t.Run(name, func(t *testing.T) {
+			definition, ok := ExtendedBlockByName(name)
+			if !ok {
+				t.Fatalf("missing block definition for %s", name)
+			}
+			if definition.Hardness != expected.hardness || definition.HarvestTool != ToolPickaxe || definition.RequiresHarvestTool != expected.requires || definition.RequiredHarvestLevel != expected.level || definition.DropRuntimeID != definition.RuntimeID {
+				t.Errorf("block behavior = %+v", definition)
+			}
+			items := SearchCreativeCatalog(CreativeBlocks, name)
+			var exact []CreativeItem
+			for _, item := range items {
+				if creativeItemRegistryName(item.ID) == name {
+					exact = append(exact, item)
+				}
+			}
+			if len(exact) != 1 || exact[0].ID != definition.RuntimeID || exact[0].Name != expected.display {
+				t.Errorf("creative item = %+v", items)
+			}
+			if CanHarvestBlock(ItemAir, definition.RuntimeID) == expected.requires {
+				t.Errorf("hand harvest result is wrong for %s", name)
+			}
+			if name == "minecraft:lapis_block" && CanHarvestBlock(ItemWoodenPickaxe, definition.RuntimeID) {
+				t.Error("wooden pickaxe should not harvest lapis block drops")
+			}
+			if !CanHarvestBlock(ItemStonePickaxe, definition.RuntimeID) {
+				t.Errorf("stone pickaxe should harvest %s", name)
+			}
+		})
+	}
+}
+
 func TestNewOreMaterialsHaveSmeltingRecipesAndCreativeEntries(t *testing.T) {
 	want := map[int32]int32{
 		ItemRawCopper: ItemCopperIngot,
