@@ -58,10 +58,32 @@ func CreativeCatalog(category CreativeCategory) []CreativeItem {
 	}
 	if category != CreativeAll {
 		filtered := make([]CreativeItem, 0, len(items))
+		included := make(map[int32]struct{}, len(items))
 		for _, item := range items {
 			if item.Category == category {
 				filtered = append(filtered, item)
+				included[item.ID] = struct{}{}
 			}
+		}
+		// Vanilla tabs can contain the same item in more than one category
+		// (for example, food is also listed among ingredients). Keep the
+		// canonical catalog unique for search, but reproduce each tab's own
+		// direct item references here.
+		byRegistryName := make(map[string]CreativeItem, len(items))
+		for _, item := range items {
+			byRegistryName[creativeItemRegistryName(item.ID)] = item
+		}
+		for _, registryName := range vanillaCreativeTabOrder[category] {
+			item, ok := byRegistryName[registryName]
+			if !ok {
+				continue
+			}
+			if _, alreadyIncluded := included[item.ID]; alreadyIncluded {
+				continue
+			}
+			item.Category = category
+			filtered = append(filtered, item)
+			included[item.ID] = struct{}{}
 		}
 		items = filtered
 	}

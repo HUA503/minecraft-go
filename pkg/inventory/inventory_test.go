@@ -988,6 +988,39 @@ func TestCreativeCategoriesFollowJava263DirectItemOrder(t *testing.T) {
 	}
 }
 
+func TestCreativeTabsIncludeVanillaCrossCategoryItems(t *testing.T) {
+	// Java 26.3 intentionally shows these items in Ingredients as well as in
+	// their primary Food, Tools, or Functional tab.
+	wantIngredients := []string{
+		"minecraft:ancient_debris", "minecraft:snowball", "minecraft:ender_pearl",
+		"minecraft:ender_eye", "minecraft:book", "minecraft:golden_carrot", "minecraft:pufferfish",
+	}
+	for _, name := range wantIngredients {
+		matches := SearchCreativeCatalog(CreativeMaterials, name)
+		found := false
+		for _, item := range matches {
+			if creativeItemRegistryName(item.ID) == name {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("Java 26.3 ingredients tab is missing %s: %+v", name, matches)
+		}
+	}
+
+	seen := make(map[int32]struct{})
+	for _, item := range CreativeCatalog(CreativeMaterials) {
+		if _, duplicate := seen[item.ID]; duplicate {
+			t.Errorf("ingredients tab contains duplicate item id %d", item.ID)
+		}
+		seen[item.ID] = struct{}{}
+	}
+	if all := CreativeCatalog(CreativeAll); len(all) != 573 {
+		t.Fatalf("canonical Search tab has %d items after adding tab aliases, want 573", len(all))
+	}
+}
+
 func TestCreativeSearchTabUsesVanillaCategoryAndItemOrder(t *testing.T) {
 	items := CreativeCatalog(CreativeAll)
 	if len(items) == 0 || creativeItemRegistryName(items[0].ID) != "minecraft:bricks" {
