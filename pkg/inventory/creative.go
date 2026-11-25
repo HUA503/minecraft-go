@@ -146,6 +146,8 @@ func creativeItemRegistryName(itemID int32) string {
 		return "minecraft:netherite_leggings"
 	case ItemNetheriteBoots:
 		return "minecraft:netherite_boots"
+	case ItemNetheriteSword:
+		return "minecraft:netherite_sword"
 	}
 	return ""
 }
@@ -206,7 +208,7 @@ var creativeCatalog = []CreativeItem{
 	{150, "深板岩", CreativeBlocks}, {152, "红石块", CreativeRedstone}, {153, "投掷器", CreativeBlocks}, {154, "漏斗", CreativeBlocks},
 	{155, "石英块", CreativeBlocks}, {159, "白色陶瓦", CreativeDecoration}, {165, "黏液块", CreativeBlocks}, {168, "海晶石", CreativeBlocks}, {169, "海晶灯", CreativeFunctional}, {170, "干草块", CreativeBlocks}, {172, "陶瓦", CreativeDecoration}, {173, "煤炭块", CreativeBlocks}, {174, "浮冰", CreativeNatural}, {179, "红砂岩", CreativeBlocks},
 
-	{268, "木剑", CreativeCombat}, {272, "石剑", CreativeCombat}, {267, "铁剑", CreativeCombat}, {276, "钻石剑", CreativeCombat},
+	{268, "木剑", CreativeCombat}, {272, "石剑", CreativeCombat}, {267, "铁剑", CreativeCombat}, {276, "钻石剑", CreativeCombat}, {ItemNetheriteSword, "下界合金剑", CreativeCombat},
 	{283, "金剑", CreativeCombat}, {270, "木镐", CreativeTools}, {274, "石镐", CreativeTools}, {257, "铁镐", CreativeTools},
 	{278, "钻石镐", CreativeTools}, {285, "金镐", CreativeTools}, {271, "木斧", CreativeTools}, {275, "石斧", CreativeTools},
 	{258, "铁斧", CreativeTools}, {279, "钻石斧", CreativeTools}, {286, "金斧", CreativeTools}, {269, "木锹", CreativeTools},

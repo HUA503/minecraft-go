@@ -48,10 +48,10 @@ var creativeTabs = [...]creativeTabLayout{
 	{category: inventory.CreativeRedstone, column: 4, icon: 331, name: "红石方块"},
 	{category: inventory.CreativeHotbar, column: 5, icon: 47, name: "已保存的快捷栏"},
 	{category: inventory.CreativeAll, column: 6, icon: 345, name: "搜索物品"},
-	{category: inventory.CreativeTools, column: 0, bottom: true, icon: 270, name: "工具与实用物品"},
-	{category: inventory.CreativeCombat, column: 1, bottom: true, icon: 268, name: "战斗"},
+	{category: inventory.CreativeTools, column: 0, bottom: true, icon: inventory.ItemDiamondPickaxe, name: "工具与实用物品"},
+	{category: inventory.CreativeCombat, column: 1, bottom: true, icon: inventory.ItemNetheriteSword, name: "战斗"},
 	{category: inventory.CreativeFood, column: 2, bottom: true, icon: inventory.ItemGoldenApple, name: "食物与饮料"},
-	{category: inventory.CreativeMaterials, column: 3, bottom: true, icon: 296, name: "材料"},
+	{category: inventory.CreativeMaterials, column: 3, bottom: true, icon: inventory.ItemIronIngot, name: "材料"},
 	{category: inventory.CreativeSpawnEggs, column: 4, bottom: true, icon: 11002, name: "刷怪蛋"},
 	{category: inventory.CreativeInventory, column: 6, bottom: true, icon: 54, name: "物品栏"},
 }

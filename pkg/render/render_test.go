@@ -814,11 +814,11 @@ func TestCopperArmorHasOfficialCreativeTextures(t *testing.T) {
 	}
 }
 
-func TestNetheriteArmorAndIngotHaveOfficialCreativeTextures(t *testing.T) {
+func TestNetheriteItemsHaveOfficialCreativeTextures(t *testing.T) {
 	for _, tc := range []struct {
 		id   int32
 		name string
-	}{{inventory.ItemNetheriteIngot, "netherite_ingot"}, {inventory.ItemNetheriteHelmet, "netherite_helmet"}, {inventory.ItemNetheriteChestplate, "netherite_chestplate"}, {inventory.ItemNetheriteLeggings, "netherite_leggings"}, {inventory.ItemNetheriteBoots, "netherite_boots"}} {
+	}{{inventory.ItemNetheriteIngot, "netherite_ingot"}, {inventory.ItemNetheriteHelmet, "netherite_helmet"}, {inventory.ItemNetheriteChestplate, "netherite_chestplate"}, {inventory.ItemNetheriteLeggings, "netherite_leggings"}, {inventory.ItemNetheriteBoots, "netherite_boots"}, {inventory.ItemNetheriteSword, "netherite_sword"}} {
 		if got := GetOfficialItemTextureName(tc.id); got != tc.name {
 			t.Errorf("netherite item %d texture = %q, want %q", tc.id, got, tc.name)
 		}

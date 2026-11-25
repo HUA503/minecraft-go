@@ -551,6 +551,8 @@ func GetOfficialItemTextureName(itemID int32) string {
 		return "netherite_leggings"
 	case inventory.ItemNetheriteBoots:
 		return "netherite_boots"
+	case inventory.ItemNetheriteSword:
+		return "netherite_sword"
 
 	// --- Other Essentials ---
 	case 322:

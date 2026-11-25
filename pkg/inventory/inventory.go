@@ -123,6 +123,7 @@ const (
 	ItemNetheriteChestplate int32 = 13013
 	ItemNetheriteLeggings   int32 = 13014
 	ItemNetheriteBoots      int32 = 13015
+	ItemNetheriteSword      int32 = 13016
 
 	// Utility, materials, and blocks
 	ItemBucket        int32 = 325

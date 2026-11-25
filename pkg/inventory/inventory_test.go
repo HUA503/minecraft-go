@@ -682,6 +682,20 @@ func TestNetheriteArmorHasCreativeItemsStackLimitsAndVanillaProtection(t *testin
 	}
 }
 
+func TestNetheriteSwordIsAFunctionalCreativeCombatItem(t *testing.T) {
+	items := SearchCreativeCatalog(CreativeCombat, "minecraft:netherite_sword")
+	if len(items) != 1 || items[0].ID != ItemNetheriteSword || items[0].Name != "下界合金剑" {
+		t.Fatalf("netherite sword creative search = %+v", items)
+	}
+	props, ok := GetToolProperties(ItemNetheriteSword)
+	if !ok || props.Type != ToolSword || props.Tier != TierNetherite || props.MaxDurability != 2031 || props.AttackDamage != 8 {
+		t.Fatalf("netherite sword properties = %+v, found=%t", props, ok)
+	}
+	if got := GetMaxStackSize(ItemNetheriteSword); got != 1 {
+		t.Fatalf("netherite sword max stack = %d, want 1", got)
+	}
+}
+
 func TestAddedOreBlocksAreSearchableAndHaveHarvestDrops(t *testing.T) {
 	want := map[string]struct {
 		drop  int32

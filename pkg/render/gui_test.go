@@ -167,10 +167,31 @@ func TestCreativeInventoryCatalogAndHitTesting(t *testing.T) {
 }
 
 func TestCreativeTabsMatchJava263VanillaRows(t *testing.T) {
-	hotbar := creativeTabForCategory(inventory.CreativeHotbar)
-	if hotbar.bottom || hotbar.column != 5 {
-		t.Fatalf("saved hotbars tab position = bottom:%v column:%d, want top row column 5", hotbar.bottom, hotbar.column)
+	for _, tc := range []struct {
+		category inventory.CreativeCategory
+		column   int
+		bottom   bool
+	}{
+		{inventory.CreativeBlocks, 0, false},
+		{inventory.CreativeDecoration, 1, false},
+		{inventory.CreativeNatural, 2, false},
+		{inventory.CreativeFunctional, 3, false},
+		{inventory.CreativeRedstone, 4, false},
+		{inventory.CreativeHotbar, 5, false},
+		{inventory.CreativeAll, 6, false},
+		{inventory.CreativeTools, 0, true},
+		{inventory.CreativeCombat, 1, true},
+		{inventory.CreativeFood, 2, true},
+		{inventory.CreativeMaterials, 3, true},
+		{inventory.CreativeSpawnEggs, 4, true},
+		{inventory.CreativeInventory, 6, true},
+	} {
+		tab := creativeTabForCategory(tc.category)
+		if tab.column != tc.column || tab.bottom != tc.bottom {
+			t.Errorf("creative tab %d position = bottom:%v column:%d, want bottom:%v column:%d", tc.category, tab.bottom, tab.column, tc.bottom, tc.column)
+		}
 	}
+	hotbar := creativeTabForCategory(inventory.CreativeHotbar)
 	if hotbar.icon != 47 || hotbar.name != "已保存的快捷栏" {
 		t.Fatalf("saved hotbars tab appearance = icon %d label %q, want bookshelf icon and vanilla label", hotbar.icon, hotbar.name)
 	}
@@ -184,6 +205,44 @@ func TestCreativeTabsMatchJava263VanillaRows(t *testing.T) {
 		px+(creativeTabX(hotbar)+8)*scale, py+(creativeTabY(hotbar)-4+8)*scale)
 	if hit.Type != SlotCreativeTab || hit.Index != int(inventory.CreativeHotbar) {
 		t.Fatalf("saved hotbars tab hit = %+v, want top-row saved hotbars tab", hit)
+	}
+}
+
+func TestCreativeTabIconsUseJava263ReferenceItems(t *testing.T) {
+	for _, tc := range []struct {
+		category inventory.CreativeCategory
+		icon     int32
+		texture  string
+	}{
+		{inventory.CreativeTools, inventory.ItemDiamondPickaxe, "diamond_pickaxe"},
+		{inventory.CreativeCombat, inventory.ItemNetheriteSword, "netherite_sword"},
+		{inventory.CreativeFood, inventory.ItemGoldenApple, "golden_apple"},
+		{inventory.CreativeMaterials, inventory.ItemIronIngot, "iron_ingot"},
+		{inventory.CreativeSpawnEggs, 11002, "creeper_spawn_egg"},
+		{inventory.CreativeHotbar, 47, "bookshelf"},
+		{inventory.CreativeAll, 345, "compass_00"},
+		{inventory.CreativeInventory, 54, "chest"},
+	} {
+		tab := creativeTabForCategory(tc.category)
+		if tab.icon != tc.icon {
+			t.Errorf("creative tab %d icon = %d, want %d", tc.category, tab.icon, tc.icon)
+		}
+		if tc.category == inventory.CreativeHotbar {
+			if _, ok := GetOfficialTexture("block", tc.texture); !ok {
+				t.Errorf("creative tab %d block icon %q has no official texture", tc.category, tc.texture)
+			}
+		} else if tc.category == inventory.CreativeInventory {
+			// Chest item rendering still uses the project's generic block sprite;
+			// the vanilla chest atlas has not yet been wired into item rendering.
+			continue
+		} else {
+			if got := GetOfficialItemTextureName(tab.icon); got != tc.texture {
+				t.Errorf("creative tab %d texture = %q, want %q", tc.category, got, tc.texture)
+			}
+			if _, ok := GetOfficialItemSprite(tab.icon); !ok {
+				t.Errorf("creative tab %d icon %q has no official item sprite", tc.category, tc.texture)
+			}
+		}
 	}
 }
 
