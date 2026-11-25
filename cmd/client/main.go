@@ -4636,6 +4636,7 @@ func (c *Client) AttackMob() bool {
 
 	mobID, killed, hit := c.engine.AttackMobInFront(camPos, look, 3.5, dmg)
 	if hit {
+		applyAttackItemDurability(c.player.Inventory, c.isCreative)
 		c.isSwinging = true
 		c.swingProgress = 0.0
 		sound.PlayHardwareFeedback("minecraft:entity.generic.hurt")
