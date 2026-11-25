@@ -61,6 +61,24 @@ func NewBlockAABB(x, y, z int32) AABB {
 	}
 }
 
+// BlockCollisionAABBs returns world-space collision boxes for a block state.
+func BlockCollisionAABBs(blockID int32, x, y, z int32) []AABB {
+	if !IsSolidBlock(blockID) {
+		return nil
+	}
+	if localBoxes, ok := inventory.BlockCollisionBoxes(blockID); ok {
+		boxes := make([]AABB, 0, len(localBoxes))
+		for _, local := range localBoxes {
+			boxes = append(boxes, AABB{
+				Min: Vec3{X: float64(x) + float64(local.MinX), Y: float64(y) + float64(local.MinY), Z: float64(z) + float64(local.MinZ)},
+				Max: Vec3{X: float64(x) + float64(local.MaxX), Y: float64(y) + float64(local.MaxY), Z: float64(z) + float64(local.MaxZ)},
+			})
+		}
+		return boxes
+	}
+	return []AABB{NewBlockAABB(x, y, z)}
+}
+
 func (a AABB) Intersects(b AABB) bool {
 	return a.Min.X < b.Max.X && a.Max.X > b.Min.X &&
 		a.Min.Y < b.Max.Y && a.Max.Y > b.Min.Y &&
@@ -122,6 +140,17 @@ type RaycastResult struct {
 
 // Raycast performs 3D digital differential analysis (DDA) through voxels.
 func Raycast(origin Vec3, dir Vec3, maxDistance float64, isSolid func(x, y, z int32) bool) RaycastResult {
+	return RaycastBlocks(origin, dir, maxDistance, func(x, y, z int32) int32 {
+		if isSolid(x, y, z) {
+			return 1
+		}
+		return 0
+	})
+}
+
+// RaycastBlocks performs a voxel traversal and intersects the selected block's
+// actual collision/outline shape instead of treating every block as a cube.
+func RaycastBlocks(origin Vec3, dir Vec3, maxDistance float64, getBlock func(x, y, z int32) int32) RaycastResult {
 	dir = dir.Normalize()
 	if dir.Length() == 0 {
 		return RaycastResult{}
@@ -174,25 +203,35 @@ func Raycast(origin Vec3, dir Vec3, maxDistance float64, isSolid func(x, y, z in
 		tMaxZ = math.MaxFloat64
 	}
 
-	var faceX, faceY, faceZ int32
 	distTraveled := 0.0
 
 	for distTraveled <= maxDistance {
-		if distTraveled > 0 && isSolid(currX, currY, currZ) {
-			return RaycastResult{
-				Hit:      true,
-				BlockX:   currX,
-				BlockY:   currY,
-				BlockZ:   currZ,
-				FaceX:    faceX,
-				FaceY:    faceY,
-				FaceZ:    faceZ,
-				Distance: distTraveled,
-				HitPos: Vec3{
-					X: origin.X + dir.X*distTraveled,
-					Y: origin.Y + dir.Y*distTraveled,
-					Z: origin.Z + dir.Z*distTraveled,
-				},
+		if distTraveled > 0 {
+			blockID := getBlock(currX, currY, currZ)
+			if blockID != 0 {
+				boxes, hasShape := inventory.BlockCollisionBoxes(blockID)
+				if !hasShape {
+					boxes = []inventory.BlockBox{{MinX: 0, MinY: 0, MinZ: 0, MaxX: 1, MaxY: 1, MaxZ: 1}}
+				}
+				nearest := RaycastResult{}
+				for _, box := range boxes {
+					aabb := AABB{
+						Min: Vec3{X: float64(currX) + float64(box.MinX), Y: float64(currY) + float64(box.MinY), Z: float64(currZ) + float64(box.MinZ)},
+						Max: Vec3{X: float64(currX) + float64(box.MaxX), Y: float64(currY) + float64(box.MaxY), Z: float64(currZ) + float64(box.MaxZ)},
+					}
+					hitDistance, hitFace, hit := rayAABBIntersection(origin, dir, aabb)
+					if !hit || hitDistance+1e-8 < distTraveled || hitDistance > maxDistance || (nearest.Hit && hitDistance >= nearest.Distance) {
+						continue
+					}
+					nearest = RaycastResult{
+						Hit: true, BlockX: currX, BlockY: currY, BlockZ: currZ,
+						FaceX: hitFace[0], FaceY: hitFace[1], FaceZ: hitFace[2], Distance: hitDistance,
+						HitPos: Vec3{X: origin.X + dir.X*hitDistance, Y: origin.Y + dir.Y*hitDistance, Z: origin.Z + dir.Z*hitDistance},
+					}
+				}
+				if nearest.Hit {
+					return nearest
+				}
 			}
 		}
 
@@ -201,32 +240,20 @@ func Raycast(origin Vec3, dir Vec3, maxDistance float64, isSolid func(x, y, z in
 				currX += stepX
 				distTraveled = tMaxX
 				tMaxX += tDeltaX
-				faceX = -stepX
-				faceY = 0
-				faceZ = 0
 			} else {
 				currZ += stepZ
 				distTraveled = tMaxZ
 				tMaxZ += tDeltaZ
-				faceX = 0
-				faceY = 0
-				faceZ = -stepZ
 			}
 		} else {
 			if tMaxY < tMaxZ {
 				currY += stepY
 				distTraveled = tMaxY
 				tMaxY += tDeltaY
-				faceX = 0
-				faceY = -stepY
-				faceZ = 0
 			} else {
 				currZ += stepZ
 				distTraveled = tMaxZ
 				tMaxZ += tDeltaZ
-				faceX = 0
-				faceY = 0
-				faceZ = -stepZ
 			}
 		}
 	}
@@ -234,11 +261,86 @@ func Raycast(origin Vec3, dir Vec3, maxDistance float64, isSolid func(x, y, z in
 	return RaycastResult{Hit: false}
 }
 
+func rayAABBIntersection(origin, direction Vec3, box AABB) (float64, [3]int32, bool) {
+	tMin, tMax := math.Inf(-1), math.Inf(1)
+	var enterFace, exitFace [3]int32
+	origins := [3]float64{origin.X, origin.Y, origin.Z}
+	directions := [3]float64{direction.X, direction.Y, direction.Z}
+	mins := [3]float64{box.Min.X, box.Min.Y, box.Min.Z}
+	maxs := [3]float64{box.Max.X, box.Max.Y, box.Max.Z}
+	for axis := 0; axis < 3; axis++ {
+		if math.Abs(directions[axis]) < 1e-12 {
+			if origins[axis] < mins[axis] || origins[axis] > maxs[axis] {
+				return 0, [3]int32{}, false
+			}
+			continue
+		}
+		near := (mins[axis] - origins[axis]) / directions[axis]
+		far := (maxs[axis] - origins[axis]) / directions[axis]
+		nearFace, farFace := int32(-1), int32(1)
+		if near > far {
+			near, far = far, near
+			nearFace, farFace = farFace, nearFace
+		}
+		if near > tMin {
+			tMin = near
+			enterFace = [3]int32{}
+			enterFace[axis] = nearFace
+		}
+		if far < tMax {
+			tMax = far
+			exitFace = [3]int32{}
+			exitFace[axis] = farFace
+		}
+		if tMin > tMax {
+			return 0, [3]int32{}, false
+		}
+	}
+	if tMax < 0 {
+		return 0, [3]int32{}, false
+	}
+	if tMin >= 0 {
+		return tMin, enterFace, true
+	}
+	return tMax, exitFace, true
+}
+
 // ResolveMovementCollision implements Minecraft standard Axis-Aligned Bounding Box (AABB)
 // swept collision resolution with continuous sub-stepping. Resolves Y, X, and Z axes independently
 // so players slide smoothly along walls, stand firmly on ground, and never clip through blocks or terrain.
 // Returns resolved position, whether player is on ground, and whether ceiling was hit.
 func ResolveMovementCollision(pos Vec3, delta Vec3, isSolid func(x, y, z int32) bool) (Vec3, bool, bool) {
+	return resolveMovementCollision(pos, delta, func(x, y, z int32, dst []AABB) []AABB {
+		if isSolid(x, y, z) {
+			return append(dst, NewBlockAABB(x, y, z))
+		}
+		return dst
+	})
+}
+
+// ResolveMovementCollisionForBlocks resolves movement against the collision
+// boxes defined by each block state, falling back to full cubes for ordinary
+// solid blocks.
+func ResolveMovementCollisionForBlocks(pos Vec3, delta Vec3, getBlock func(x, y, z int32) int32) (Vec3, bool, bool) {
+	return resolveMovementCollision(pos, delta, func(x, y, z int32, dst []AABB) []AABB {
+		blockID := getBlock(x, y, z)
+		if !IsSolidBlock(blockID) {
+			return dst
+		}
+		if localBoxes, ok := inventory.BlockCollisionBoxes(blockID); ok {
+			for _, local := range localBoxes {
+				dst = append(dst, AABB{
+					Min: Vec3{X: float64(x) + float64(local.MinX), Y: float64(y) + float64(local.MinY), Z: float64(z) + float64(local.MinZ)},
+					Max: Vec3{X: float64(x) + float64(local.MaxX), Y: float64(y) + float64(local.MaxY), Z: float64(z) + float64(local.MaxZ)},
+				})
+			}
+			return dst
+		}
+		return append(dst, NewBlockAABB(x, y, z))
+	})
+}
+
+func resolveMovementCollision(pos Vec3, delta Vec3, collisionBoxes func(x, y, z int32, dst []AABB) []AABB) (Vec3, bool, bool) {
 	const halfW = 0.3
 	const height = 1.8
 	const epsilon = 1e-4
@@ -275,9 +377,7 @@ func ResolveMovementCollision(pos Vec3, delta Vec3, isSolid func(x, y, z int32) 
 		for by := minY; by <= maxY; by++ {
 			for bz := minZ; bz <= maxZ; bz++ {
 				for bx := minX; bx <= maxX; bx++ {
-					if isSolid(bx, by, bz) {
-						solidBoxes = append(solidBoxes, NewBlockAABB(bx, by, bz))
-					}
+					solidBoxes = collisionBoxes(bx, by, bz, solidBoxes)
 				}
 			}
 		}
@@ -415,20 +515,27 @@ func ResolveMovementCollision(pos Vec3, delta Vec3, isSolid func(x, y, z int32) 
 
 	// 6. Ground contact stability check
 	if !onGround && delta.Y <= 0 {
-		checkFoot := func(px, pz float64) bool {
+		checkFoot := func(px, pz float64) (float64, bool) {
 			fx := int32(math.Floor(px))
 			fy := int32(math.Floor(pos.Y - 0.05))
 			fz := int32(math.Floor(pz))
-			return isSolid(fx, fy, fz) && math.Abs(pos.Y-float64(fy+1)) < 0.10
+			for _, box := range collisionBoxes(fx, fy, fz, nil) {
+				if px >= box.Min.X && px <= box.Max.X && pz >= box.Min.Z && pz <= box.Max.Z &&
+					math.Abs(pos.Y-box.Max.Y) < 0.10 {
+					return box.Max.Y, true
+				}
+			}
+			return 0, false
 		}
-		if checkFoot(pos.X-halfW*0.8, pos.Z-halfW*0.8) ||
-			checkFoot(pos.X+halfW*0.8, pos.Z-halfW*0.8) ||
-			checkFoot(pos.X-halfW*0.8, pos.Z+halfW*0.8) ||
-			checkFoot(pos.X+halfW*0.8, pos.Z+halfW*0.8) ||
-			checkFoot(pos.X, pos.Z) {
-			feetY := int32(math.Floor(pos.Y - 0.05))
-			pos.Y = float64(feetY + 1)
-			onGround = true
+		for _, sample := range [][2]float64{
+			{pos.X - halfW*0.8, pos.Z - halfW*0.8}, {pos.X + halfW*0.8, pos.Z - halfW*0.8},
+			{pos.X - halfW*0.8, pos.Z + halfW*0.8}, {pos.X + halfW*0.8, pos.Z + halfW*0.8}, {pos.X, pos.Z},
+		} {
+			if supportY, supported := checkFoot(sample[0], sample[1]); supported {
+				pos.Y = supportY
+				onGround = true
+				break
+			}
 		}
 	}
 

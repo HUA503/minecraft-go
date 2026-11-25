@@ -450,6 +450,76 @@ func TestCannotPlaceBlockInsidePlayer(t *testing.T) {
 	}
 }
 
+func TestSlabPlacementMergeCollisionAndDrops(t *testing.T) {
+	eng := NewEngine()
+	player := eng.AddPlayer("Steve", [16]byte{9}, Vec3{X: 20.5, Y: 64, Z: 20.5})
+	player.Inventory.Slots[0] = inventory.ItemStack{ItemID: inventory.ItemStoneSlab, Count: 2}
+	pos := world.BlockPos{X: 10, Y: 64, Z: 10}
+	if !eng.PlaceBlock(player.ID, pos, inventory.ItemStoneSlab) {
+		t.Fatal("bottom stone slab placement failed")
+	}
+	if got := eng.GetBlock(pos.X, pos.Y, pos.Z); got != inventory.ItemStoneSlab {
+		t.Fatalf("bottom slab state = %d, want item state %d", got, inventory.ItemStoneSlab)
+	}
+	if got := player.Inventory.Slots[0].Count; got != 1 {
+		t.Fatalf("survival placement left %d slabs, want 1", got)
+	}
+	if !eng.PlaceBlock(player.ID, pos, inventory.BlockStoneSlabDouble) {
+		t.Fatal("combining a second slab failed")
+	}
+	if got := eng.GetBlock(pos.X, pos.Y, pos.Z); got != inventory.BlockStoneSlabDouble {
+		t.Fatalf("merged slab state = %d, want double state %d", got, inventory.BlockStoneSlabDouble)
+	}
+	if got := player.Inventory.Slots[0].Count; got != 0 {
+		t.Fatalf("merge left %d slabs, want 0", got)
+	}
+	player.Inventory.Slots[0] = inventory.ItemStack{ItemID: inventory.ItemStonePickaxe, Count: 1}
+	drop, harvested := eng.BreakBlockWithTool(player.ID, pos, inventory.ItemStonePickaxe)
+	if !harvested || drop != inventory.ItemStoneSlab {
+		t.Fatalf("breaking double slab returned (%d,%t), want canonical stone slab", drop, harvested)
+	}
+	foundTwoSlabs := false
+	for _, itemDrop := range eng.ItemDrops {
+		if itemDrop.ItemID == inventory.ItemStoneSlab && itemDrop.Count == 2 {
+			foundTwoSlabs = true
+			break
+		}
+	}
+	if !foundTwoSlabs {
+		t.Fatal("breaking a double stone slab should drop two canonical slab items")
+	}
+
+	player.Inventory.Slots[0] = inventory.ItemStack{ItemID: inventory.ItemOakSlab, Count: 1}
+	topPos := world.BlockPos{X: 12, Y: 64, Z: 10}
+	if !eng.PlaceBlock(player.ID, topPos, inventory.BlockOakSlabTop) {
+		t.Fatal("top oak slab placement failed")
+	}
+	if got := eng.GetBlock(topPos.X, topPos.Y, topPos.Z); got != inventory.BlockOakSlabTop {
+		t.Fatalf("top oak slab state = %d, want %d", got, inventory.BlockOakSlabTop)
+	}
+}
+
+func TestSlabCollisionAndShapeAwareRaycast(t *testing.T) {
+	getBlock := func(x, y, z int32) int32 {
+		if x == 2 && y == 0 && z == 0 {
+			return inventory.ItemStoneSlab
+		}
+		return 0
+	}
+	resolved, onGround, _ := ResolveMovementCollisionForBlocks(Vec3{X: 2.5, Y: 1, Z: .5}, Vec3{Y: -1}, getBlock)
+	if !onGround || math.Abs(resolved.Y-.5) > 1e-8 {
+		t.Fatalf("fall onto bottom slab resolved to %+v, onGround=%t; want Y=.5", resolved, onGround)
+	}
+	miss := RaycastBlocks(Vec3{X: .5, Y: .75, Z: .5}, Vec3{X: 1}, 5, getBlock)
+	if miss.Hit {
+		t.Fatalf("ray above bottom slab incorrectly hit %+v", miss)
+	}
+	hit := RaycastBlocks(Vec3{X: .5, Y: .25, Z: .5}, Vec3{X: 1}, 5, getBlock)
+	if !hit.Hit || hit.FaceX != -1 || math.Abs(hit.HitPos.Y-.25) > 1e-8 {
+		t.Fatalf("ray through slab side returned %+v; want a lower-half side hit", hit)
+	}
+}
+
 func TestRedShrubPlacementCollisionAndDrop(t *testing.T) {
 	eng := NewEngine()
 	player := eng.AddPlayer("Steve", [16]byte{1}, Vec3{X: 10.5, Y: 64, Z: 10.5})

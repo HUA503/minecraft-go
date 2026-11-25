@@ -39,6 +39,54 @@ func TestCreativeCatalogHasUniqueUsableItems(t *testing.T) {
 	}
 }
 
+func TestSlabBlockStatesShareCanonicalItemsAndShapes(t *testing.T) {
+	if min, max := BlockDropCountRange(BlockStoneSlabDouble); min != 2 || max != 2 {
+		t.Fatalf("double stone slab drop range=(%d,%d), want (2,2)", min, max)
+	}
+	if min, max := BlockDropCountRange(BlockOakSlabDouble); min != 2 || max != 2 {
+		t.Fatalf("double oak slab drop range=(%d,%d), want (2,2)", min, max)
+	}
+	for _, tc := range []struct {
+		state int32
+		item  int32
+		minY  float32
+		maxY  float32
+	}{
+		{ItemStoneSlab, ItemStoneSlab, 0, .5},
+		{BlockStoneSlabTop, ItemStoneSlab, .5, 1},
+		{BlockStoneSlabDouble, ItemStoneSlab, 0, 1},
+		{ItemOakSlab, ItemOakSlab, 0, .5},
+		{BlockOakSlabTop, ItemOakSlab, .5, 1},
+		{BlockOakSlabDouble, ItemOakSlab, 0, 1},
+	} {
+		boxes, ok := BlockCollisionBoxes(tc.state)
+		if !ok || len(boxes) != 1 {
+			t.Fatalf("slab state %d boxes = %+v, recognized=%t", tc.state, boxes, ok)
+		}
+		if boxes[0].MinY != tc.minY || boxes[0].MaxY != tc.maxY {
+			t.Errorf("slab state %d vertical shape = [%g,%g], want [%g,%g]", tc.state, boxes[0].MinY, boxes[0].MaxY, tc.minY, tc.maxY)
+		}
+		if got, found := SlabItemForBlockState(tc.state); !found || got != tc.item || BlockItemForState(tc.state) != tc.item {
+			t.Errorf("slab state %d canonical item = %d, recognized=%t; want %d", tc.state, got, found, tc.item)
+		}
+	}
+	if got, ok := SlabPlacementState(ItemOakSlab, 0, .75); !ok || got != BlockOakSlabTop {
+		t.Errorf("placing against upper side half = (%d,%t), want top oak slab", got, ok)
+	}
+	if got, ok := SlabPlacementState(ItemOakSlab, 0, .25); !ok || got != ItemOakSlab {
+		t.Errorf("placing against lower side half = (%d,%t), want bottom oak slab", got, ok)
+	}
+	if got, ok := SlabMergeState(ItemOakSlab, ItemOakSlab, 0, .75); !ok || got != BlockOakSlabDouble {
+		t.Errorf("upper-side click on bottom slab merge = (%d,%t), want double oak slab", got, ok)
+	}
+	if _, ok := SlabMergeState(ItemOakSlab, ItemOakSlab, 0, .25); ok {
+		t.Error("lower-side click on bottom slab should not merge same half")
+	}
+	if !IsPlaceableBlock(ItemStoneSlab) {
+		t.Fatal("stone slab item should remain placeable")
+	}
+}
+
 func TestJava263FoodCatalogEntriesAndStackLimits(t *testing.T) {
 	food := CreativeCatalog(CreativeFood)
 	if len(food) != 42 {

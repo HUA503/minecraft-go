@@ -42,6 +42,77 @@ func TestMeshFaceCullingIsolatedCube(t *testing.T) {
 	}
 }
 
+func TestSlabSelectionOutlineUsesPartialShape(t *testing.T) {
+	cam := NewCamera(0.5, 0.5, 0)
+	full := NewFramebuffer(160, 120)
+	slab := NewFramebuffer(160, 120)
+	full.DrawBlockOutline(cam, 0, 0, 4)
+	slab.DrawBlockStateOutline(cam, 0, 0, 4, inventory.ItemStoneSlab)
+	lineBounds := func(fb *Framebuffer) (int, int, bool) {
+		minY, maxY, found := fb.Height, -1, false
+		for y := 0; y < fb.Height; y++ {
+			for x := 0; x < fb.Width; x++ {
+				if fb.Color[y*fb.Width+x] == 0xFF000000 {
+					minY = min(minY, y)
+					maxY = max(maxY, y)
+					found = true
+				}
+			}
+		}
+		return minY, maxY, found
+	}
+	fullMin, fullMax, fullFound := lineBounds(full)
+	slabMin, slabMax, slabFound := lineBounds(slab)
+	if !fullFound || !slabFound {
+		t.Fatalf("expected projected outline pixels (full=%t, slab=%t)", fullFound, slabFound)
+	}
+	if slabMax-slabMin >= fullMax-fullMin {
+		t.Fatalf("slab outline height [%d,%d] should be shorter than cube [%d,%d]", slabMin, slabMax, fullMin, fullMax)
+	}
+}
+
+func TestSlabMeshUsesTheSamePartialShapesAsCollision(t *testing.T) {
+	for _, texture := range []string{"smooth_stone", "smooth_stone_slab_side", "oak_planks"} {
+		if _, ok := GetOfficialTexture("block", texture); !ok {
+			t.Fatalf("slab block texture %q is missing from bundled Java assets", texture)
+		}
+	}
+	for _, tc := range []struct {
+		id      int32
+		wantMin float32
+		wantMax float32
+	}{
+		{inventory.ItemStoneSlab, 0, .5},
+		{inventory.BlockStoneSlabTop, .5, 1},
+		{inventory.ItemOakSlab, 0, .5},
+		{inventory.BlockOakSlabTop, .5, 1},
+	} {
+		mesh := BuildSectionMesh(func(x, y, z int32) int32 {
+			if x == 0 && y == 0 && z == 0 {
+				return tc.id
+			}
+			return 0
+		}, 0, 0, 0)
+		if len(mesh.Vertices) != 24 {
+			t.Fatalf("slab state %d generated %d vertices, want 24", tc.id, len(mesh.Vertices))
+		}
+		minY, maxY := float32(math.Inf(1)), float32(math.Inf(-1))
+		for _, vertex := range mesh.Vertices {
+			minY = min(minY, vertex.Y)
+			maxY = max(maxY, vertex.Y)
+			if vertex.BlockID != inventory.BlockItemForState(tc.id) {
+				t.Errorf("slab state %d mesh texture ID = %d, want canonical item/block %d", tc.id, vertex.BlockID, inventory.BlockItemForState(tc.id))
+			}
+		}
+		if minY != tc.wantMin || maxY != tc.wantMax {
+			t.Errorf("slab state %d mesh Y bounds = [%g,%g], want [%g,%g]", tc.id, minY, maxY, tc.wantMin, tc.wantMax)
+		}
+	}
+	if !IsOpaqueCube(inventory.BlockStoneSlabDouble) {
+		t.Error("double slab should occlude neighbors as a full cube")
+	}
+}
+
 func TestMeshFaceCullingAdjacentCubes(t *testing.T) {
 	world := map[[3]int32]int32{
 		{0, 0, 0}: 1,

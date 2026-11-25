@@ -214,10 +214,7 @@ func (m *MobEntity) TickMob(engine *Engine) {
 	}
 
 	// 4. Apply velocity with voxel collision resolution so mobs don't clip into terrain or freeze
-	isSolid := func(x, y, z int32) bool {
-		return IsSolidBlock(engine.GetBlock(x, y, z))
-	}
-	resPos, ground, _ := ResolveMovementCollision(m.Position, m.Velocity, isSolid)
+	resPos, ground, _ := ResolveMovementCollisionForBlocks(m.Position, m.Velocity, engine.GetBlock)
 	m.Position = resPos
 	if ground {
 		m.Velocity.Y = 0
@@ -705,4 +702,3 @@ func (m *MobEntity) DeathDrops() []inventory.ItemStack {
 		return nil
 	}
 }
-

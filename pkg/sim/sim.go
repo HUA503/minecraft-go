@@ -912,7 +912,7 @@ func (e *Engine) BreakBlockWithTool(playerID int32, pos world.BlockPos, toolID i
 	if canHarvest {
 		// Determine drop item
 		if !inventory.IsExtendedLeaves(origBlock) {
-			dropItem = origBlock
+			dropItem = inventory.BlockItemForState(origBlock)
 		}
 		switch origBlock {
 		case 1, 4: // Stone, Cobblestone -> Cobblestone
@@ -1010,7 +1010,7 @@ func (e *Engine) BreakBlock(playerID int32, pos world.BlockPos) int32 {
 	}
 
 	// Determine drop item
-	dropItem := origBlock
+	dropItem := inventory.BlockItemForState(origBlock)
 	if inventory.IsExtendedLeaves(origBlock) {
 		e.mu.Lock()
 		dropsSapling := e.nextRandomTickValueLocked()%20 == 0
@@ -1098,7 +1098,16 @@ func (e *Engine) rollBlockDropCount(blockID int32) int {
 func (e *Engine) PlaceBlock(playerID int32, pos world.BlockPos, blockID int32) bool {
 	existing := e.GetBlock(pos.X, pos.Y, pos.Z)
 	if !inventory.IsReplaceableBlock(existing) {
-		return false
+		existingItem, existingIsSlab := inventory.SlabItemForBlockState(existing)
+		placedItem, placedIsSlab := inventory.SlabItemForBlockState(blockID)
+		if !inventory.IsDoubleSlabState(blockID) || !existingIsSlab || !placedIsSlab || existingItem != placedItem || inventory.IsDoubleSlabState(existing) {
+			return false
+		}
+		if !e.SetBlockChecked(pos.X, pos.Y, pos.Z, blockID) {
+			return false
+		}
+		e.consumePlacedBlockItem(playerID, placedItem)
+		return true
 	}
 	if blockID == 10100 && (pos.Y <= 0 || !IsSolidBlock(e.GetBlock(pos.X, pos.Y-1, pos.Z))) {
 		return false // Red shrubs need a solid block beneath them.
@@ -1106,15 +1115,17 @@ func (e *Engine) PlaceBlock(playerID int32, pos world.BlockPos, blockID int32) b
 
 	// For solid blocks, prevent placing inside living players
 	if IsSolidBlock(blockID) {
-		blockBox := NewBlockAABB(pos.X, pos.Y, pos.Z)
+		blockBoxes := BlockCollisionAABBs(blockID, pos.X, pos.Y, pos.Z)
 
 		e.mu.RLock()
 		for _, p := range e.Players {
 			if p.IsAlive {
 				playerBox := NewPlayerAABB(p.Position)
-				if PlacementIntersects(playerBox, blockBox) {
-					e.mu.RUnlock()
-					return false // cannot place inside player
+				for _, blockBox := range blockBoxes {
+					if PlacementIntersects(playerBox, blockBox) {
+						e.mu.RUnlock()
+						return false // cannot place inside player
+					}
 				}
 			}
 		}
@@ -1125,19 +1136,11 @@ func (e *Engine) PlaceBlock(playerID int32, pos world.BlockPos, blockID int32) b
 		return false
 	}
 
-	// Decrement item from player's inventory if matching item is held (In Creative mode GameMode==1, items are not consumed)
-	e.mu.Lock()
-	if p, ok := e.Players[playerID]; ok && p.Inventory != nil {
-		if p.GameMode != 1 {
-			sel := p.Inventory.GetSelectedItem()
-			if sel.ItemID == blockID && sel.Count > 0 {
-				_ = p.Inventory.RemoveItem(p.Inventory.SelectedHotbar, 1)
-			}
-		}
-	}
-	e.mu.Unlock()
+	// Decrement the inventory item represented by this block state (creative
+	// mode does not consume items).
+	e.consumePlacedBlockItem(playerID, inventory.BlockItemForState(blockID))
 
-	if blockID == 61 {
+	if blockID == inventory.ItemFurnace {
 		e.mu.Lock()
 		if e.Furnaces == nil {
 			e.Furnaces = make(map[world.BlockPos]*inventory.FurnaceBlockEntity)
@@ -1146,6 +1149,19 @@ func (e *Engine) PlaceBlock(playerID int32, pos world.BlockPos, blockID int32) b
 		e.mu.Unlock()
 	}
 	return true
+}
+
+func (e *Engine) consumePlacedBlockItem(playerID int32, itemID int32) {
+	e.mu.Lock()
+	if p, ok := e.Players[playerID]; ok && p.Inventory != nil {
+		if p.GameMode != 1 {
+			sel := p.Inventory.GetSelectedItem()
+			if sel.ItemID == itemID && sel.Count > 0 {
+				_ = p.Inventory.RemoveItem(p.Inventory.SelectedHotbar, 1)
+			}
+		}
+	}
+	e.mu.Unlock()
 }
 
 // UseBoneMealOnRedShrub grows one red shrub in a random adjacent loaded,
@@ -1450,11 +1466,7 @@ func (e *Engine) MovePlayerRelative(id int32, delta Vec3, yaw, pitch float32) (V
 	oldPos := p.Position
 	e.mu.Unlock()
 
-	isSolid := func(x, y, z int32) bool {
-		return IsSolidBlock(e.GetBlock(x, y, z))
-	}
-
-	resolvedPos, ground, hitCeiling := ResolveMovementCollision(oldPos, delta, isSolid)
+	resolvedPos, ground, hitCeiling := ResolveMovementCollisionForBlocks(oldPos, delta, e.GetBlock)
 
 	// Check if player is in liquid (water 8/9 or lava 10/11) before acquiring lock
 	bx := int32(math.Floor(resolvedPos.X))
@@ -1529,13 +1541,16 @@ func (e *Engine) Tick() {
 	e.TickCount++
 	e.WorldTime = (e.WorldTime + 1) % 24000
 
-	isSolid := func(x, y, z int32) bool {
+	getBlock := func(x, y, z int32) int32 {
 		cp := world.BlockPos{X: x, Y: y, Z: z}.ToChunkPos()
 		chunk, ok := e.World[cp]
 		if !ok || chunk == nil {
-			return false
+			return 0
 		}
-		return IsSolidBlock(chunk.GetBlock(x, y, z))
+		return chunk.GetBlock(x, y, z)
+	}
+	isSolid := func(x, y, z int32) bool {
+		return IsSolidBlock(getBlock(x, y, z))
 	}
 
 	// Apply gravity and drag for free-falling players (skip client-driven players to avoid jitter/double gravity)
@@ -1546,7 +1561,7 @@ func (e *Engine) Tick() {
 		p.Velocity.Y -= 0.08                // Minecraft standard gravity per tick
 		p.Velocity = p.Velocity.Scale(0.98) // Air resistance
 		delta := Vec3{X: p.Velocity.X, Y: p.Velocity.Y, Z: p.Velocity.Z}
-		resPos, ground, hitCeiling := ResolveMovementCollision(p.Position, delta, isSolid)
+		resPos, ground, hitCeiling := ResolveMovementCollisionForBlocks(p.Position, delta, getBlock)
 		if ground {
 			p.Velocity.Y = 0
 			if p.FallDistance > 3.0 {

@@ -972,6 +972,8 @@ func initOfficialBlockTextures() {
 	}
 	loadSingle(35, "white_wool")
 	loadSingle(43, "stone")
+	loadBlock(44, "smooth_stone", "smooth_stone", "smooth_stone_slab_side")
+	loadSingle(126, "oak_planks")
 	loadSingle(12, "sand")
 	loadSingle(13, "gravel")
 	loadSingle(14, "gold_ore")

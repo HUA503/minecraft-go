@@ -2625,12 +2625,15 @@ func (c *Client) UpdateRaycastTarget() {
 	lx, ly, lz := c.camera.GetLookVector()
 	dir := sim.Vec3{X: lx, Y: ly, Z: lz}
 
-	isSolid := func(x, y, z int32) bool {
+	getTargetBlock := func(x, y, z int32) int32 {
 		b := c.engine.GetBlockIfLoaded(x, y, z)
-		return b != 0 && b != 8 && b != 9 && b != 10 && b != 11
+		if b == 8 || b == 9 || b == 10 || b == 11 {
+			return 0
+		}
+		return b
 	}
 
-	res := sim.Raycast(origin, dir, 5.0, isSolid)
+	res := sim.RaycastBlocks(origin, dir, 5.0, getTargetBlock)
 	if res.Hit {
 		c.hasTarget = true
 		c.targetedPos = world.BlockPos{X: res.BlockX, Y: res.BlockY, Z: res.BlockZ}
@@ -3132,28 +3135,53 @@ func (c *Client) PlaceBlockInFront() bool {
 	lx, ly, lz := c.camera.GetLookVector()
 	dir := sim.Vec3{X: lx, Y: ly, Z: lz}
 
-	isSolid := func(x, y, z int32) bool {
+	getTargetBlock := func(x, y, z int32) int32 {
 		b := c.engine.GetBlockIfLoaded(x, y, z)
-		return b != 0 && b != 8 && b != 9 && b != 10 && b != 11
+		if b == 8 || b == 9 || b == 10 || b == 11 {
+			return 0
+		}
+		return b
 	}
-	res := sim.Raycast(origin, dir, 5.0, isSolid)
+	res := sim.RaycastBlocks(origin, dir, 5.0, getTargetBlock)
 	if !res.Hit {
 		return false
 	}
 
 	hitBlockID := c.engine.GetBlockIfLoaded(res.BlockX, res.BlockY, res.BlockZ)
 	var targetPos world.BlockPos
-	if inventory.IsReplaceableBlock(hitBlockID) {
+	placedBlockID := selected.ItemID
+	localHitY := res.HitPos.Y - math.Floor(res.HitPos.Y)
+	mergeSlab := false
+	if slabState, isSlab := inventory.SlabPlacementState(selected.ItemID, res.FaceY, localHitY); isSlab {
+		placedBlockID = slabState
+		if doubleState, merge := inventory.SlabMergeState(hitBlockID, selected.ItemID, res.FaceY, localHitY); merge {
+			targetPos = world.BlockPos{X: res.BlockX, Y: res.BlockY, Z: res.BlockZ}
+			placedBlockID = doubleState
+			mergeSlab = true
+		}
+	}
+	if mergeSlab {
+		// The engine replaces the clicked half slab with a matching double slab.
+	} else if inventory.IsReplaceableBlock(hitBlockID) {
 		// Replaceable grass/flowers are directly replaced at their position
 		targetPos = world.BlockPos{X: res.BlockX, Y: res.BlockY, Z: res.BlockZ}
-		if sim.IsSolidBlock(selected.ItemID) {
-			bBox := sim.NewBlockAABB(targetPos.X, targetPos.Y, targetPos.Z)
+		if sim.IsSolidBlock(placedBlockID) {
 			pBox := sim.NewPlayerAABB(c.player.Position)
-			if sim.PlacementIntersects(pBox, bBox) {
+			intersects := false
+			for _, bBox := range sim.BlockCollisionAABBs(placedBlockID, targetPos.X, targetPos.Y, targetPos.Z) {
+				if sim.PlacementIntersects(pBox, bBox) {
+					intersects = true
+					break
+				}
+			}
+			if intersects {
 				// Player is standing in this foliage! Pass through foliage to hit the solid block underneath/behind
-				solidRes := sim.Raycast(origin, dir, 5.0, func(x, y, z int32) bool {
+				solidRes := sim.RaycastBlocks(origin, dir, 5.0, func(x, y, z int32) int32 {
 					b := c.engine.GetBlockIfLoaded(x, y, z)
-					return sim.IsSolidBlock(b)
+					if sim.IsSolidBlock(b) {
+						return b
+					}
+					return 0
 				})
 				if solidRes.Hit {
 					targetPos = world.BlockPos{
@@ -3173,7 +3201,7 @@ func (c *Client) PlaceBlockInFront() bool {
 		}
 	}
 
-	ok := c.engine.PlaceBlock(c.player.ID, targetPos, selected.ItemID)
+	ok := c.engine.PlaceBlock(c.player.ID, targetPos, placedBlockID)
 	if ok {
 		if selected.ItemID == 58 {
 			c.UnlockAdvancement("minecraft-go:story/place_crafting_table", "搭建工作台")
@@ -3187,7 +3215,7 @@ func (c *Client) PlaceBlockInFront() bool {
 				X:       targetPos.X,
 				Y:       targetPos.Y,
 				Z:       targetPos.Z,
-				BlockID: selected.ItemID,
+				BlockID: placedBlockID,
 			})
 		}
 	}
@@ -3498,7 +3526,8 @@ func (c *Client) RenderFrame() {
 
 	// 3. Draw targeted block wireframe outline and progressive destruction cracks
 	if c.hasTarget {
-		c.framebuf.DrawBlockOutline(c.camera, c.targetedPos.X, c.targetedPos.Y, c.targetedPos.Z)
+		blockID := c.engine.GetBlockIfLoaded(c.targetedPos.X, c.targetedPos.Y, c.targetedPos.Z)
+		c.framebuf.DrawBlockStateOutline(c.camera, c.targetedPos.X, c.targetedPos.Y, c.targetedPos.Z, blockID)
 		if c.isMining && c.breakProgress > 0 {
 			stage := int(c.breakProgress * 10)
 			if stage > 9 {

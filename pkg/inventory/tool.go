@@ -96,6 +96,7 @@ func GetToolProperties(itemID int32) (ToolProperties, bool) {
 // BlockRequiredHarvestLevel specifies the minimum tool tier needed to harvest item drops.
 var BlockRequiredHarvestLevel = map[int32]int{
 	ItemStone:       0, // Any pickaxe
+	ItemStoneSlab:   0, // Any pickaxe
 	ItemCobblestone: 0, // Any pickaxe
 	16:              0, // Coal ore: Any pickaxe
 	15:              1, // Iron ore: Stone pickaxe or better
@@ -109,11 +110,12 @@ var BlockRequiredHarvestLevel = map[int32]int{
 
 // IsPickaxeEffective returns true if block is best mined by a pickaxe.
 func IsPickaxeEffective(blockID int32) bool {
+	blockID = BlockItemForState(blockID)
 	if definition, ok := ExtendedBlockByID(blockID); ok {
 		return definition.HarvestTool == ToolPickaxe
 	}
 	switch blockID {
-	case ItemStone, ItemCobblestone, ItemFurnace, 14, 15, 16, 56, 73, 74, 129, 49:
+	case ItemStone, ItemStoneSlab, ItemCobblestone, ItemFurnace, 14, 15, 16, 56, 73, 74, 129, 49:
 		return true
 	default:
 		return false
@@ -122,11 +124,12 @@ func IsPickaxeEffective(blockID int32) bool {
 
 // IsAxeEffective returns true if block is best mined by an axe.
 func IsAxeEffective(blockID int32) bool {
+	blockID = BlockItemForState(blockID)
 	if definition, ok := ExtendedBlockByID(blockID); ok {
 		return definition.HarvestTool == ToolAxe
 	}
 	switch blockID {
-	case ItemOakLog, 22, ItemOakPlanks, ItemCraftingTable:
+	case ItemOakLog, 22, ItemOakPlanks, ItemOakSlab, ItemCraftingTable:
 		return true
 	default:
 		return false
@@ -135,6 +138,7 @@ func IsAxeEffective(blockID int32) bool {
 
 // IsShovelEffective returns true if block is best mined by a shovel.
 func IsShovelEffective(blockID int32) bool {
+	blockID = BlockItemForState(blockID)
 	if definition, ok := ExtendedBlockByID(blockID); ok {
 		return definition.HarvestTool == ToolShovel
 	}
@@ -155,6 +159,8 @@ var BlockHardness = map[int32]float64{
 	3:   0.5,   // Dirt
 	4:   2.0,   // Cobblestone
 	5:   2.0,   // Oak Planks
+	44:  2.0,   // Stone Slab
+	126: 2.0,   // Oak Slab
 	7:   -1.0,  // Bedrock (unbreakable)
 	8:   100.0, // Water
 	9:   100.0, // Flowing Water
@@ -185,6 +191,7 @@ var BlockHardness = map[int32]float64{
 
 // GetBlockHardness returns the hardness of a block ID.
 func GetBlockHardness(blockID int32) float64 {
+	blockID = BlockItemForState(blockID)
 	if definition, ok := ExtendedBlockByID(blockID); ok && definition.Hardness > 0 {
 		return definition.Hardness
 	}
@@ -220,6 +227,7 @@ func CalculateBlockDamagePerSecond(toolID, blockID int32) float64 {
 
 // CanHarvestBlock checks if current tool tier is sufficient to drop items.
 func CanHarvestBlock(toolID, blockID int32) bool {
+	blockID = BlockItemForState(blockID)
 	if definition, ok := ExtendedBlockByID(blockID); ok && definition.RequiresHarvestTool {
 		tool, isTool := GetToolProperties(toolID)
 		return isTool && tool.Type == definition.HarvestTool && tool.HarvestLevel >= definition.RequiredHarvestLevel

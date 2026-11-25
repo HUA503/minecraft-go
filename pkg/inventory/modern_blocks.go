@@ -442,6 +442,8 @@ func BlockDropCountRange(blockID int32) (int, int) {
 		return definition.DropCountMin, definition.DropCountMax
 	}
 	switch blockID {
+	case BlockStoneSlabDouble, BlockOakSlabDouble:
+		return 2, 2
 	case 73: // Redstone ore
 		return 4, 5
 	case 74: // Lapis lazuli ore

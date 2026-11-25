@@ -5,6 +5,7 @@ import (
 	"image/color"
 	"math"
 
+	"github.com/HUA503/minecraft-go/pkg/inventory"
 	"github.com/HUA503/minecraft-go/pkg/world"
 )
 
@@ -178,7 +179,7 @@ func init() {
 	// Deterministic spherical Fibonacci distribution across celestial dome
 	for i := 0; i < len(fixedStars); i++ {
 		fi := float64(i)
-		theta := fi * 2.399963229728653 // Golden ratio angle
+		theta := fi * 2.399963229728653                        // Golden ratio angle
 		y := 0.15 + (float64(i)/float64(len(fixedStars)))*0.85 // Upper hemisphere
 		r := math.Sqrt(1.0 - y*y)
 		fixedStars[i] = [3]float64{
@@ -226,8 +227,8 @@ func (fb *Framebuffer) DrawCelestialBodies(cam *Camera, worldTime int64) {
 			return 0, 0, false
 		}
 
-		sx := (rx * f / (aspect * vz)) * float64(fb.Width/2) + float64(fb.Width/2)
-		sy := -(ry * f / vz) * float64(fb.Height/2) + float64(fb.Height/2)
+		sx := (rx*f/(aspect*vz))*float64(fb.Width/2) + float64(fb.Width/2)
+		sy := -(ry*f/vz)*float64(fb.Height/2) + float64(fb.Height/2)
 		return int(sx), int(sy), true
 	}
 
@@ -327,7 +328,7 @@ func (fb *Framebuffer) DrawClouds(cam *Camera, worldTime int64) {
 
 			// 2-octave integer noise for continuous cloud bands
 			h1 := (math.Sin(float64(cx)*0.45)+math.Cos(float64(cz)*0.45))*50.0 + 50.0
-			h2 := (math.Sin(float64(cx+cz)*0.25))*25.0
+			h2 := (math.Sin(float64(cx+cz) * 0.25)) * 25.0
 			if h1+h2 < 55.0 {
 				continue // Clear sky here
 			}
@@ -944,19 +945,33 @@ func (fb *Framebuffer) drawVoxelTrianglePerspective(v0, v1, v2 ScreenVertex, wri
 
 // DrawBlockOutline draws wireframe selection outline around targeted block edges.
 func (fb *Framebuffer) DrawBlockOutline(cam *Camera, bx, by, bz int32) {
-	fx, fy, fz := float64(bx), float64(by), float64(bz)
+	fb.drawBlockOutlineBox(cam, bx, by, bz, inventory.BlockBox{MaxX: 1, MaxY: 1, MaxZ: 1})
+}
 
-	corners := [8][3]float64{
-		{fx, fy, fz},
-		{fx + 1, fy, fz},
-		{fx + 1, fy + 1, fz},
-		{fx, fy + 1, fz},
-		{fx, fy, fz + 1},
-		{fx + 1, fy, fz + 1},
-		{fx + 1, fy + 1, fz + 1},
-		{fx, fy + 1, fz + 1},
+// DrawBlockStateOutline draws the selection wireframe using a partial block's
+// actual shape, falling back to a full cube for ordinary blocks.
+func (fb *Framebuffer) DrawBlockStateOutline(cam *Camera, bx, by, bz int32, blockID int32) {
+	if boxes, ok := inventory.BlockCollisionBoxes(blockID); ok {
+		for _, box := range boxes {
+			fb.drawBlockOutlineBox(cam, bx, by, bz, box)
+		}
+		return
 	}
+	fb.DrawBlockOutline(cam, bx, by, bz)
+}
 
+func (fb *Framebuffer) drawBlockOutlineBox(cam *Camera, bx, by, bz int32, box inventory.BlockBox) {
+	fx, fy, fz := float64(bx), float64(by), float64(bz)
+	corners := [8][3]float64{
+		{fx + float64(box.MinX), fy + float64(box.MinY), fz + float64(box.MinZ)},
+		{fx + float64(box.MaxX), fy + float64(box.MinY), fz + float64(box.MinZ)},
+		{fx + float64(box.MaxX), fy + float64(box.MaxY), fz + float64(box.MinZ)},
+		{fx + float64(box.MinX), fy + float64(box.MaxY), fz + float64(box.MinZ)},
+		{fx + float64(box.MinX), fy + float64(box.MinY), fz + float64(box.MaxZ)},
+		{fx + float64(box.MaxX), fy + float64(box.MinY), fz + float64(box.MaxZ)},
+		{fx + float64(box.MaxX), fy + float64(box.MaxY), fz + float64(box.MaxZ)},
+		{fx + float64(box.MinX), fy + float64(box.MaxY), fz + float64(box.MaxZ)},
+	}
 	edges := [12][2]int{
 		{0, 1}, {1, 2}, {2, 3}, {3, 0},
 		{4, 5}, {5, 6}, {6, 7}, {7, 4},
@@ -965,7 +980,7 @@ func (fb *Framebuffer) DrawBlockOutline(cam *Camera, bx, by, bz int32) {
 
 	var projected [8]ScreenPoint
 	var valid [8]bool
-	for i := 0; i < 8; i++ {
+	for i := 0; i < len(corners); i++ {
 		projected[i], valid[i] = cam.ProjectToScreen(corners[i][0], corners[i][1], corners[i][2], fb.Width, fb.Height)
 	}
 
@@ -1175,7 +1190,7 @@ func (fb *Framebuffer) DrawBlockDamage(cam *Camera, bx, by, bz int32, stage int)
 	}
 
 	// Determine how many crack lines to render for this destruction stage
-	numSegments := (stage + 1) * 2 + (stage / 3)
+	numSegments := (stage+1)*2 + (stage / 3)
 	if numSegments > len(crackSegments) {
 		numSegments = len(crackSegments)
 	}
@@ -1252,4 +1267,3 @@ func (fb *Framebuffer) DrawBlockDamage(cam *Camera, bx, by, bz int32, stage int)
 		}
 	}
 }
-

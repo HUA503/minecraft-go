@@ -36,6 +36,31 @@ func TestRenderIsometricBlock16x16(t *testing.T) {
 	}
 }
 
+func TestSlabItemIconsUsePartialBlockSilhouettes(t *testing.T) {
+	full := RenderIsometricBlock16x16(inventory.ItemStone)
+	bottom := RenderIsometricBlock16x16(inventory.ItemStoneSlab)
+	top := RenderIsometricBlock16x16(inventory.BlockStoneSlabTop)
+	if bottom == full || top == full || bottom == top {
+		t.Fatal("top, bottom, and full stone block icons must have distinct silhouettes")
+	}
+	firstPixel := func(sprite [16][16]uint32) int {
+		for y := range sprite {
+			for x := range sprite[y] {
+				if sprite[y][x]>>24 != 0 {
+					return y
+				}
+			}
+		}
+		return 16
+	}
+	if got, want := firstPixel(bottom), firstPixel(full)+4; got != want {
+		t.Errorf("bottom slab silhouette starts at y=%d, want %d (full block shifted by half-height)", got, want)
+	}
+	if got, want := firstPixel(top), firstPixel(full); got != want {
+		t.Errorf("top slab silhouette starts at y=%d, want %d", got, want)
+	}
+}
+
 func TestModernCreativeMaterialItemsUseOfficialIcons(t *testing.T) {
 	for _, item := range inventory.ModernCreativeItemDefinitions() {
 		t.Run(item.Name, func(t *testing.T) {

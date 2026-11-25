@@ -56,6 +56,14 @@ func IsOpaqueCube(blockID int32) bool {
 	if inventory.IsExtendedLeaves(blockID) || inventory.IsExtendedFoliage(blockID) {
 		return false
 	}
+	if boxes, ok := inventory.BlockCollisionBoxes(blockID); ok {
+		for _, box := range boxes {
+			if box.MinX > 0 || box.MinY > 0 || box.MinZ > 0 || box.MaxX < 1 || box.MaxY < 1 || box.MaxZ < 1 {
+				return false
+			}
+		}
+		return len(boxes) > 0
+	}
 	switch blockID {
 	case 0: // Air
 		return false
@@ -133,6 +141,10 @@ func BuildSectionMesh(getBlock func(x, y, z int32) int32, originX, originY, orig
 					addLadderQuad(mesh, originX+x, originY+y, originZ+z, getBlock)
 					continue
 				}
+				if boxes, ok := inventory.BlockCollisionBoxes(blockID); ok && !IsOpaqueCube(blockID) {
+					addPartialBlockMesh(mesh, originX+x, originY+y, originZ+z, blockID, boxes, getBlock)
+					continue
+				}
 
 				// Special crossed diagonal quads for foliage and the torch sprite.
 				if IsFoliage(blockID) {
@@ -162,6 +174,29 @@ func BuildSectionMesh(getBlock func(x, y, z int32) int32, originX, originY, orig
 	}
 
 	return mesh
+}
+
+func addPartialBlockMesh(mesh *Mesh, x, y, z int32, blockID int32, boxes []inventory.BlockBox, getBlock func(x, y, z int32) int32) {
+	for _, box := range boxes {
+		for face, offset := range NeighborOffsets {
+			neighborID := getBlock(x+offset[0], y+offset[1], z+offset[2])
+			if IsOpaqueCube(neighborID) {
+				continue
+			}
+			if face != 2 && face != 3 && neighborID == blockID {
+				continue
+			}
+
+			baseVertex := len(mesh.Vertices)
+			addFaceQuad(mesh, x, y, z, face, blockID, getBlock)
+			fy := float32(y)
+			for i := baseVertex; i < len(mesh.Vertices); i++ {
+				vertex := &mesh.Vertices[i]
+				vertex.Y = fy + box.MinY + (vertex.Y-fy)*(box.MaxY-box.MinY)
+				vertex.BlockID = inventory.BlockItemForState(blockID)
+			}
+		}
+	}
 }
 
 // calcAO returns an authentic Minecraft ambient occlusion factor (0.5 to 1.0) for a corner vertex based on adjacent blocks.
@@ -311,7 +346,7 @@ func addFaceQuad(mesh *Mesh, x, y, z int32, face int, blockID int32, getBlock fu
 			NormalX:      norm[0],
 			NormalY:      norm[1],
 			NormalZ:      norm[2],
-			BlockID:      blockID,
+			BlockID:      inventory.BlockItemForState(blockID),
 			FaceIndex:    face,
 			LightingMult: FaceLighting[face] * ao[i],
 		})

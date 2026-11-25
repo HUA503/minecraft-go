@@ -21,6 +21,53 @@ func applyLighting(c uint32, factor float32) uint32 {
 // RenderIsometricBlock16x16 rasterizes an authentic 16x16 3D isometric voxel block icon.
 // Light angles match vanilla Minecraft GUI: Top face (1.0x), Left face (0.8x), Right face (0.6x).
 func RenderIsometricBlock16x16(blockID int32) [16][16]uint32 {
+	if boxes, ok := inventory.BlockCollisionBoxes(blockID); ok && len(boxes) == 1 {
+		box := boxes[0]
+		if box.MinY > 0 || box.MaxY < 1 {
+			return renderIsometricPartialBlock16x16(blockID, box)
+		}
+		blockID = inventory.BlockItemForState(blockID)
+	}
+	return renderIsometricCube16x16(blockID)
+}
+
+func renderIsometricPartialBlock16x16(blockID int32, box inventory.BlockBox) [16][16]uint32 {
+	full := renderIsometricCube16x16(inventory.BlockItemForState(blockID))
+	var out [16][16]uint32
+	if box.MaxY <= .5 { // Bottom half: shift the top face down and retain the lower side faces.
+		for y := 0; y < 16; y++ {
+			for x := 0; x < 16; x++ {
+				face, _ := getIsometricVoxelRegion(x, y)
+				if face == 2 || face == 3 {
+					if y >= 10 {
+						out[y][x] = full[y][x]
+					}
+				}
+				shiftedY := y - 4
+				if shiftedY >= 0 {
+					if topFace, _ := getIsometricVoxelRegion(x, shiftedY); topFace == 1 {
+						out[y][x] = full[shiftedY][x]
+					}
+				}
+			}
+		}
+		return out
+	}
+
+	// Top half: retain the original top face and only the upper half of both
+	// side faces, leaving the bottom plane open as in the Java slab model.
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			face, _ := getIsometricVoxelRegion(x, y)
+			if face == 1 || ((face == 2 || face == 3) && y <= 10) {
+				out[y][x] = full[y][x]
+			}
+		}
+	}
+	return out
+}
+
+func renderIsometricCube16x16(blockID int32) [16][16]uint32 {
 	var s [16][16]uint32
 	tex := Textures[blockID]
 	topBase, leftBase, rightBase := getBlockBaseColors(blockID)
