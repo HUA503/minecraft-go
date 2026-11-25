@@ -23,6 +23,7 @@ const (
 	TierDiamond
 	TierNetherite
 	TierGold
+	TierCopper
 )
 
 // ToolProperties defines durability, mining speed multiplier, and harvest level.
@@ -40,6 +41,7 @@ var ToolRegistry = map[int32]ToolProperties{
 	// Pickaxes
 	ItemWoodenPickaxe:  {Type: ToolPickaxe, Tier: TierWood, MaxDurability: 59, MiningSpeed: 2.0, HarvestLevel: 0, AttackDamage: 2.0},
 	ItemStonePickaxe:   {Type: ToolPickaxe, Tier: TierStone, MaxDurability: 131, MiningSpeed: 4.0, HarvestLevel: 1, AttackDamage: 3.0},
+	ItemCopperPickaxe:  {Type: ToolPickaxe, Tier: TierCopper, MaxDurability: 190, MiningSpeed: 5.0, HarvestLevel: 1, AttackDamage: 2.0},
 	ItemIronPickaxe:    {Type: ToolPickaxe, Tier: TierIron, MaxDurability: 250, MiningSpeed: 6.0, HarvestLevel: 2, AttackDamage: 4.0},
 	ItemDiamondPickaxe: {Type: ToolPickaxe, Tier: TierDiamond, MaxDurability: 1561, MiningSpeed: 8.0, HarvestLevel: 3, AttackDamage: 5.0},
 	285:                {Type: ToolPickaxe, Tier: TierGold, MaxDurability: 32, MiningSpeed: 12.0, HarvestLevel: 0, AttackDamage: 2.0}, // Golden Pickaxe
@@ -47,6 +49,7 @@ var ToolRegistry = map[int32]ToolProperties{
 	// Swords (ID: 268 Wood, 272 Stone, 267 Iron, 276 Diamond, 283 Gold)
 	268:                  {Type: ToolSword, Tier: TierWood, MaxDurability: 59, MiningSpeed: 1.5, HarvestLevel: 0, AttackDamage: 4.0},
 	272:                  {Type: ToolSword, Tier: TierStone, MaxDurability: 131, MiningSpeed: 1.5, HarvestLevel: 0, AttackDamage: 5.0},
+	ItemCopperSword:      {Type: ToolSword, Tier: TierCopper, MaxDurability: 190, MiningSpeed: 1.5, HarvestLevel: 0, AttackDamage: 4.0},
 	267:                  {Type: ToolSword, Tier: TierIron, MaxDurability: 250, MiningSpeed: 1.5, HarvestLevel: 0, AttackDamage: 6.0},
 	276:                  {Type: ToolSword, Tier: TierDiamond, MaxDurability: 1561, MiningSpeed: 1.5, HarvestLevel: 0, AttackDamage: 7.0},
 	283:                  {Type: ToolSword, Tier: TierGold, MaxDurability: 32, MiningSpeed: 1.5, HarvestLevel: 0, AttackDamage: 4.0}, // Golden Sword
@@ -57,25 +60,28 @@ var ToolRegistry = map[int32]ToolProperties{
 	ItemNetheriteHoe:     {Type: ToolHoe, Tier: TierNetherite, MaxDurability: 2031, MiningSpeed: 9.0, HarvestLevel: 3, AttackDamage: 1.0},
 
 	// Axes (ID: 271 Wood, 275 Stone, 258 Iron, 279 Diamond, 286 Gold)
-	271: {Type: ToolAxe, Tier: TierWood, MaxDurability: 59, MiningSpeed: 2.0, HarvestLevel: 0, AttackDamage: 7.0},
-	275: {Type: ToolAxe, Tier: TierStone, MaxDurability: 131, MiningSpeed: 4.0, HarvestLevel: 1, AttackDamage: 9.0},
-	258: {Type: ToolAxe, Tier: TierIron, MaxDurability: 250, MiningSpeed: 6.0, HarvestLevel: 2, AttackDamage: 9.0},
-	279: {Type: ToolAxe, Tier: TierDiamond, MaxDurability: 1561, MiningSpeed: 8.0, HarvestLevel: 3, AttackDamage: 9.0},
-	286: {Type: ToolAxe, Tier: TierGold, MaxDurability: 32, MiningSpeed: 12.0, HarvestLevel: 0, AttackDamage: 7.0}, // Golden Axe
+	271:           {Type: ToolAxe, Tier: TierWood, MaxDurability: 59, MiningSpeed: 2.0, HarvestLevel: 0, AttackDamage: 7.0},
+	275:           {Type: ToolAxe, Tier: TierStone, MaxDurability: 131, MiningSpeed: 4.0, HarvestLevel: 1, AttackDamage: 9.0},
+	ItemCopperAxe: {Type: ToolAxe, Tier: TierCopper, MaxDurability: 190, MiningSpeed: 5.0, HarvestLevel: 1, AttackDamage: 8.0},
+	258:           {Type: ToolAxe, Tier: TierIron, MaxDurability: 250, MiningSpeed: 6.0, HarvestLevel: 2, AttackDamage: 9.0},
+	279:           {Type: ToolAxe, Tier: TierDiamond, MaxDurability: 1561, MiningSpeed: 8.0, HarvestLevel: 3, AttackDamage: 9.0},
+	286:           {Type: ToolAxe, Tier: TierGold, MaxDurability: 32, MiningSpeed: 12.0, HarvestLevel: 0, AttackDamage: 7.0}, // Golden Axe
 
 	// Shovels (ID: 269 Wood, 273 Stone, 256 Iron, 277 Diamond, 284 Gold)
-	269: {Type: ToolShovel, Tier: TierWood, MaxDurability: 59, MiningSpeed: 2.0, HarvestLevel: 0, AttackDamage: 2.5},
-	273: {Type: ToolShovel, Tier: TierStone, MaxDurability: 131, MiningSpeed: 4.0, HarvestLevel: 1, AttackDamage: 3.5},
-	256: {Type: ToolShovel, Tier: TierIron, MaxDurability: 250, MiningSpeed: 6.0, HarvestLevel: 2, AttackDamage: 4.5},
-	277: {Type: ToolShovel, Tier: TierDiamond, MaxDurability: 1561, MiningSpeed: 8.0, HarvestLevel: 3, AttackDamage: 5.5},
-	284: {Type: ToolShovel, Tier: TierGold, MaxDurability: 32, MiningSpeed: 12.0, HarvestLevel: 0, AttackDamage: 2.5}, // Golden Shovel
+	269:              {Type: ToolShovel, Tier: TierWood, MaxDurability: 59, MiningSpeed: 2.0, HarvestLevel: 0, AttackDamage: 2.5},
+	273:              {Type: ToolShovel, Tier: TierStone, MaxDurability: 131, MiningSpeed: 4.0, HarvestLevel: 1, AttackDamage: 3.5},
+	ItemCopperShovel: {Type: ToolShovel, Tier: TierCopper, MaxDurability: 190, MiningSpeed: 5.0, HarvestLevel: 1, AttackDamage: 2.5},
+	256:              {Type: ToolShovel, Tier: TierIron, MaxDurability: 250, MiningSpeed: 6.0, HarvestLevel: 2, AttackDamage: 4.5},
+	277:              {Type: ToolShovel, Tier: TierDiamond, MaxDurability: 1561, MiningSpeed: 8.0, HarvestLevel: 3, AttackDamage: 5.5},
+	284:              {Type: ToolShovel, Tier: TierGold, MaxDurability: 32, MiningSpeed: 12.0, HarvestLevel: 0, AttackDamage: 2.5}, // Golden Shovel
 
 	// Hoes (ID: 290 Wood, 291 Stone, 292 Iron, 293 Diamond, 294 Gold)
-	290: {Type: ToolHoe, Tier: TierWood, MaxDurability: 59, MiningSpeed: 1.0, HarvestLevel: 0, AttackDamage: 1.0},
-	291: {Type: ToolHoe, Tier: TierStone, MaxDurability: 131, MiningSpeed: 1.0, HarvestLevel: 0, AttackDamage: 1.0},
-	292: {Type: ToolHoe, Tier: TierIron, MaxDurability: 250, MiningSpeed: 1.0, HarvestLevel: 0, AttackDamage: 1.0},
-	293: {Type: ToolHoe, Tier: TierDiamond, MaxDurability: 1561, MiningSpeed: 1.0, HarvestLevel: 0, AttackDamage: 1.0},
-	294: {Type: ToolHoe, Tier: TierGold, MaxDurability: 32, MiningSpeed: 1.0, HarvestLevel: 0, AttackDamage: 1.0},
+	290:           {Type: ToolHoe, Tier: TierWood, MaxDurability: 59, MiningSpeed: 1.0, HarvestLevel: 0, AttackDamage: 1.0},
+	291:           {Type: ToolHoe, Tier: TierStone, MaxDurability: 131, MiningSpeed: 1.0, HarvestLevel: 0, AttackDamage: 1.0},
+	ItemCopperHoe: {Type: ToolHoe, Tier: TierCopper, MaxDurability: 190, MiningSpeed: 5.0, HarvestLevel: 0, AttackDamage: 0.0},
+	292:           {Type: ToolHoe, Tier: TierIron, MaxDurability: 250, MiningSpeed: 1.0, HarvestLevel: 0, AttackDamage: 1.0},
+	293:           {Type: ToolHoe, Tier: TierDiamond, MaxDurability: 1561, MiningSpeed: 1.0, HarvestLevel: 0, AttackDamage: 1.0},
+	294:           {Type: ToolHoe, Tier: TierGold, MaxDurability: 32, MiningSpeed: 1.0, HarvestLevel: 0, AttackDamage: 1.0},
 
 	// Shears (ID: 359)
 	359: {Type: ToolNone, Tier: TierIron, MaxDurability: 238, MiningSpeed: 15.0, HarvestLevel: 0, AttackDamage: 1.0},

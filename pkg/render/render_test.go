@@ -691,6 +691,11 @@ func TestOfficialItemAndBlockTextures(t *testing.T) {
 		{inventory.ItemEmerald, "emerald"},
 		{inventory.ItemLapisLazuli, "lapis_lazuli"},
 		{inventory.ItemCopperIngot, "copper_ingot"},
+		{inventory.ItemCopperSword, "copper_sword"},
+		{inventory.ItemCopperShovel, "copper_shovel"},
+		{inventory.ItemCopperPickaxe, "copper_pickaxe"},
+		{inventory.ItemCopperAxe, "copper_axe"},
+		{inventory.ItemCopperHoe, "copper_hoe"},
 		{inventory.ItemNetheriteScrap, "netherite_scrap"},
 		{inventory.ItemTorch, "torch"},
 	}

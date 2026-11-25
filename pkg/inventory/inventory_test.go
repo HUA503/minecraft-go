@@ -724,6 +724,42 @@ func TestNetheriteSwordIsAFunctionalCreativeCombatItem(t *testing.T) {
 	}
 }
 
+func TestCopperToolsMatchJava263CreativeItemsAndProperties(t *testing.T) {
+	for _, tc := range []struct {
+		id       int32
+		name     string
+		display  string
+		category CreativeCategory
+		typeID   ToolType
+		speed    float64
+		level    int
+		damage   float32
+	}{
+		{ItemCopperSword, "copper_sword", "铜剑", CreativeCombat, ToolSword, 1.5, 0, 4.0},
+		{ItemCopperShovel, "copper_shovel", "铜锹", CreativeTools, ToolShovel, 5.0, 1, 2.5},
+		{ItemCopperPickaxe, "copper_pickaxe", "铜镐", CreativeTools, ToolPickaxe, 5.0, 1, 2.0},
+		{ItemCopperAxe, "copper_axe", "铜斧", CreativeTools, ToolAxe, 5.0, 1, 8.0},
+		{ItemCopperHoe, "copper_hoe", "铜锄", CreativeTools, ToolHoe, 5.0, 0, 0.0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			items := SearchCreativeCatalog(tc.category, "minecraft:"+tc.name)
+			if len(items) != 1 || items[0].ID != tc.id || items[0].Name != tc.display {
+				t.Fatalf("creative search for %q = %+v", tc.name, items)
+			}
+			props, ok := GetToolProperties(tc.id)
+			if !ok || props.Type != tc.typeID || props.Tier != TierCopper || props.MaxDurability != 190 || props.MiningSpeed != tc.speed || props.HarvestLevel != tc.level || props.AttackDamage != tc.damage {
+				t.Fatalf("copper item %q properties = %+v, found=%t", tc.name, props, ok)
+			}
+			if got := GetMaxStackSize(tc.id); got != 1 {
+				t.Fatalf("copper item %q max stack = %d, want 1", tc.name, got)
+			}
+		})
+	}
+	if !CanHarvestBlock(ItemCopperPickaxe, 15) {
+		t.Fatal("copper pickaxe should harvest iron ore in the Java 26.3 tier")
+	}
+}
+
 func TestAddedOreBlocksAreSearchableAndHaveHarvestDrops(t *testing.T) {
 	want := map[string]struct {
 		drop  int32

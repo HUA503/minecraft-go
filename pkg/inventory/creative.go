@@ -122,6 +122,16 @@ func creativeItemRegistryName(itemID int32) string {
 		return "minecraft:copper_leggings"
 	case ItemCopperBoots:
 		return "minecraft:copper_boots"
+	case ItemCopperSword:
+		return "minecraft:copper_sword"
+	case ItemCopperShovel:
+		return "minecraft:copper_shovel"
+	case ItemCopperPickaxe:
+		return "minecraft:copper_pickaxe"
+	case ItemCopperAxe:
+		return "minecraft:copper_axe"
+	case ItemCopperHoe:
+		return "minecraft:copper_hoe"
 	case ItemRawCopper:
 		return "minecraft:raw_copper"
 	case ItemRawIron:
@@ -216,14 +226,15 @@ var creativeCatalog = []CreativeItem{
 	{150, "深板岩", CreativeBlocks}, {152, "红石块", CreativeRedstone}, {153, "投掷器", CreativeBlocks}, {154, "漏斗", CreativeBlocks},
 	{155, "石英块", CreativeBlocks}, {159, "白色陶瓦", CreativeDecoration}, {165, "黏液块", CreativeBlocks}, {168, "海晶石", CreativeBlocks}, {169, "海晶灯", CreativeFunctional}, {170, "干草块", CreativeBlocks}, {172, "陶瓦", CreativeDecoration}, {173, "煤炭块", CreativeBlocks}, {174, "浮冰", CreativeNatural}, {179, "红砂岩", CreativeBlocks},
 
-	{268, "木剑", CreativeCombat}, {272, "石剑", CreativeCombat}, {267, "铁剑", CreativeCombat}, {276, "钻石剑", CreativeCombat},
-	{283, "金剑", CreativeCombat}, {270, "木镐", CreativeTools}, {274, "石镐", CreativeTools}, {257, "铁镐", CreativeTools},
-	{ItemNetheriteSword, "下界合金剑", CreativeCombat},
-	{278, "钻石镐", CreativeTools}, {285, "金镐", CreativeTools}, {ItemNetheritePickaxe, "下界合金镐", CreativeTools}, {271, "木斧", CreativeTools}, {275, "石斧", CreativeTools},
-	{258, "铁斧", CreativeTools}, {279, "钻石斧", CreativeTools}, {286, "金斧", CreativeTools}, {ItemNetheriteAxe, "下界合金斧", CreativeTools}, {269, "木锹", CreativeTools},
-	{273, "石锹", CreativeTools}, {256, "铁锹", CreativeTools}, {277, "钻石锹", CreativeTools}, {284, "金锹", CreativeTools}, {ItemNetheriteShovel, "下界合金锹", CreativeTools},
-	{290, "木锄", CreativeTools}, {291, "石锄", CreativeTools}, {292, "铁锄", CreativeTools}, {293, "钻石锄", CreativeTools},
-	{294, "金锄", CreativeTools}, {ItemNetheriteHoe, "下界合金锄", CreativeTools}, {261, "弓", CreativeCombat}, {259, "打火石", CreativeTools}, {359, "剪刀", CreativeTools},
+	{268, "木剑", CreativeCombat}, {272, "石剑", CreativeCombat}, {ItemCopperSword, "铜剑", CreativeCombat}, {267, "铁剑", CreativeCombat}, {283, "金剑", CreativeCombat}, {276, "钻石剑", CreativeCombat}, {ItemNetheriteSword, "下界合金剑", CreativeCombat},
+	{269, "木锹", CreativeTools}, {270, "木镐", CreativeTools}, {271, "木斧", CreativeTools}, {ItemWoodenHoe, "木锄", CreativeTools},
+	{273, "石锹", CreativeTools}, {274, "石镐", CreativeTools}, {275, "石斧", CreativeTools}, {ItemStoneHoe, "石锄", CreativeTools},
+	{ItemCopperShovel, "铜锹", CreativeTools}, {ItemCopperPickaxe, "铜镐", CreativeTools}, {ItemCopperAxe, "铜斧", CreativeTools}, {ItemCopperHoe, "铜锄", CreativeTools},
+	{256, "铁锹", CreativeTools}, {257, "铁镐", CreativeTools}, {258, "铁斧", CreativeTools}, {ItemIronHoe, "铁锄", CreativeTools},
+	{284, "金锹", CreativeTools}, {285, "金镐", CreativeTools}, {286, "金斧", CreativeTools}, {ItemGoldenHoe, "金锄", CreativeTools},
+	{277, "钻石锹", CreativeTools}, {278, "钻石镐", CreativeTools}, {279, "钻石斧", CreativeTools}, {ItemDiamondHoe, "钻石锄", CreativeTools},
+	{ItemNetheriteShovel, "下界合金锹", CreativeTools}, {ItemNetheritePickaxe, "下界合金镐", CreativeTools}, {ItemNetheriteAxe, "下界合金斧", CreativeTools}, {ItemNetheriteHoe, "下界合金锄", CreativeTools},
+	{261, "弓", CreativeCombat}, {259, "打火石", CreativeTools}, {359, "剪刀", CreativeTools},
 	{298, "皮革帽子", CreativeCombat}, {299, "皮革外套", CreativeCombat}, {300, "皮革裤子", CreativeCombat}, {301, "皮革靴子", CreativeCombat},
 	{306, "铁头盔", CreativeCombat}, {307, "铁胸甲", CreativeCombat}, {308, "铁护腿", CreativeCombat}, {309, "铁靴子", CreativeCombat},
 	{310, "钻石头盔", CreativeCombat}, {311, "钻石胸甲", CreativeCombat}, {312, "钻石护腿", CreativeCombat}, {313, "钻石靴子", CreativeCombat},

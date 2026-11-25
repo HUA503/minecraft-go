@@ -128,6 +128,11 @@ const (
 	ItemNetheritePickaxe    int32 = 13018
 	ItemNetheriteShovel     int32 = 13019
 	ItemNetheriteHoe        int32 = 13020
+	ItemCopperSword         int32 = 13021
+	ItemCopperShovel        int32 = 13022
+	ItemCopperPickaxe       int32 = 13023
+	ItemCopperAxe           int32 = 13024
+	ItemCopperHoe           int32 = 13025
 
 	// Utility, materials, and blocks
 	ItemBucket        int32 = 325

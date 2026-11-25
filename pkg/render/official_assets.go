@@ -541,6 +541,16 @@ func GetOfficialItemTextureName(itemID int32) string {
 		return "copper_leggings"
 	case inventory.ItemCopperBoots:
 		return "copper_boots"
+	case inventory.ItemCopperSword:
+		return "copper_sword"
+	case inventory.ItemCopperShovel:
+		return "copper_shovel"
+	case inventory.ItemCopperPickaxe:
+		return "copper_pickaxe"
+	case inventory.ItemCopperAxe:
+		return "copper_axe"
+	case inventory.ItemCopperHoe:
+		return "copper_hoe"
 	case inventory.ItemNetheriteIngot:
 		return "netherite_ingot"
 	case inventory.ItemNetheriteHelmet:
