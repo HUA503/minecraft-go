@@ -23,17 +23,17 @@ func TestAABBIntersection(t *testing.T) {
 	}
 }
 
-func TestTickDoesNotDeadlockAtHundredthTick(t *testing.T) {
+func TestTickNaturalMobSpawnDoesNotDeadlock(t *testing.T) {
 	eng := NewEngine()
 	player := eng.AddPlayer("test", [16]byte{}, Vec3{X: 0.5, Y: 64, Z: 0.5})
 	if player == nil {
 		t.Fatal("expected player to be added")
 	}
-	eng.TickCount = 99
+	eng.TickCount = 59
 
-	// The removed 100-tick spawning path selected a random position 24–54
-	// blocks from the player. Make every candidate a valid grass surface so the
-	// regression reliably reaches the former nested SpawnMob lock.
+	// Natural spawning runs at tick 60 and selects a position 28–47 blocks from
+	// the player. Make every candidate a valid grass surface so this regression
+	// reliably exercises the spawning path that previously re-locked Engine.mu.
 	for chunkX := int32(-4); chunkX <= 3; chunkX++ {
 		for chunkZ := int32(-4); chunkZ <= 3; chunkZ++ {
 			pos := world.ChunkPos{X: chunkX, Z: chunkZ}
@@ -56,7 +56,13 @@ func TestTickDoesNotDeadlockAtHundredthTick(t *testing.T) {
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second):
-		t.Fatal("Engine.Tick deadlocked during natural mob spawning at tick 100")
+		t.Fatal("Engine.Tick deadlocked during natural mob spawning at tick 60")
+	}
+	eng.mu.RLock()
+	mobCount := len(eng.Mobs)
+	eng.mu.RUnlock()
+	if mobCount == 0 {
+		t.Fatal("tick 60 completed without spawning on a valid daytime grass surface")
 	}
 }
 
