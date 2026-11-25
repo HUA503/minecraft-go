@@ -117,6 +117,7 @@ func TestModernFullCubeBlocksDeclareMiningAndDropRules(t *testing.T) {
 		"minecraft:pale_oak_planks", "minecraft:birch_planks", "minecraft:dark_oak_planks",
 		"minecraft:birch_log", "minecraft:acacia_log", "minecraft:stripped_pale_oak_log",
 		"minecraft:crimson_stem", "minecraft:stripped_bamboo_block",
+		"minecraft:poplar_wood", "minecraft:stripped_poplar_wood",
 	} {
 		definition, ok := byName[name]
 		if !ok {
@@ -135,6 +136,37 @@ func TestModernFullCubeBlocksDeclareMiningAndDropRules(t *testing.T) {
 	planks := byName["minecraft:pale_oak_planks"]
 	if planks.HarvestTool != ToolAxe || planks.RequiresHarvestTool {
 		t.Fatalf("planks must be axe-efficient without requiring an axe: %+v", planks)
+	}
+}
+
+func TestPoplarWoodVariantsAreCreativePlaceableAndStrippable(t *testing.T) {
+	wood, ok := ExtendedBlockByName("minecraft:poplar_wood")
+	if !ok {
+		t.Fatal("poplar wood is missing from the block registry")
+	}
+	stripped, ok := ExtendedBlockByName("minecraft:stripped_poplar_wood")
+	if !ok {
+		t.Fatal("stripped poplar wood is missing from the block registry")
+	}
+	if wood.StrippedVariantID != stripped.RuntimeID {
+		t.Fatalf("poplar wood strips to %d, want %d", wood.StrippedVariantID, stripped.RuntimeID)
+	}
+	if got, ok := StrippedWoodBlockVariant(wood.RuntimeID); !ok || got != stripped.RuntimeID {
+		t.Fatalf("StrippedWoodBlockVariant(poplar_wood) = %d, %t; want %d, true", got, ok, stripped.RuntimeID)
+	}
+	for _, tc := range []struct {
+		definition ExtendedBlockDefinition
+		name       string
+	}{
+		{wood, "杨木"},
+		{stripped, "去皮杨木"},
+	} {
+		if !IsPlaceableBlock(tc.definition.RuntimeID) || tc.definition.Hardness != 2 || tc.definition.HarvestTool != ToolAxe {
+			t.Errorf("poplar wood block lacks placement or mining behavior: %+v", tc.definition)
+		}
+		if got := CreativeItemDisplayName(tc.definition.RuntimeID); got != tc.name {
+			t.Errorf("creative display name for %s = %q, want %q", tc.definition.Name, got, tc.name)
+		}
 	}
 }
 
@@ -177,6 +209,7 @@ func TestWoodLogsExposeStrippedVariants(t *testing.T) {
 		{"minecraft:stripped_warped_stem", 0},
 		{"minecraft:stripped_bamboo_block", 0},
 		{"minecraft:stripped_poplar_log", 0},
+		{"minecraft:stripped_poplar_wood", 0},
 	} {
 		var strippedID int32
 		for _, definition := range ExtendedBlockDefinitions() {
@@ -714,3 +747,4 @@ func TestCreativeCatalogDoesNotListNonItemBlockStates(t *testing.T) {
 		}
 	}
 }
+
