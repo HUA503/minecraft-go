@@ -69,6 +69,28 @@ func TestJava263ColoredStairItemIconsUseTheirShape(t *testing.T) {
 	}
 }
 
+func TestWoodStairItemIconsUseTheirShapeAndTextures(t *testing.T) {
+	for _, stair := range inventory.ModernWoodStairItemDefinitions() {
+		t.Run(stair.Name, func(t *testing.T) {
+			if Textures[stair.RuntimeID] == nil {
+				t.Fatal("wood stair world texture is missing")
+			}
+			icon := RenderIsometricBlock16x16(stair.RuntimeID)
+			visible := 0
+			for _, row := range icon {
+				for _, pixel := range row {
+					if pixel>>24 != 0 {
+						visible++
+					}
+				}
+			}
+			if visible < 40 {
+				t.Fatalf("wood stair icon has only %d visible pixels", visible)
+			}
+		})
+	}
+}
+
 func TestJava263ColoredCushionItemsUseOfficialSprites(t *testing.T) {
 	for id := inventory.FirstCushionBlock; id <= inventory.LastCushionBlock; id++ {
 		if name := GetOfficialItemTextureName(id); name == "" {

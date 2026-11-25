@@ -1238,8 +1238,55 @@ func TestCreativeTabsIncludeVanillaCrossCategoryItems(t *testing.T) {
 		}
 		seen[item.ID] = struct{}{}
 	}
-	if all := CreativeCatalog(CreativeAll); len(all) != 710 {
-		t.Fatalf("canonical Search tab has %d items after adding 16 colored cushions, want 710", len(all))
+	if all := CreativeCatalog(CreativeAll); len(all) != 724 {
+		t.Fatalf("canonical Search tab has %d items after adding 14 wood stairs, want 724", len(all))
+	}
+}
+
+func TestWoodStairsCatalogStatesAndRecipes(t *testing.T) {
+	if len(woodStairDefinitions) != 14 {
+		t.Fatalf("wood stair family has %d definitions, want 14", len(woodStairDefinitions))
+	}
+	for _, stair := range woodStairDefinitions {
+		t.Run(stair.Name, func(t *testing.T) {
+			block, ok := ExtendedBlockByID(stair.ItemID)
+			if !ok || block.Name != stair.Name || block.TextureTop != stair.Texture || block.Category != CreativeBlocks || block.DropRuntimeID != stair.ItemID {
+				t.Fatalf("stair block definition = %+v, %t", block, ok)
+			}
+			matches := SearchCreativeCatalog(CreativeBlocks, stair.Name)
+			if len(matches) != 1 || matches[0].ID != stair.ItemID {
+				t.Fatalf("creative search %q = %+v", stair.Name, matches)
+			}
+			for facing := StairFacing(0); facing < 4; facing++ {
+				for _, upsideDown := range []bool{false, true} {
+					state, ok := StairBlockState(stair.ItemID, facing, upsideDown)
+					if !ok {
+						t.Fatalf("failed to create stair state for facing=%d upsideDown=%t", facing, upsideDown)
+					}
+					item, gotFacing, gotUpsideDown, ok := StairStateProperties(state)
+					if !ok || item != stair.ItemID || gotFacing != facing || gotUpsideDown != upsideDown {
+						t.Errorf("state %d decoded as (%d,%d,%t,%t)", state, item, gotFacing, gotUpsideDown, ok)
+					}
+					if boxes, ok := BlockCollisionBoxes(state); !ok || len(boxes) != 2 {
+						t.Errorf("stair state %d collision boxes = %+v, %t", state, boxes, ok)
+					}
+				}
+			}
+			var sourceID int32
+			for _, item := range CreativeCatalog(CreativeAll) {
+				if creativeItemRegistryName(item.ID) == stair.SourceBlock {
+					sourceID = item.ID
+					break
+				}
+			}
+			if sourceID == 0 {
+				t.Fatalf("source block %s is missing", stair.SourceBlock)
+			}
+			crafted, ok := NewCraftingManager().MatchCrafting([]int32{sourceID, 0, 0, sourceID, sourceID, 0, sourceID, sourceID, sourceID}, 3)
+			if !ok || crafted.ItemID != stair.ItemID || crafted.Count != 4 {
+				t.Errorf("recipe output = %+v, %t; want 4 %s", crafted, ok, stair.Name)
+			}
+		})
 	}
 }
 
@@ -1345,8 +1392,8 @@ func TestJava263WoolAndConcreteStairItemsAndStates(t *testing.T) {
 			}
 		}
 	}
-	if len(catalog) != 710 {
-		t.Fatalf("all-items search catalog length = %d, want 710", len(catalog))
+	if len(catalog) != 724 {
+		t.Fatalf("all-items search catalog length = %d, want 724", len(catalog))
 	}
 	whiteWoolCount := 0
 	for _, item := range catalog {

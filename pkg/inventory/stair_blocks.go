@@ -1,11 +1,16 @@
 package inventory
 
-import "math"
+import (
+	"math"
+	"strings"
+)
 
 const (
 	FirstColorStairItem  int32 = 18300
 	LastColorStairItem   int32 = FirstColorStairItem + 31
 	FirstColorStairState int32 = 27000
+	FirstWoodStairItem   int32 = 18400
+	FirstWoodStairState  int32 = 28000
 	StairStatesPerItem         = 8 // four horizontal facings, lower and upper halves
 )
 
@@ -21,6 +26,45 @@ type colorStairDefinition struct {
 }
 
 var colorStairDefinitions = buildColorStairDefinitions()
+
+type woodStairDefinition struct {
+	ItemID      int32
+	Name        string
+	DisplayName string
+	Texture     string
+	SourceBlock string
+}
+
+var woodStairDefinitions = buildWoodStairDefinitions()
+
+func buildWoodStairDefinitions() []woodStairDefinition {
+	definitions := []woodStairDefinition{{
+		ItemID: FirstWoodStairItem, Name: "minecraft:oak_stairs", DisplayName: "橡木楼梯",
+		Texture: "oak_planks", SourceBlock: "minecraft:oak_planks",
+	}}
+	for _, slab := range woodSlabDefinitions {
+		woodName := strings.TrimSuffix(strings.TrimPrefix(slab.PlankBlock, "minecraft:"), "_planks")
+		definitions = append(definitions, woodStairDefinition{
+			ItemID: FirstWoodStairItem + int32(len(definitions)),
+			Name:   "minecraft:" + woodName + "_stairs", DisplayName: slab.DisplayName[:len(slab.DisplayName)-len("台阶")] + "楼梯",
+			Texture: slab.Texture, SourceBlock: slab.PlankBlock,
+		})
+	}
+	return definitions
+}
+
+func woodStairBlockDefinitions() []ExtendedBlockDefinition {
+	definitions := make([]ExtendedBlockDefinition, 0, len(woodStairDefinitions))
+	for _, stair := range woodStairDefinitions {
+		definitions = append(definitions, ExtendedBlockDefinition{
+			RuntimeID: stair.ItemID, Name: stair.Name,
+			TextureTop: stair.Texture, TextureBottom: stair.Texture, TextureSide: stair.Texture,
+			Category: CreativeBlocks, Hardness: 2, HarvestTool: ToolAxe, DropRuntimeID: stair.ItemID,
+		})
+		extendedBlockDisplayNames[stair.Name] = stair.DisplayName
+	}
+	return definitions
+}
 
 func buildColorStairDefinitions() []colorStairDefinition {
 	colors := [...]struct{ id, display string }{
@@ -65,6 +109,10 @@ func colorStairBlockDefinitions() []ExtendedBlockDefinition {
 	return definitions
 }
 
+func ModernWoodStairItemDefinitions() []ExtendedBlockDefinition {
+	return append([]ExtendedBlockDefinition(nil), woodStairBlockDefinitions()...)
+}
+
 // ModernStairItemDefinitions returns the Java 26.3 colored wool/concrete stairs.
 func ModernStairItemDefinitions() []ExtendedBlockDefinition {
 	return append([]ExtendedBlockDefinition(nil), colorStairBlockDefinitions()...)
@@ -74,14 +122,26 @@ func ModernStairItemDefinitions() []ExtendedBlockDefinition {
 type StairFacing uint8
 
 func StairBlockState(itemID int32, facing StairFacing, upsideDown bool) (int32, bool) {
-	if itemID < FirstColorStairItem || itemID > LastColorStairItem || facing > 3 {
+	base, index, ok := stairStateIndex(itemID)
+	if !ok || facing > 3 {
 		return itemID, false
 	}
 	state := int32(facing)
 	if upsideDown {
 		state |= 4
 	}
-	return FirstColorStairState + (itemID-FirstColorStairItem)*StairStatesPerItem + state, true
+	return base + index*StairStatesPerItem + state, true
+}
+
+func stairStateIndex(itemID int32) (base, index int32, ok bool) {
+	if itemID >= FirstColorStairItem && itemID <= LastColorStairItem {
+		return FirstColorStairState, itemID - FirstColorStairItem, true
+	}
+	woodLast := FirstWoodStairItem + int32(len(woodStairDefinitions)) - 1
+	if itemID >= FirstWoodStairItem && itemID <= woodLast {
+		return FirstWoodStairState, itemID - FirstWoodStairItem, true
+	}
+	return 0, 0, false
 }
 
 func StairPlacementState(itemID int32, yaw float64, faceY int32, localHitY float64) (int32, bool) {
@@ -99,11 +159,20 @@ func StairItemForBlockState(blockID int32) (int32, bool) {
 	if blockID >= FirstColorStairItem && blockID <= LastColorStairItem {
 		return blockID, true
 	}
-	if blockID < FirstColorStairState || blockID >= FirstColorStairState+int32(len(colorStairDefinitions))*StairStatesPerItem {
-		return 0, false
+	colorStateEnd := FirstColorStairState + int32(len(colorStairDefinitions))*StairStatesPerItem
+	if blockID >= FirstColorStairState && blockID < colorStateEnd {
+		itemIndex := (blockID - FirstColorStairState) / StairStatesPerItem
+		return FirstColorStairItem + itemIndex, true
 	}
-	itemIndex := (blockID - FirstColorStairState) / StairStatesPerItem
-	return FirstColorStairItem + itemIndex, true
+	woodStateEnd := FirstWoodStairState + int32(len(woodStairDefinitions))*StairStatesPerItem
+	if blockID >= FirstWoodStairState && blockID < woodStateEnd {
+		itemIndex := (blockID - FirstWoodStairState) / StairStatesPerItem
+		return FirstWoodStairItem + itemIndex, true
+	}
+	if blockID >= FirstWoodStairItem && blockID < FirstWoodStairItem+int32(len(woodStairDefinitions)) {
+		return blockID, true
+	}
+	return 0, false
 }
 
 func StairStateProperties(blockID int32) (itemID int32, facing StairFacing, upsideDown bool, ok bool) {
@@ -111,7 +180,14 @@ func StairStateProperties(blockID int32) (itemID int32, facing StairFacing, upsi
 	if !ok || blockID == itemID {
 		return itemID, 0, false, false
 	}
-	state := (blockID - FirstColorStairState) % StairStatesPerItem
+	state := int32(0)
+	if blockID >= FirstColorStairState && blockID < FirstColorStairState+int32(len(colorStairDefinitions))*StairStatesPerItem {
+		state = (blockID - FirstColorStairState) % StairStatesPerItem
+	} else if blockID >= FirstWoodStairState && blockID < FirstWoodStairState+int32(len(woodStairDefinitions))*StairStatesPerItem {
+		state = (blockID - FirstWoodStairState) % StairStatesPerItem
+	} else {
+		return itemID, 0, false, false
+	}
 	return itemID, StairFacing(state & 3), state&4 != 0, true
 }
 

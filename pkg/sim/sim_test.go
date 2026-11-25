@@ -646,6 +646,26 @@ func TestJava263ColoredStairPlacementCollisionAndDrops(t *testing.T) {
 	}
 }
 
+func TestWoodStairPlacementAndDrop(t *testing.T) {
+	eng := NewEngine()
+	player := eng.AddPlayer("Steve", [16]byte{98}, Vec3{X: 10.5, Y: 64, Z: 10.5})
+	eng.SetBlock(11, 63, 10, inventory.ItemStone)
+	state, ok := inventory.StairBlockState(inventory.FirstWoodStairItem, inventory.StairFacing(1), true)
+	if !ok {
+		t.Fatal("could not construct wood stair state")
+	}
+	pos := world.BlockPos{X: 11, Y: 64, Z: 10}
+	if !eng.PlaceBlock(player.ID, pos, state) {
+		t.Fatal("wood stair placement failed")
+	}
+	if got := eng.GetBlock(pos.X, pos.Y, pos.Z); got != state {
+		t.Fatalf("placed block state = %d, want %d", got, state)
+	}
+	if got := eng.BreakBlock(player.ID, pos); got != inventory.FirstWoodStairItem {
+		t.Fatalf("wood stair drop = %d, want item %d", got, inventory.FirstWoodStairItem)
+	}
+}
+
 func TestRedShrubPlacementCollisionAndDrop(t *testing.T) {
 	eng := NewEngine()
 	player := eng.AddPlayer("Steve", [16]byte{1}, Vec3{X: 10.5, Y: 64, Z: 10.5})
