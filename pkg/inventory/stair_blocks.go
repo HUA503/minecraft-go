@@ -194,6 +194,17 @@ func ModernStairItemDefinitions() []ExtendedBlockDefinition {
 // StairFacing uses world directions: 0 north (-Z), 1 east (+X), 2 south (+Z), 3 west (-X).
 type StairFacing uint8
 
+// StairShape is the neighbor-derived outline of a stair block.
+type StairShape uint8
+
+const (
+	StairShapeStraight StairShape = iota
+	StairShapeInnerLeft
+	StairShapeInnerRight
+	StairShapeOuterLeft
+	StairShapeOuterRight
+)
+
 func StairBlockState(itemID int32, facing StairFacing, upsideDown bool) (int32, bool) {
 	base, index, ok := stairStateIndex(itemID)
 	if !ok || facing > 3 {
@@ -280,30 +291,120 @@ func StairStateProperties(blockID int32) (itemID int32, facing StairFacing, upsi
 
 // StairCollisionBoxes returns the union of the half-block base and raised step.
 func StairCollisionBoxes(blockID int32) ([]BlockBox, bool) {
+	return StairCollisionBoxesWithShape(blockID, StairShapeStraight)
+}
+
+// StairCollisionBoxesWithShape returns half-block boxes for the requested
+// vanilla stair outline. Keeping the boxes on the same 2x2x2 grid as rendering
+// makes corner collision agree with the visible model.
+func StairCollisionBoxesWithShape(blockID int32, shape StairShape) ([]BlockBox, bool) {
 	_, facing, upsideDown, ok := StairStateProperties(blockID)
 	if !ok {
 		return nil, false
 	}
-	var step BlockBox
-	switch facing {
-	case 0: // north: raised half is behind the lower front
-		step = BlockBox{MinX: 0, MinY: .5, MinZ: .5, MaxX: 1, MaxY: 1, MaxZ: 1}
-	case 1: // east
-		step = BlockBox{MinX: 0, MinY: .5, MinZ: 0, MaxX: .5, MaxY: 1, MaxZ: 1}
-	case 2: // south
-		step = BlockBox{MinX: 0, MinY: .5, MinZ: 0, MaxX: 1, MaxY: 1, MaxZ: .5}
-	case 3: // west
-		step = BlockBox{MinX: .5, MinY: .5, MinZ: 0, MaxX: 1, MaxY: 1, MaxZ: 1}
+	if shape == StairShapeStraight {
+		var step BlockBox
+		switch facing {
+		case 0:
+			step = BlockBox{MinX: 0, MinY: .5, MinZ: .5, MaxX: 1, MaxY: 1, MaxZ: 1}
+		case 1:
+			step = BlockBox{MinX: 0, MinY: .5, MinZ: 0, MaxX: .5, MaxY: 1, MaxZ: 1}
+		case 2:
+			step = BlockBox{MinX: 0, MinY: .5, MinZ: 0, MaxX: 1, MaxY: 1, MaxZ: .5}
+		case 3:
+			step = BlockBox{MinX: .5, MinY: .5, MinZ: 0, MaxX: 1, MaxY: 1, MaxZ: 1}
+		}
+		base := BlockBox{MinX: 0, MinY: 0, MinZ: 0, MaxX: 1, MaxY: .5, MaxZ: 1}
+		if upsideDown {
+			base = BlockBox{MinX: 0, MinY: .5, MinZ: 0, MaxX: 1, MaxY: 1, MaxZ: 1}
+			step.MinY, step.MaxY = 0, .5
+		}
+		return []BlockBox{base, step}, true
 	}
-	base := BlockBox{MinX: 0, MinY: 0, MinZ: 0, MaxX: 1, MaxY: .5, MaxZ: 1}
-	if upsideDown {
-		base = BlockBox{MinX: 0, MinY: .5, MinZ: 0, MaxX: 1, MaxY: 1, MaxZ: 1}
-		step.MinY, step.MaxY = 0, .5
+	boxes := make([]BlockBox, 0, 8)
+	for cy := 0; cy < 2; cy++ {
+		for cz := 0; cz < 2; cz++ {
+			for cx := 0; cx < 2; cx++ {
+				if !StairVoxelOccupiedWithShape(blockID, cx, cy, cz, shape) {
+					continue
+				}
+				minY := float32(cy) * .5
+				if upsideDown {
+					minY = float32(1-cy) * .5
+				}
+				boxes = append(boxes, BlockBox{MinX: float32(cx) * .5, MinY: minY, MinZ: float32(cz) * .5,
+					MaxX: float32(cx+1) * .5, MaxY: minY + .5, MaxZ: float32(cz+1) * .5})
+			}
+		}
 	}
-	return []BlockBox{base, step}, true
+	return boxes, true
 }
 
 func StairVoxelOccupied(blockID int32, x, y, z int) bool {
+	return StairVoxelOccupiedWithShape(blockID, x, y, z, StairShapeStraight)
+}
+
+// StairShapeAt applies the vanilla front-corner then back-corner rule. The
+// callback must read neighboring block states in world coordinates.
+func StairShapeAt(blockID, x, y, z int32, getBlock func(int32, int32, int32) int32) StairShape {
+	_, facing, upside, ok := StairStateProperties(blockID)
+	if !ok || getBlock == nil {
+		return StairShapeStraight
+	}
+	dx, dz := stairFacingOffset(facing)
+	if shape, found := stairCornerNeighbor(blockID, x, y, z, x+dx, z+dz, facing, upside, true, getBlock); found {
+		return shape
+	}
+	if shape, found := stairCornerNeighbor(blockID, x, y, z, x-dx, z-dz, facing, upside, false, getBlock); found {
+		return shape
+	}
+	return StairShapeStraight
+}
+
+func stairCornerNeighbor(blockID, x, y, z, nx, nz int32, facing StairFacing, upside, outer bool, getBlock func(int32, int32, int32) int32) (StairShape, bool) {
+	_, otherFacing, otherUpside, ok := StairStateProperties(getBlock(nx, y, nz))
+	if !ok || upside != otherUpside || otherFacing&1 == facing&1 {
+		return StairShapeStraight, false
+	}
+	// A stair alongside the corner suppresses the turn, matching the vanilla
+	// canTakeShape check and preventing three-stair pinwheel shapes.
+	otherDX, otherDZ := stairFacingOffset(otherFacing)
+	checkX, checkZ := x-otherDX, z-otherDZ
+	if !outer {
+		checkX, checkZ = x+otherDX, z+otherDZ
+	}
+	_, sideFacing, sideUpside, sideOK := StairStateProperties(getBlock(checkX, y, checkZ))
+	if sideOK && sideFacing == facing && sideUpside == upside {
+		return StairShapeStraight, false
+	}
+	counterClockwise := StairFacing((int(facing) + 3) & 3)
+	left := otherFacing == counterClockwise
+	if outer {
+		if left {
+			return StairShapeOuterLeft, true
+		}
+		return StairShapeOuterRight, true
+	}
+	if left {
+		return StairShapeInnerLeft, true
+	}
+	return StairShapeInnerRight, true
+}
+
+func stairFacingOffset(facing StairFacing) (int32, int32) {
+	switch facing {
+	case 0:
+		return 0, -1
+	case 1:
+		return 1, 0
+	case 2:
+		return 0, 1
+	default:
+		return -1, 0
+	}
+}
+
+func StairVoxelOccupiedWithShape(blockID int32, x, y, z int, shape StairShape) bool {
 	_, facing, upsideDown, ok := StairStateProperties(blockID)
 	if !ok || x < 0 || x > 1 || y < 0 || y > 1 || z < 0 || z > 1 {
 		return false
@@ -314,14 +415,43 @@ func StairVoxelOccupied(blockID int32, x, y, z int) bool {
 	if (!upsideDown && y != 1) || (upsideDown && y != 0) {
 		return false
 	}
+	straight := false
 	switch facing {
 	case 0:
-		return z == 1
+		straight = z == 1
 	case 1:
-		return x == 0
+		straight = x == 0
 	case 2:
-		return z == 0
+		straight = z == 0
 	default:
-		return x == 1
+		straight = x == 1
+	}
+	if straight {
+		return shape != StairShapeOuterLeft && shape != StairShapeOuterRight || stairCornerSideMatch(facing, x, z, shape, false)
+	}
+	return (shape == StairShapeInnerLeft || shape == StairShapeInnerRight) && stairCornerSideMatch(facing, x, z, shape, true)
+}
+
+func stairCornerSideMatch(facing StairFacing, x, z int, shape StairShape, inner bool) bool {
+	left := shape == StairShapeInnerLeft || shape == StairShapeOuterLeft
+	switch facing {
+	case 0, 2:
+		wantX := 0
+		if left == (facing == 2) {
+			wantX = 1
+		}
+		if inner {
+			wantX = 1 - wantX
+		}
+		return x == wantX
+	default:
+		wantZ := 0
+		if left == (facing == 1) {
+			wantZ = 1
+		}
+		if inner {
+			wantZ = 1 - wantZ
+		}
+		return z == wantZ
 	}
 }

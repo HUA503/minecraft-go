@@ -3164,7 +3164,7 @@ func (c *Client) PlaceBlockInFront() bool {
 		if sim.IsSolidBlock(placedBlockID) {
 			pBox := sim.NewPlayerAABB(c.player.Position)
 			intersects := false
-			for _, bBox := range sim.BlockCollisionAABBs(placedBlockID, targetPos.X, targetPos.Y, targetPos.Z) {
+			for _, bBox := range sim.BlockCollisionAABBsAt(placedBlockID, targetPos.X, targetPos.Y, targetPos.Z, c.engine.GetBlockIfLoaded) {
 				if sim.PlacementIntersects(pBox, bBox) {
 					intersects = true
 					break

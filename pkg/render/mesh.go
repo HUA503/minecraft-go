@@ -181,16 +181,17 @@ func BuildSectionMesh(getBlock func(x, y, z int32) int32, originX, originY, orig
 }
 
 func addStairBlockMesh(mesh *Mesh, x, y, z, blockID int32, getBlock func(x, y, z int32) int32) {
+	shape := inventory.StairShapeAt(blockID, x, y, z, getBlock)
 	for cy := 0; cy < 2; cy++ {
 		for cz := 0; cz < 2; cz++ {
 			for cx := 0; cx < 2; cx++ {
-				if !inventory.StairVoxelOccupied(blockID, cx, cy, cz) {
+				if !inventory.StairVoxelOccupiedWithShape(blockID, cx, cy, cz, shape) {
 					continue
 				}
 				for face, offset := range [6][3]int{{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}} {
 					nx, ny, nz := cx+offset[0], cy+offset[1], cz+offset[2]
 					if nx >= 0 && nx < 2 && ny >= 0 && ny < 2 && nz >= 0 && nz < 2 {
-						if inventory.StairVoxelOccupied(blockID, nx, ny, nz) {
+						if inventory.StairVoxelOccupiedWithShape(blockID, nx, ny, nz, shape) {
 							continue
 						}
 					} else {

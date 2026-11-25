@@ -187,8 +187,18 @@ func buildMasonrySlabDefinitions() []masonrySlabDefinition {
 // partial block states. A false result means the caller should use its normal
 // full-cube or non-solid rule.
 func BlockCollisionBoxes(blockID int32) ([]BlockBox, bool) {
+	return BlockCollisionBoxesAt(blockID, 0, 0, 0, nil)
+}
+
+// BlockCollisionBoxesAt resolves neighbor-dependent block outlines (currently
+// stair corners) at a world position. A nil callback gives the straight shape.
+func BlockCollisionBoxesAt(blockID, x, y, z int32, getBlock func(int32, int32, int32) int32) ([]BlockBox, bool) {
 	if IsCushionBlock(blockID) {
 		return cushionVisualBox, true
+	}
+	if _, _, _, stair := StairStateProperties(blockID); stair {
+		shape := StairShapeAt(blockID, x, y, z, getBlock)
+		return StairCollisionBoxesWithShape(blockID, shape)
 	}
 	if boxes, ok := StairCollisionBoxes(blockID); ok {
 		return boxes, true

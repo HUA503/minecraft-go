@@ -63,10 +63,15 @@ func NewBlockAABB(x, y, z int32) AABB {
 
 // BlockCollisionAABBs returns world-space collision boxes for a block state.
 func BlockCollisionAABBs(blockID int32, x, y, z int32) []AABB {
+	return BlockCollisionAABBsAt(blockID, x, y, z, nil)
+}
+
+// BlockCollisionAABBsAt resolves collision using neighboring block states.
+func BlockCollisionAABBsAt(blockID int32, x, y, z int32, getBlock func(int32, int32, int32) int32) []AABB {
 	if !IsSolidBlock(blockID) {
 		return nil
 	}
-	if localBoxes, ok := inventory.BlockCollisionBoxes(blockID); ok {
+	if localBoxes, ok := inventory.BlockCollisionBoxesAt(blockID, x, y, z, getBlock); ok {
 		boxes := make([]AABB, 0, len(localBoxes))
 		for _, local := range localBoxes {
 			boxes = append(boxes, AABB{
@@ -330,7 +335,7 @@ func ResolveMovementCollisionForBlocks(pos Vec3, delta Vec3, getBlock func(x, y,
 		if !IsSolidBlock(blockID) {
 			return dst
 		}
-		if localBoxes, ok := inventory.BlockCollisionBoxes(blockID); ok {
+		if localBoxes, ok := inventory.BlockCollisionBoxesAt(blockID, x, y, z, getBlock); ok {
 			for _, local := range localBoxes {
 				dst = append(dst, AABB{
 					Min: Vec3{X: float64(x) + float64(local.MinX), Y: float64(y) + float64(local.MinY), Z: float64(z) + float64(local.MinZ)},

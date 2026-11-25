@@ -1130,7 +1130,7 @@ func (e *Engine) PlaceBlock(playerID int32, pos world.BlockPos, blockID int32) b
 
 	// For solid blocks, prevent placing inside living players
 	if IsSolidBlock(blockID) {
-		blockBoxes := BlockCollisionAABBs(blockID, pos.X, pos.Y, pos.Z)
+		blockBoxes := BlockCollisionAABBsAt(blockID, pos.X, pos.Y, pos.Z, e.GetBlock)
 
 		e.mu.RLock()
 		for _, p := range e.Players {
