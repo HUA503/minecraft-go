@@ -7,14 +7,17 @@ import (
 )
 
 const (
-	poplarLogID     int32 = 10010
-	poplarSaplingID int32 = 10063
+	poplarLogID           int32 = 10010
+	poplarSaplingID       int32 = 10063
+	firstLiveCoralBlockID int32 = 14209
+	lastLiveCoralBlockID  int32 = 14213
+	deadCoralBlockOffset  int32 = 5
 )
 
 // tickRandomBlocksLocked applies Minecraft-style random samples to loaded
 // chunks within simulation distance. The caller owns Engine.mu.
 func (e *Engine) tickRandomBlocksLocked() {
-	if e.CurrentDimension != 0 || len(e.Players) == 0 || len(e.World) == 0 {
+	if len(e.Players) == 0 || len(e.World) == 0 {
 		return
 	}
 
@@ -41,13 +44,45 @@ func (e *Engine) tickRandomBlocksLocked() {
 				x := pos.X*world.ChunkWidth + int32(random&15)
 				y := baseY + int32((random>>4)&15)
 				z := pos.Z*world.ChunkWidth + int32((random>>8)&15)
-				if e.getBlockLocked(x, y, z) != poplarSaplingID || e.nextRandomTickValueLocked()%7 != 0 {
+				blockID := e.getBlockLocked(x, y, z)
+				if blockID >= firstLiveCoralBlockID && blockID <= lastLiveCoralBlockID {
+					e.tickCoralBlockLocked(x, y, z)
+					continue
+				}
+				if e.CurrentDimension != 0 || blockID != poplarSaplingID || e.nextRandomTickValueLocked()%7 != 0 {
 					continue
 				}
 				e.growPoplarSaplingLocked(x, y, z)
 			}
 		}
 	}
+}
+
+// tickCoralBlockLocked applies Java's exposed-coral check at a random tick:
+// adjacent water keeps live coral alive; without water, contact with air or
+// void turns it into the matching dead coral block. Coral sealed on all six
+// sides by solid blocks remains live.
+func (e *Engine) tickCoralBlockLocked(x, y, z int32) bool {
+	blockID := e.getBlockLocked(x, y, z)
+	if blockID < firstLiveCoralBlockID || blockID > lastLiveCoralBlockID {
+		return false
+	}
+	neighbors := [6][3]int32{{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}}
+	hasWater, touchesAir := false, false
+	for _, offset := range neighbors {
+		neighbor := e.getBlockLocked(x+offset[0], y+offset[1], z+offset[2])
+		if neighbor == 8 || neighbor == 9 {
+			hasWater = true
+		}
+		if neighbor == 0 {
+			touchesAir = true
+		}
+	}
+	if hasWater || !touchesAir {
+		return false
+	}
+	e.setBlockLocked(x, y, z, blockID+deadCoralBlockOffset)
+	return true
 }
 
 func (e *Engine) nextRandomTickValueLocked() uint64 {

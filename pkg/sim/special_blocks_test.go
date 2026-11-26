@@ -88,3 +88,42 @@ func TestJava263SpecialCubeMiningDrops(t *testing.T) {
 		}
 	}
 }
+
+func TestJava263LiveCoralRandomTick(t *testing.T) {
+	t.Run("water keeps coral alive", func(t *testing.T) {
+		eng := NewEngine()
+		eng.SetBlock(0, 64, 0, 14209)
+		eng.SetBlock(1, 64, 0, 9)
+		eng.mu.Lock()
+		changed := eng.tickCoralBlockLocked(0, 64, 0)
+		eng.mu.Unlock()
+		if changed || eng.GetBlock(0, 64, 0) != 14209 {
+			t.Fatal("live coral adjacent to water should remain live")
+		}
+	})
+
+	t.Run("exposed dry coral dies", func(t *testing.T) {
+		eng := NewEngine()
+		eng.SetBlock(0, 64, 0, 14212)
+		eng.mu.Lock()
+		changed := eng.tickCoralBlockLocked(0, 64, 0)
+		eng.mu.Unlock()
+		if !changed || eng.GetBlock(0, 64, 0) != 14217 {
+			t.Fatalf("exposed dry fire coral = %d, changed=%v; want dead fire coral (14217)", eng.GetBlock(0, 64, 0), changed)
+		}
+	})
+
+	t.Run("sealed dry coral survives", func(t *testing.T) {
+		eng := NewEngine()
+		eng.SetBlock(0, 64, 0, 14210)
+		for _, offset := range [][3]int32{{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}} {
+			eng.SetBlock(offset[0], 64+offset[1], offset[2], inventory.ItemStone)
+		}
+		eng.mu.Lock()
+		changed := eng.tickCoralBlockLocked(0, 64, 0)
+		eng.mu.Unlock()
+		if changed || eng.GetBlock(0, 64, 0) != 14210 {
+			t.Fatal("dry coral fully surrounded by solid blocks should remain live")
+		}
+	})
+}
