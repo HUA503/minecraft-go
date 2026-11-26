@@ -946,7 +946,7 @@ func (e *Engine) BreakBlockWithTool(playerID int32, pos world.BlockPos, toolID i
 		case 37, 38, 45, 49, 50, 87, 89, 121, 150:
 			dropItem = origBlock
 		}
-		if definition, ok := inventory.ExtendedBlockByID(origBlock); ok {
+		if definition, ok := inventory.ExtendedBlockByID(inventory.BlockItemForState(origBlock)); ok {
 			if definition.DropsNothing {
 				dropItem = inventory.ItemAir
 			} else if definition.DropRuntimeID != 0 {
@@ -957,6 +957,9 @@ func (e *Engine) BreakBlockWithTool(playerID int32, pos world.BlockPos, toolID i
 		if dropItem != inventory.ItemAir {
 			dropPos := Vec3{X: float64(pos.X) + 0.5, Y: float64(pos.Y) + 0.5, Z: float64(pos.Z) + 0.5}
 			dropCount := e.rollBlockDropCount(origBlock)
+			if _, candleCount, _, isCandle := inventory.CandleStateProperties(origBlock); isCandle {
+				dropCount = candleCount
+			}
 			e.mu.Lock()
 			e.nextItemDropID++
 			e.ItemDrops[e.nextItemDropID] = &ItemDrop{
@@ -1096,6 +1099,9 @@ func (e *Engine) BreakBlock(playerID int32, pos world.BlockPos) int32 {
 	dropCount := 0
 	if dropItem != inventory.ItemAir {
 		dropCount = e.rollBlockDropCount(origBlock)
+		if _, candleCount, _, isCandle := inventory.CandleStateProperties(origBlock); isCandle {
+			dropCount = candleCount
+		}
 	}
 	e.mu.Lock()
 	if p, ok := e.Players[playerID]; ok && p.Inventory != nil && dropItem != inventory.ItemAir {
@@ -1120,6 +1126,17 @@ func (e *Engine) rollBlockDropCount(blockID int32) int {
 // PlaceBlock places a block if it does not intersect the player's bounding box.
 func (e *Engine) PlaceBlock(playerID int32, pos world.BlockPos, blockID int32) bool {
 	existing := e.GetBlock(pos.X, pos.Y, pos.Z)
+	if inventory.IsCandleItem(blockID) {
+		if existingItem, count, lit, ok := inventory.CandleStateProperties(existing); ok && existingItem == blockID && count < 4 {
+			state := inventory.CandleBlockState(existingItem, count+1, lit)
+			if !e.SetBlockChecked(pos.X, pos.Y, pos.Z, state) {
+				return false
+			}
+			e.consumePlacedBlockItem(playerID, blockID)
+			return true
+		}
+		blockID = inventory.CandleBlockState(blockID, 1, false)
+	}
 	if !inventory.IsReplaceableBlock(existing) {
 		existingItem, existingIsSlab := inventory.SlabItemForBlockState(existing)
 		placedItem, placedIsSlab := inventory.SlabItemForBlockState(blockID)
@@ -1172,6 +1189,15 @@ func (e *Engine) PlaceBlock(playerID int32, pos world.BlockPos, blockID int32) b
 		e.mu.Unlock()
 	}
 	return true
+}
+
+// SetCandleLit changes the lit state of a placed candle cluster.
+func (e *Engine) SetCandleLit(pos world.BlockPos, lit bool) bool {
+	itemID, count, currentLit, ok := inventory.CandleStateProperties(e.GetBlock(pos.X, pos.Y, pos.Z))
+	if !ok || currentLit == lit {
+		return false
+	}
+	return e.SetBlockChecked(pos.X, pos.Y, pos.Z, inventory.CandleBlockState(itemID, count, lit))
 }
 
 func (e *Engine) consumePlacedBlockItem(playerID int32, itemID int32) {

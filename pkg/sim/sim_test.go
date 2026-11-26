@@ -252,6 +252,7 @@ func TestCandlesRequireSupportAndDropTheirItem(t *testing.T) {
 	eng := NewEngine()
 	player := eng.AddPlayer("candle placer", [16]byte{0x18}, Vec3{X: 0.5, Y: 64, Z: 0.5})
 	const candleID int32 = 17133
+	player.Inventory.Slots[0] = inventory.ItemStack{ItemID: candleID, Count: 2}
 	if !eng.SetBlockChecked(10, 63, 10, inventory.ItemStone) {
 		t.Fatal("failed to place candle support block")
 	}
@@ -261,12 +262,24 @@ func TestCandlesRequireSupportAndDropTheirItem(t *testing.T) {
 	if !eng.PlaceBlock(player.ID, world.BlockPos{X: 10, Y: 64, Z: 10}, candleID) {
 		t.Fatal("candle was not placed on a solid top face")
 	}
-	if got := eng.GetBlock(10, 64, 10); got != candleID {
-		t.Fatalf("placed candle block ID = %d, want %d", got, candleID)
+	if !eng.PlaceBlock(player.ID, world.BlockPos{X: 10, Y: 64, Z: 10}, candleID) {
+		t.Fatal("matching candle did not stack on the clicked candle block")
+	}
+	if got := eng.GetBlock(10, 64, 10); got != inventory.CandleBlockState(candleID, 2, false) {
+		t.Fatalf("placed candle state = %d, want two unlit candles", got)
+	}
+	if !eng.SetCandleLit(world.BlockPos{X: 10, Y: 64, Z: 10}, true) {
+		t.Fatal("failed to light candle cluster")
+	}
+	if itemID, count, lit, ok := inventory.CandleStateProperties(eng.GetBlock(10, 64, 10)); !ok || itemID != candleID || count != 2 || !lit {
+		t.Fatalf("lit candle properties = (%d,%d,%t,%t)", itemID, count, lit, ok)
 	}
 	drop, harvested := eng.BreakBlockWithTool(player.ID, world.BlockPos{X: 10, Y: 64, Z: 10}, inventory.ItemAir)
 	if !harvested || drop != candleID {
 		t.Fatalf("breaking candle = (drop %d, harvested %t), want candle item %d", drop, harvested, candleID)
+	}
+	if drop := eng.ItemDrops[eng.nextItemDropID]; drop == nil || drop.ItemID != candleID || drop.Count != 2 {
+		t.Fatalf("breaking two-candle cluster spawned %+v, want two candle items", drop)
 	}
 }
 

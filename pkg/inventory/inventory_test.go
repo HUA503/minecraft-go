@@ -1526,6 +1526,21 @@ func TestJava263CandleCatalogCraftingAndShape(t *testing.T) {
 			t.Errorf("dye recipe for %s = %+v, matched=%t", name, out, matched)
 		}
 	}
+	for itemID := FirstCandleItem; itemID <= LastCandleItem; itemID++ {
+		for count := 1; count <= 4; count++ {
+			for _, lit := range []bool{false, true} {
+				state := CandleBlockState(itemID, count, lit)
+				gotItem, gotCount, gotLit, ok := CandleStateProperties(state)
+				if !ok || gotItem != itemID || gotCount != count || gotLit != lit || BlockItemForState(state) != itemID {
+					t.Errorf("candle state %d decodes to (%d,%d,%t,%t)", state, gotItem, gotCount, gotLit, ok)
+				}
+				boxes, ok := BlockCollisionBoxes(state)
+				if !ok || len(boxes) != count {
+					t.Errorf("candle state count=%d has %d collision shapes, want %d", count, len(boxes), count)
+				}
+			}
+		}
+	}
 }
 
 func TestJava263WoolAndConcreteStairItemsAndStates(t *testing.T) {

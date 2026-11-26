@@ -196,8 +196,11 @@ func BlockCollisionBoxesAt(blockID, x, y, z int32, getBlock func(int32, int32, i
 	if IsGlassPaneBlock(blockID) {
 		return GlassPaneBoxesAt(x, y, z, getBlock), true
 	}
-	if IsCandleBlock(blockID) {
-		return candleCollisionBox, true
+	if itemID, count, _, ok := CandleStateProperties(blockID); ok {
+		return CandleBoxes(itemID, count), true
+	}
+	if IsCandleItem(blockID) {
+		return CandleBoxes(blockID, 1), true
 	}
 	if IsCushionBlock(blockID) {
 		return cushionVisualBox, true
@@ -236,6 +239,31 @@ func BlockCollisionBoxesAt(blockID, x, y, z int32, getBlock func(int32, int32, i
 }
 
 var candleCollisionBox = []BlockBox{{MinX: 7.0 / 16.0, MinY: 0, MinZ: 7.0 / 16.0, MaxX: 9.0 / 16.0, MaxY: 6.0 / 16.0, MaxZ: 9.0 / 16.0}}
+
+// CandleBoxes returns the individual 2x2-pixel candle bodies in the selected
+// vanilla count state; lit candles share the same collision outline.
+func CandleBoxes(itemID int32, count int) []BlockBox {
+	if !IsCandleItem(itemID) || count < 1 || count > 4 {
+		return nil
+	}
+	positions := [4][2]int{}
+	switch count {
+	case 1:
+		positions[0] = [2]int{7, 7}
+	case 2:
+		positions[0], positions[1] = [2]int{5, 5}, [2]int{9, 9}
+	case 3:
+		positions[0], positions[1], positions[2] = [2]int{5, 5}, [2]int{9, 5}, [2]int{7, 9}
+	case 4:
+		positions = [4][2]int{{5, 5}, {9, 5}, {5, 9}, {9, 9}}
+	}
+	boxes := make([]BlockBox, 0, count)
+	for i := 0; i < count; i++ {
+		x, z := float32(positions[i][0])/16, float32(positions[i][1])/16
+		boxes = append(boxes, BlockBox{MinX: x, MinY: 0, MinZ: z, MaxX: x + 2.0/16, MaxY: 6.0 / 16, MaxZ: z + 2.0/16})
+	}
+	return boxes
+}
 
 // GlassPaneBoxesAt returns the pane's center post and connected arms. The
 // 2-pixel-wide arms use the same footprint for rendering and player collision.
@@ -394,6 +422,9 @@ func SlabMergeState(existingBlockID, itemID, faceY int32, localHitY float64) (in
 // BlockItemForState returns the placeable item represented by a runtime block
 // state, leaving ordinary block IDs unchanged.
 func BlockItemForState(blockID int32) int32 {
+	if itemID, _, _, ok := CandleStateProperties(blockID); ok {
+		return itemID
+	}
 	if itemID, ok := StairItemForBlockState(blockID); ok {
 		return itemID
 	}

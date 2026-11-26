@@ -976,6 +976,21 @@ func initOfficialBlockTextures() {
 			loadBlock(block.RuntimeID, block.TextureTop, block.TextureBottom, block.TextureSide)
 		}
 	}
+	for _, candle := range inventory.ExtendedBlockDefinitions() {
+		if !inventory.IsCandleItem(candle.RuntimeID) {
+			continue
+		}
+		for count := 1; count <= 4; count++ {
+			for _, lit := range []bool{false, true} {
+				stateID := inventory.CandleBlockState(candle.RuntimeID, count, lit)
+				texture := candle.TextureSide
+				if lit {
+					texture += "_lit"
+				}
+				loadBlock(stateID, texture, texture, texture)
+			}
+		}
+	}
 	loadSingle(35, "white_wool")
 	loadSingle(43, "stone")
 	loadBlock(44, "smooth_stone", "smooth_stone", "smooth_stone_slab_side")

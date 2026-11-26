@@ -33,6 +33,9 @@ var extendedBlockDefinitions = buildExtendedBlockDefinitions()
 const (
 	FirstCushionBlock int32 = 16200
 	LastCushionBlock  int32 = FirstCushionBlock + 15
+	FirstCandleItem   int32 = 17133
+	LastCandleItem    int32 = FirstCandleItem + 16
+	CandleStateBase   int32 = 40000
 )
 
 var cushionColors = [...]struct {
@@ -615,9 +618,9 @@ func candleBlockDefinitions() []ExtendedBlockDefinition {
 		}
 		registryName := "minecraft:" + name
 		definitions = append(definitions, ExtendedBlockDefinition{
-			RuntimeID: 17133 + int32(i), Name: registryName,
+			RuntimeID: FirstCandleItem + int32(i), Name: registryName,
 			TextureTop: name, TextureBottom: name, TextureSide: name,
-			Category: CreativeDecoration, Hardness: 0.1, DropRuntimeID: 17133 + int32(i),
+			Category: CreativeDecoration, Hardness: 0.1, DropRuntimeID: FirstCandleItem + int32(i),
 		})
 		extendedBlockDisplayNames[registryName] = display
 	}
@@ -626,9 +629,46 @@ func candleBlockDefinitions() []ExtendedBlockDefinition {
 
 // IsCandleBlock reports whether a runtime ID belongs to a candle item/block.
 func IsCandleBlock(runtimeID int32) bool {
-	definition, ok := ExtendedBlockByID(runtimeID)
-	return ok && (definition.Name == "minecraft:candle" ||
-		(len(definition.Name) >= len("_candle") && definition.Name[len(definition.Name)-len("_candle"):] == "_candle"))
+	if _, _, _, ok := CandleStateProperties(runtimeID); ok {
+		return true
+	}
+	return IsCandleItem(runtimeID)
+}
+
+func IsCandleItem(itemID int32) bool {
+	return itemID >= FirstCandleItem && itemID <= LastCandleItem
+}
+
+// CandleBlockState encodes the vanilla candle count and lit properties in an
+// internal runtime ID, keeping candle items separate from placed block states.
+func CandleBlockState(itemID int32, count int, lit bool) int32 {
+	if !IsCandleItem(itemID) || count < 1 || count > 4 {
+		return 0
+	}
+	state := CandleStateBase + (itemID-FirstCandleItem)*8 + int32((count-1)*2)
+	if lit {
+		state++
+	}
+	return state
+}
+
+// CandleStateProperties decodes the candle item, count, and lit flag.
+func CandleStateProperties(stateID int32) (itemID int32, count int, lit bool, ok bool) {
+	offset := stateID - CandleStateBase
+	if offset < 0 || offset >= (LastCandleItem-FirstCandleItem+1)*8 {
+		return 0, 0, false, false
+	}
+	itemID = FirstCandleItem + offset/8
+	properties := offset % 8
+	return itemID, int(properties/2) + 1, properties%2 == 1, true
+}
+
+// BlockTextureForState preserves candle lighting in render texture lookup.
+func BlockTextureForState(blockID int32) int32 {
+	if _, _, _, ok := CandleStateProperties(blockID); ok {
+		return blockID
+	}
+	return BlockItemForState(blockID)
 }
 
 func glazedTerracottaDefinitions() []ExtendedBlockDefinition {

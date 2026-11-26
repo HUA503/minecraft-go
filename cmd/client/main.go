@@ -3160,6 +3160,11 @@ func (c *Client) PlaceBlockInFront() bool {
 	placedBlockID := selected.ItemID
 	localHitY := res.HitPos.Y - math.Floor(res.HitPos.Y)
 	mergeSlab := false
+	stackCandle := false
+	if itemID, count, _, isCandle := inventory.CandleStateProperties(hitBlockID); isCandle && itemID == selected.ItemID && count < 4 {
+		targetPos = world.BlockPos{X: res.BlockX, Y: res.BlockY, Z: res.BlockZ}
+		stackCandle = true
+	}
 	if slabState, isSlab := inventory.SlabPlacementState(selected.ItemID, res.FaceY, localHitY); isSlab {
 		placedBlockID = slabState
 		if doubleState, merge := inventory.SlabMergeState(hitBlockID, selected.ItemID, res.FaceY, localHitY); merge {
@@ -3171,7 +3176,9 @@ func (c *Client) PlaceBlockInFront() bool {
 	if stairState, isStair := inventory.StairPlacementState(selected.ItemID, c.camera.Yaw, res.FaceY, localHitY); isStair {
 		placedBlockID = stairState
 	}
-	if mergeSlab {
+	if stackCandle {
+		// The engine adds one matching candle to the clicked cluster.
+	} else if mergeSlab {
 		// The engine replaces the clicked half slab with a matching double slab.
 	} else if inventory.IsReplaceableBlock(hitBlockID) {
 		// Replaceable grass/flowers are directly replaced at their position
@@ -3222,11 +3229,12 @@ func (c *Client) PlaceBlockInFront() bool {
 		c.isSwinging = true
 		c.swingProgress = 0.0
 		if c.conn != nil {
+			placedState := c.engine.GetBlock(targetPos.X, targetPos.Y, targetPos.Z)
 			_ = c.sendPacket(&protocol.BlockUpdatePacket{
 				X:       targetPos.X,
 				Y:       targetPos.Y,
 				Z:       targetPos.Z,
-				BlockID: placedBlockID,
+				BlockID: placedState,
 			})
 		}
 	}
@@ -3277,6 +3285,32 @@ func (c *Client) UpdateRightClick(isRightDown bool, dt float64) {
 			}
 		}
 		return
+	}
+	if isRightDown && c.isLocal && c.placeCooldown <= 0 && c.hasTarget {
+		if _, _, lit, isCandle := inventory.CandleStateProperties(c.engine.GetBlockIfLoaded(c.targetedPos.X, c.targetedPos.Y, c.targetedPos.Z)); isCandle {
+			changeToLit := sel.ItemID == inventory.ItemFlintAndSteel && !lit
+			changeToUnlit := sel.IsEmpty() && lit
+			if (changeToLit || changeToUnlit) && c.engine.SetCandleLit(c.targetedPos, changeToLit) {
+				if changeToLit && !c.isCreative {
+					slot := &c.player.Inventory.Slots[c.player.Inventory.SelectedHotbar]
+					inventory.ApplyToolWear(slot)
+				}
+				c.RebuildAffectedMeshes(c.targetedPos)
+				if changeToLit {
+					sound.PlayHardwareFeedback("minecraft:item.flintandsteel.use")
+				} else {
+					sound.PlayHardwareFeedback("minecraft:block.candle.extinguish")
+				}
+				if c.conn != nil {
+					_ = c.sendPacket(&protocol.BlockUpdatePacket{
+						X: c.targetedPos.X, Y: c.targetedPos.Y, Z: c.targetedPos.Z,
+						BlockID: c.engine.GetBlock(c.targetedPos.X, c.targetedPos.Y, c.targetedPos.Z),
+					})
+				}
+				c.placeCooldown = 0.3
+			}
+			return
+		}
 	}
 	if isRightDown && c.isLocal && c.placeCooldown <= 0 && c.hasTarget {
 		if props, ok := inventory.GetToolProperties(sel.ItemID); ok && props.Type == inventory.ToolAxe {

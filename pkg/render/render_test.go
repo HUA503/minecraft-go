@@ -1217,3 +1217,41 @@ func TestJava263FoodTabItemsHaveOfficialSprites(t *testing.T) {
 		}
 	}
 }
+
+func TestJava263CandleStatesUseOfficialLitTexturesAndClusterMeshes(t *testing.T) {
+	for itemID := inventory.FirstCandleItem; itemID <= inventory.LastCandleItem; itemID++ {
+		item, ok := inventory.ExtendedBlockByID(itemID)
+		if !ok {
+			t.Fatalf("missing candle item definition %d", itemID)
+		}
+		for _, lit := range []bool{false, true} {
+			state := inventory.CandleBlockState(itemID, 1, lit)
+			textureName := item.TextureSide
+			if lit {
+				textureName += "_lit"
+			}
+			official, found := GetOfficialTexture("block", textureName)
+			if !found || Textures[state] == nil || Textures[state].Side != official {
+				t.Errorf("candle state %d does not use official %q block texture", state, textureName)
+			}
+		}
+	}
+	const itemID int32 = inventory.FirstCandleItem
+	for count := 1; count <= 4; count++ {
+		state := inventory.CandleBlockState(itemID, count, false)
+		blocks := map[[3]int32]int32{{0, 0, 0}: state}
+		mesh := BuildSectionMesh(func(x, y, z int32) int32 {
+			return blocks[[3]int32{x, y, z}]
+		}, 0, 0, 0)
+		wantVertices := count * 24
+		if len(mesh.Vertices) != wantVertices {
+			t.Errorf("%d-candle cluster mesh has %d vertices, want %d", count, len(mesh.Vertices), wantVertices)
+		}
+		for _, vertex := range mesh.Vertices {
+			if vertex.BlockID != state {
+				t.Errorf("candle mesh vertex texture ID = %d, want state texture %d", vertex.BlockID, state)
+				break
+			}
+		}
+	}
+}

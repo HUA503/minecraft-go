@@ -233,7 +233,7 @@ func addGlassPaneMesh(mesh *Mesh, x, y, z, blockID int32, boxes []inventory.Bloc
 				vertex.X = float32(x) + box.MinX + (vertex.X-float32(x))*(box.MaxX-box.MinX)
 				vertex.Y = float32(y) + box.MinY + (vertex.Y-float32(y))*(box.MaxY-box.MinY)
 				vertex.Z = float32(z) + box.MinZ + (vertex.Z-float32(z))*(box.MaxZ-box.MinZ)
-				vertex.BlockID = inventory.BlockItemForState(blockID)
+				vertex.BlockID = inventory.BlockTextureForState(blockID)
 			}
 		}
 	}
@@ -292,7 +292,7 @@ func addBlockBoxesMesh(mesh *Mesh, x, y, z, blockID int32, boxes []inventory.Blo
 				vertex.X = float32(x) + box.MinX + (vertex.X-float32(x))*(box.MaxX-box.MinX)
 				vertex.Y = float32(y) + box.MinY + (vertex.Y-float32(y))*(box.MaxY-box.MinY)
 				vertex.Z = float32(z) + box.MinZ + (vertex.Z-float32(z))*(box.MaxZ-box.MinZ)
-				vertex.BlockID = inventory.BlockItemForState(blockID)
+				vertex.BlockID = inventory.BlockTextureForState(blockID)
 			}
 		}
 	}
@@ -337,7 +337,7 @@ func addStairBlockMesh(mesh *Mesh, x, y, z, blockID int32, getBlock func(x, y, z
 						case 5:
 							vertex.U, vertex.V = lx, 1-ly
 						}
-						vertex.BlockID = inventory.BlockItemForState(blockID)
+						vertex.BlockID = inventory.BlockTextureForState(blockID)
 					}
 				}
 			}
@@ -349,10 +349,25 @@ func addPartialBlockMesh(mesh *Mesh, x, y, z int32, blockID int32, boxes []inven
 	for _, box := range boxes {
 		for face, offset := range NeighborOffsets {
 			neighborID := getBlock(x+offset[0], y+offset[1], z+offset[2])
-			if IsOpaqueCube(neighborID) {
+			touchesBoundary := false
+			switch face {
+			case 0:
+				touchesBoundary = box.MaxX >= 1
+			case 1:
+				touchesBoundary = box.MinX <= 0
+			case 2:
+				touchesBoundary = box.MaxY >= 1
+			case 3:
+				touchesBoundary = box.MinY <= 0
+			case 4:
+				touchesBoundary = box.MaxZ >= 1
+			case 5:
+				touchesBoundary = box.MinZ <= 0
+			}
+			if touchesBoundary && IsOpaqueCube(neighborID) {
 				continue
 			}
-			if face != 2 && face != 3 && neighborID == blockID {
+			if touchesBoundary && neighborID == blockID {
 				continue
 			}
 
@@ -361,8 +376,10 @@ func addPartialBlockMesh(mesh *Mesh, x, y, z int32, blockID int32, boxes []inven
 			fy := float32(y)
 			for i := baseVertex; i < len(mesh.Vertices); i++ {
 				vertex := &mesh.Vertices[i]
+				vertex.X = float32(x) + box.MinX + (vertex.X-float32(x))*(box.MaxX-box.MinX)
 				vertex.Y = fy + box.MinY + (vertex.Y-fy)*(box.MaxY-box.MinY)
-				vertex.BlockID = inventory.BlockItemForState(blockID)
+				vertex.Z = float32(z) + box.MinZ + (vertex.Z-float32(z))*(box.MaxZ-box.MinZ)
+				vertex.BlockID = inventory.BlockTextureForState(blockID)
 			}
 		}
 	}
@@ -515,7 +532,7 @@ func addFaceQuad(mesh *Mesh, x, y, z int32, face int, blockID int32, getBlock fu
 			NormalX:      norm[0],
 			NormalY:      norm[1],
 			NormalZ:      norm[2],
-			BlockID:      inventory.BlockItemForState(blockID),
+			BlockID:      inventory.BlockTextureForState(blockID),
 			FaceIndex:    face,
 			LightingMult: FaceLighting[face] * ao[i],
 		})
