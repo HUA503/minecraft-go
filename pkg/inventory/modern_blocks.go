@@ -82,6 +82,7 @@ func buildExtendedBlockDefinitions() []ExtendedBlockDefinition {
 	definitions = append(definitions, glazedTerracottaDefinitions()...)
 	definitions = append(definitions, additionalFullCubeDefinitions()...)
 	definitions = append(definitions, additionalCommonCubeDefinitions()...)
+	definitions = append(definitions, additionalSpecialCubeDefinitions()...)
 	definitions = append(definitions, woodSlabBlockDefinitions()...)
 	definitions = append(definitions, colorSlabBlockDefinitions()...)
 	definitions = append(definitions, colorStairBlockDefinitions()...)
@@ -91,6 +92,41 @@ func buildExtendedBlockDefinitions() []ExtendedBlockDefinition {
 	definitions = append(definitions, woodFenceBlockDefinitions()...)
 	definitions = append(definitions, masonryWallBlockDefinitions()...)
 	definitions = append(definitions, cushionBlockDefinitions()...)
+	return definitions
+}
+
+func additionalSpecialCubeDefinitions() []ExtendedBlockDefinition {
+	blocks := []struct {
+		id            int32
+		name, display string
+		texture       string
+		category      CreativeCategory
+		hardness      float64
+		tool          ToolType
+		requiresTool  bool
+		requiredTier  int
+		drop          int32
+		minDrop       int
+		maxDrop       int
+	}{
+		{14200, "crying_obsidian", "哭泣的黑曜石", "crying_obsidian", CreativeBlocks, 50, ToolPickaxe, true, 3, 14200, 1, 1},
+		{14201, "crimson_nylium", "绯红菌岩", "crimson_nylium", CreativeNatural, 0.4, ToolNone, false, 0, 87, 1, 1},
+		{14202, "warped_nylium", "诡异菌岩", "warped_nylium", CreativeNatural, 0.4, ToolNone, false, 0, 87, 1, 1},
+		{14203, "warped_wart_block", "诡异疣块", "warped_wart_block", CreativeNatural, 1, ToolHoe, false, 0, 14203, 1, 1},
+		{14204, "nether_gold_ore", "下界金矿石", "nether_gold_ore", CreativeNatural, 3, ToolPickaxe, true, 0, ItemGoldNugget, 2, 6},
+	}
+	definitions := make([]ExtendedBlockDefinition, 0, len(blocks))
+	for _, block := range blocks {
+		name := "minecraft:" + block.name
+		definitions = append(definitions, ExtendedBlockDefinition{
+			RuntimeID: block.id, Name: name,
+			TextureTop: block.texture, TextureBottom: block.texture, TextureSide: block.texture,
+			Category: block.category, Hardness: block.hardness, HarvestTool: block.tool,
+			RequiresHarvestTool: block.requiresTool, RequiredHarvestLevel: block.requiredTier,
+			DropRuntimeID: block.drop, DropCountMin: block.minDrop, DropCountMax: block.maxDrop,
+		})
+		extendedBlockDisplayNames[name] = block.display
+	}
 	return definitions
 }
 
@@ -589,6 +625,9 @@ func ExtendedBlockItemTextureName(runtimeID int32) string {
 	case 10100:
 		return "red_shrub"
 	default:
+		if definition, ok := ExtendedBlockByID(runtimeID); ok {
+			return definition.TextureSide
+		}
 		return ""
 	}
 }
