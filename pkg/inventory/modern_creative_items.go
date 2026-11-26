@@ -39,6 +39,22 @@ const (
 	ItemGlisteringMelon    int32 = 16125
 	ItemMagmaCream         int32 = 16126
 	ItemTurtleHelmet       int32 = 16127
+	ItemWhiteDye           int32 = 17000
+	ItemOrangeDye          int32 = 17001
+	ItemMagentaDye         int32 = 17002
+	ItemLightBlueDye       int32 = 17003
+	ItemYellowDye          int32 = 17004
+	ItemLimeDye            int32 = 17005
+	ItemPinkDye            int32 = 17006
+	ItemGrayDye            int32 = 17007
+	ItemLightGrayDye       int32 = 17008
+	ItemCyanDye            int32 = 17009
+	ItemPurpleDye          int32 = 17010
+	ItemBlueDye            int32 = 17011
+	ItemBrownDye           int32 = 17012
+	ItemGreenDye           int32 = 17013
+	ItemRedDye             int32 = 17014
+	ItemBlackDye           int32 = 17015
 )
 
 var modernCreativeItemDefinitions = [...]ModernCreativeItemDefinition{
@@ -141,6 +157,22 @@ var modernCreativeItemDefinitions = [...]ModernCreativeItemDefinition{
 	{16181, "minecraft:experience_bottle", "\u9644\u9b54\u4e4b\u74f6", "experience_bottle", CreativeMaterials, 64},
 	{16182, "minecraft:trial_key", "\u8bd5\u70bc\u94a5\u5319", "trial_key", CreativeMaterials, 64},
 	{16183, "minecraft:ominous_trial_key", "\u4e0d\u7965\u8bd5\u70bc\u94a5\u5319", "ominous_trial_key", CreativeMaterials, 64},
+	{ItemWhiteDye, "minecraft:white_dye", "\u767d\u8272\u67d3\u6599", "white_dye", CreativeMaterials, 64},
+	{ItemOrangeDye, "minecraft:orange_dye", "\u6a59\u8272\u67d3\u6599", "orange_dye", CreativeMaterials, 64},
+	{ItemMagentaDye, "minecraft:magenta_dye", "\u54c1\u7ea2\u8272\u67d3\u6599", "magenta_dye", CreativeMaterials, 64},
+	{ItemLightBlueDye, "minecraft:light_blue_dye", "\u6de1\u84dd\u8272\u67d3\u6599", "light_blue_dye", CreativeMaterials, 64},
+	{ItemYellowDye, "minecraft:yellow_dye", "\u9ec4\u8272\u67d3\u6599", "yellow_dye", CreativeMaterials, 64},
+	{ItemLimeDye, "minecraft:lime_dye", "\u9ec5\u7eff\u8272\u67d3\u6599", "lime_dye", CreativeMaterials, 64},
+	{ItemPinkDye, "minecraft:pink_dye", "\u7c89\u7ea2\u8272\u67d3\u6599", "pink_dye", CreativeMaterials, 64},
+	{ItemGrayDye, "minecraft:gray_dye", "\u7070\u8272\u67d3\u6599", "gray_dye", CreativeMaterials, 64},
+	{ItemLightGrayDye, "minecraft:light_gray_dye", "\u6de1\u7070\u8272\u67d3\u6599", "light_gray_dye", CreativeMaterials, 64},
+	{ItemCyanDye, "minecraft:cyan_dye", "\u9752\u8272\u67d3\u6599", "cyan_dye", CreativeMaterials, 64},
+	{ItemPurpleDye, "minecraft:purple_dye", "\u7d2b\u8272\u67d3\u6599", "purple_dye", CreativeMaterials, 64},
+	{ItemBlueDye, "minecraft:blue_dye", "\u84dd\u8272\u67d3\u6599", "blue_dye", CreativeMaterials, 64},
+	{ItemBrownDye, "minecraft:brown_dye", "\u68d5\u8272\u67d3\u6599", "brown_dye", CreativeMaterials, 64},
+	{ItemGreenDye, "minecraft:green_dye", "\u7eff\u8272\u67d3\u6599", "green_dye", CreativeMaterials, 64},
+	{ItemRedDye, "minecraft:red_dye", "\u7ea2\u8272\u67d3\u6599", "red_dye", CreativeMaterials, 64},
+	{ItemBlackDye, "minecraft:black_dye", "\u9ed1\u8272\u67d3\u6599", "black_dye", CreativeMaterials, 64},
 }
 
 var modernCreativeItemByID = func() map[int32]ModernCreativeItemDefinition {

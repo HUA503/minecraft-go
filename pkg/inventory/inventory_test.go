@@ -1180,6 +1180,28 @@ func TestModernCreativeMaterialsHaveRegistryNamesAndUsefulRecipes(t *testing.T) 
 	}
 }
 
+func TestCreativeMaterialsIncludeJava263DyesInVanillaTagOrder(t *testing.T) {
+	want := []string{
+		"minecraft:white_dye", "minecraft:orange_dye", "minecraft:magenta_dye", "minecraft:light_blue_dye",
+		"minecraft:yellow_dye", "minecraft:lime_dye", "minecraft:pink_dye", "minecraft:gray_dye",
+		"minecraft:light_gray_dye", "minecraft:cyan_dye", "minecraft:purple_dye", "minecraft:blue_dye",
+		"minecraft:brown_dye", "minecraft:green_dye", "minecraft:red_dye", "minecraft:black_dye",
+	}
+	var got []string
+	for _, item := range CreativeCatalog(CreativeMaterials) {
+		name := creativeItemRegistryName(item.ID)
+		if strings.HasSuffix(name, "_dye") {
+			got = append(got, name)
+			if GetMaxStackSize(item.ID) != 64 {
+				t.Errorf("%s max stack = %d, want 64", name, GetMaxStackSize(item.ID))
+			}
+		}
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("Java 26.3 dye order = %v, want %v", got, want)
+	}
+}
+
 func TestCreativeCategoriesFollowJava263DirectItemOrder(t *testing.T) {
 	for _, category := range []CreativeCategory{
 		CreativeBlocks, CreativeDecoration, CreativeNatural, CreativeFunctional, CreativeRedstone,
@@ -1238,8 +1260,8 @@ func TestCreativeTabsIncludeVanillaCrossCategoryItems(t *testing.T) {
 		}
 		seen[item.ID] = struct{}{}
 	}
-	if all := CreativeCatalog(CreativeAll); len(all) != 834 {
-		t.Fatalf("canonical Search tab has %d items after adding twenty-two special cubes, want 834", len(all))
+	if all := CreativeCatalog(CreativeAll); len(all) != 850 {
+		t.Fatalf("canonical Search tab has %d items after adding twenty-two special cubes and sixteen dyes, want 850", len(all))
 	}
 }
 
@@ -1392,8 +1414,8 @@ func TestJava263WoolAndConcreteStairItemsAndStates(t *testing.T) {
 			}
 		}
 	}
-	if len(catalog) != 834 {
-		t.Fatalf("all-items search catalog length = %d, want 834", len(catalog))
+	if len(catalog) != 850 {
+		t.Fatalf("all-items search catalog length = %d, want 850", len(catalog))
 	}
 	whiteWoolCount := 0
 	for _, item := range catalog {
