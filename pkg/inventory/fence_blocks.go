@@ -90,7 +90,7 @@ func fenceConnectsTo(blockID int32) bool {
 	if blockID == 0 || IsCushionBlock(blockID) || IsExtendedFoliage(blockID) {
 		return false
 	}
-	if IsWoodFenceBlock(blockID) {
+	if IsWoodFenceBlock(blockID) || IsWoodFenceGateBlock(blockID) {
 		return true
 	}
 	if boxes, ok := BlockCollisionBoxes(blockID); ok {

@@ -3176,6 +3176,9 @@ func (c *Client) PlaceBlockInFront() bool {
 	if stairState, isStair := inventory.StairPlacementState(selected.ItemID, c.camera.Yaw, res.FaceY, localHitY); isStair {
 		placedBlockID = stairState
 	}
+	if gateState, isGate := inventory.FenceGatePlacementState(selected.ItemID, c.camera.Yaw); isGate {
+		placedBlockID = gateState
+	}
 	if stackCandle {
 		// The engine adds one matching candle to the clicked cluster.
 	} else if mergeSlab {
@@ -3287,6 +3290,21 @@ func (c *Client) UpdateRightClick(isRightDown bool, dt float64) {
 		return
 	}
 	if isRightDown && c.isLocal && c.placeCooldown <= 0 && c.hasTarget {
+		if _, _, open, _, isGate := inventory.FenceGateStateProperties(c.engine.GetBlockIfLoaded(c.targetedPos.X, c.targetedPos.Y, c.targetedPos.Z)); isGate {
+			if c.engine.SetFenceGateOpen(c.targetedPos, !open) {
+				c.RebuildAffectedMeshes(c.targetedPos)
+				if open {
+					sound.PlayHardwareFeedback("minecraft:block.fence_gate.close")
+				} else {
+					sound.PlayHardwareFeedback("minecraft:block.fence_gate.open")
+				}
+				if c.conn != nil {
+					_ = c.sendPacket(&protocol.BlockUpdatePacket{X: c.targetedPos.X, Y: c.targetedPos.Y, Z: c.targetedPos.Z, BlockID: c.engine.GetBlock(c.targetedPos.X, c.targetedPos.Y, c.targetedPos.Z)})
+				}
+				c.placeCooldown = 0.3
+			}
+			return
+		}
 		if _, _, lit, isCandle := inventory.CandleStateProperties(c.engine.GetBlockIfLoaded(c.targetedPos.X, c.targetedPos.Y, c.targetedPos.Z)); isCandle {
 			changeToLit := sel.ItemID == inventory.ItemFlintAndSteel && !lit
 			changeToUnlit := sel.IsEmpty() && lit

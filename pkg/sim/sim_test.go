@@ -801,6 +801,49 @@ func TestColoredCushionPlacementCollisionAndDrop(t *testing.T) {
 	}
 }
 
+func TestWoodFenceGatePlacementToggleCollisionAndDrop(t *testing.T) {
+	eng := NewEngine()
+	player := eng.AddPlayer("Steve", [16]byte{91}, Vec3{X: 10.5, Y: 64, Z: 10.5})
+	itemID := inventory.FirstWoodFenceGateItem + 5
+	pos := world.BlockPos{X: 12, Y: 64, Z: 10}
+	state, ok := inventory.FenceGatePlacementState(itemID, 90)
+	if !ok {
+		t.Fatal("could not create fence gate placement state")
+	}
+	player.Inventory.Slots[0] = inventory.ItemStack{ItemID: itemID, Count: 2}
+	if !eng.PlaceBlock(player.ID, pos, state) {
+		t.Fatal("could not place fence gate")
+	}
+	if got := eng.GetBlock(pos.X, pos.Y, pos.Z); got != state {
+		t.Fatalf("placed gate state = %d, want %d", got, state)
+	}
+	if got := player.Inventory.Slots[0].Count; got != 1 {
+		t.Fatalf("gate stack after placing = %d, want 1", got)
+	}
+	closedBoxes := BlockCollisionAABBsAt(state, pos.X, pos.Y, pos.Z, eng.GetBlock)
+	if len(closedBoxes) != 4 {
+		t.Fatalf("closed gate collision boxes = %d, want 4", len(closedBoxes))
+	}
+	if !eng.SetFenceGateOpen(pos, true) {
+		t.Fatal("could not open fence gate")
+	}
+	openState := eng.GetBlock(pos.X, pos.Y, pos.Z)
+	_, _, open, _, valid := inventory.FenceGateStateProperties(openState)
+	if !valid || !open {
+		t.Fatalf("open gate state %d decoded as open=%v valid=%v", openState, open, valid)
+	}
+	openBoxes := BlockCollisionAABBsAt(openState, pos.X, pos.Y, pos.Z, eng.GetBlock)
+	if len(openBoxes) != 4 || openBoxes[0].Min.Z == closedBoxes[0].Min.Z {
+		t.Fatalf("open gate did not rotate its collision model: closed=%+v open=%+v", closedBoxes[0], openBoxes[0])
+	}
+	if !eng.SetFenceGateOpen(pos, false) {
+		t.Fatal("could not close fence gate")
+	}
+	if got := eng.BreakBlock(player.ID, pos); got != itemID {
+		t.Fatalf("breaking gate dropped %d, want %d", got, itemID)
+	}
+}
+
 func TestBoneMealGrowsRedShrubAndConsumesOnlyInSurvival(t *testing.T) {
 	for _, gameMode := range []int{0, 1} {
 		eng := NewEngine()

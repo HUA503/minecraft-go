@@ -1200,6 +1200,14 @@ func (e *Engine) SetCandleLit(pos world.BlockPos, lit bool) bool {
 	return e.SetBlockChecked(pos.X, pos.Y, pos.Z, inventory.CandleBlockState(itemID, count, lit))
 }
 
+func (e *Engine) SetFenceGateOpen(pos world.BlockPos, open bool) bool {
+	itemID, facing, currentOpen, inWall, ok := inventory.FenceGateStateProperties(e.GetBlock(pos.X, pos.Y, pos.Z))
+	if !ok || currentOpen == open {
+		return false
+	}
+	return e.SetBlockChecked(pos.X, pos.Y, pos.Z, inventory.FenceGateBlockState(itemID, facing, open, inWall))
+}
+
 func (e *Engine) consumePlacedBlockItem(playerID int32, itemID int32) {
 	e.mu.Lock()
 	if p, ok := e.Players[playerID]; ok && p.Inventory != nil {
