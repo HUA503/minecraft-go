@@ -118,6 +118,16 @@ func additionalSpecialCubeDefinitions() []ExtendedBlockDefinition {
 		{14206, "mycelium", "菌丝", "mycelium_top", "dirt", "mycelium_side", CreativeNatural, 0.6, ToolShovel, false, 0, ItemDirt, 1, 1},
 		{14207, "magma_block", "岩浆块", "magma", "magma", "magma", CreativeNatural, 0.5, ToolPickaxe, false, 0, 14207, 1, 1},
 		{14208, "dried_kelp_block", "干海带块", "dried_kelp_top", "dried_kelp_bottom", "dried_kelp_side", CreativeNatural, 0.5, ToolHoe, false, 0, 14208, 1, 1},
+		{14209, "tube_coral_block", "管珊瑚块", "tube_coral_block", "tube_coral_block", "tube_coral_block", CreativeNatural, 1.5, ToolPickaxe, false, 0, 14214, 1, 1},
+		{14210, "brain_coral_block", "脑纹珊瑚块", "brain_coral_block", "brain_coral_block", "brain_coral_block", CreativeNatural, 1.5, ToolPickaxe, false, 0, 14215, 1, 1},
+		{14211, "bubble_coral_block", "气泡珊瑚块", "bubble_coral_block", "bubble_coral_block", "bubble_coral_block", CreativeNatural, 1.5, ToolPickaxe, false, 0, 14216, 1, 1},
+		{14212, "fire_coral_block", "火珊瑚块", "fire_coral_block", "fire_coral_block", "fire_coral_block", CreativeNatural, 1.5, ToolPickaxe, false, 0, 14217, 1, 1},
+		{14213, "horn_coral_block", "鹿角珊瑚块", "horn_coral_block", "horn_coral_block", "horn_coral_block", CreativeNatural, 1.5, ToolPickaxe, false, 0, 14218, 1, 1},
+		{14214, "dead_tube_coral_block", "死管珊瑚块", "dead_tube_coral_block", "dead_tube_coral_block", "dead_tube_coral_block", CreativeNatural, 1.5, ToolPickaxe, false, 0, 14214, 1, 1},
+		{14215, "dead_brain_coral_block", "死脑纹珊瑚块", "dead_brain_coral_block", "dead_brain_coral_block", "dead_brain_coral_block", CreativeNatural, 1.5, ToolPickaxe, false, 0, 14215, 1, 1},
+		{14216, "dead_bubble_coral_block", "死气泡珊瑚块", "dead_bubble_coral_block", "dead_bubble_coral_block", "dead_bubble_coral_block", CreativeNatural, 1.5, ToolPickaxe, false, 0, 14216, 1, 1},
+		{14217, "dead_fire_coral_block", "死火珊瑚块", "dead_fire_coral_block", "dead_fire_coral_block", "dead_fire_coral_block", CreativeNatural, 1.5, ToolPickaxe, false, 0, 14217, 1, 1},
+		{14218, "dead_horn_coral_block", "死鹿角珊瑚块", "dead_horn_coral_block", "dead_horn_coral_block", "dead_horn_coral_block", CreativeNatural, 1.5, ToolPickaxe, false, 0, 14218, 1, 1},
 	}
 	definitions := make([]ExtendedBlockDefinition, 0, len(blocks))
 	for _, block := range blocks {

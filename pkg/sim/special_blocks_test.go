@@ -63,4 +63,25 @@ func TestJava263SpecialCubeMiningDrops(t *testing.T) {
 			t.Fatalf("hand-mined %s drop = %d, harvested=%v; want dirt", block.name, drop, harvested)
 		}
 	}
+
+	for _, block := range []struct {
+		id, wantDrop int32
+		name         string
+	}{
+		{14209, 14214, "tube_coral_block"},
+		{14210, 14215, "brain_coral_block"},
+		{14211, 14216, "bubble_coral_block"},
+		{14212, 14217, "fire_coral_block"},
+		{14213, 14218, "horn_coral_block"},
+		{14214, 14214, "dead_tube_coral_block"},
+		{14215, 14215, "dead_brain_coral_block"},
+		{14216, 14216, "dead_bubble_coral_block"},
+		{14217, 14217, "dead_fire_coral_block"},
+		{14218, 14218, "dead_horn_coral_block"},
+	} {
+		eng.SetBlock(pos.X, pos.Y, pos.Z, block.id)
+		if drop, harvested := eng.BreakBlockWithTool(player.ID, pos, inventory.ItemAir); drop != block.wantDrop || !harvested {
+			t.Fatalf("hand-mined %s drop = %d, harvested=%v; want %d", block.name, drop, harvested, block.wantDrop)
+		}
+	}
 }

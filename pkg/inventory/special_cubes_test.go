@@ -21,6 +21,16 @@ func TestSpecialCubeItemsAreCreativelyAvailableAndMineCorrectly(t *testing.T) {
 		{"mycelium", 14206, ItemDirt, 1, 1, CreativeNatural, 0.6, 0},
 		{"magma_block", 14207, 14207, 1, 1, CreativeNatural, 0.5, 0},
 		{"dried_kelp_block", 14208, 14208, 1, 1, CreativeNatural, 0.5, 0},
+		{"tube_coral_block", 14209, 14214, 1, 1, CreativeNatural, 1.5, 0},
+		{"brain_coral_block", 14210, 14215, 1, 1, CreativeNatural, 1.5, 0},
+		{"bubble_coral_block", 14211, 14216, 1, 1, CreativeNatural, 1.5, 0},
+		{"fire_coral_block", 14212, 14217, 1, 1, CreativeNatural, 1.5, 0},
+		{"horn_coral_block", 14213, 14218, 1, 1, CreativeNatural, 1.5, 0},
+		{"dead_tube_coral_block", 14214, 14214, 1, 1, CreativeNatural, 1.5, 0},
+		{"dead_brain_coral_block", 14215, 14215, 1, 1, CreativeNatural, 1.5, 0},
+		{"dead_bubble_coral_block", 14216, 14216, 1, 1, CreativeNatural, 1.5, 0},
+		{"dead_fire_coral_block", 14217, 14217, 1, 1, CreativeNatural, 1.5, 0},
+		{"dead_horn_coral_block", 14218, 14218, 1, 1, CreativeNatural, 1.5, 0},
 	}
 	all := CreativeCatalog(CreativeAll)
 	for _, test := range cases {

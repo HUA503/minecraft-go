@@ -20,6 +20,16 @@ func TestJava263SpecialCubeItemsHaveVanillaSprites(t *testing.T) {
 		{14206, "mycelium_side"},
 		{14207, "magma"},
 		{14208, "dried_kelp_side"},
+		{14209, "tube_coral_block"},
+		{14210, "brain_coral_block"},
+		{14211, "bubble_coral_block"},
+		{14212, "fire_coral_block"},
+		{14213, "horn_coral_block"},
+		{14214, "dead_tube_coral_block"},
+		{14215, "dead_brain_coral_block"},
+		{14216, "dead_bubble_coral_block"},
+		{14217, "dead_fire_coral_block"},
+		{14218, "dead_horn_coral_block"},
 	} {
 		if got := GetOfficialItemTextureName(test.id); got != test.texture {
 			t.Errorf("item %d texture = %q, want %q", test.id, got, test.texture)
