@@ -81,6 +81,7 @@ func buildExtendedBlockDefinitions() []ExtendedBlockDefinition {
 	definitions = append(definitions, woodCubeDefinitions()...)
 	definitions = append(definitions, coloredBlockDefinitions()...)
 	definitions = append(definitions, stainedGlassBlockDefinitions()...)
+	definitions = append(definitions, glassPaneBlockDefinitions()...)
 	definitions = append(definitions, glazedTerracottaDefinitions()...)
 	definitions = append(definitions, additionalFullCubeDefinitions()...)
 	definitions = append(definitions, additionalCommonCubeDefinitions()...)
@@ -557,6 +558,43 @@ func IsStainedGlassBlock(runtimeID int32) bool {
 	definition, ok := ExtendedBlockByID(runtimeID)
 	return ok && len(definition.Name) >= len("_stained_glass") &&
 		definition.Name[len(definition.Name)-len("_stained_glass"):] == "_stained_glass"
+}
+
+func glassPaneBlockDefinitions() []ExtendedBlockDefinition {
+	colors := []struct{ id, name string }{
+		{"white", "白"}, {"orange", "橙"}, {"magenta", "品红"}, {"light_blue", "淡蓝"},
+		{"yellow", "黄"}, {"lime", "黄绿"}, {"pink", "粉红"}, {"gray", "灰"},
+		{"light_gray", "淡灰"}, {"cyan", "青"}, {"purple", "紫"}, {"blue", "蓝"},
+		{"brown", "棕"}, {"green", "绿"}, {"red", "红"}, {"black", "黑"},
+	}
+	definitions := make([]ExtendedBlockDefinition, 0, len(colors)+1)
+	definitions = append(definitions, ExtendedBlockDefinition{
+		RuntimeID: 17116, Name: "minecraft:glass_pane",
+		TextureTop: "glass_pane_top", TextureBottom: "glass_pane_top", TextureSide: "glass_pane_top",
+		Category: CreativeDecoration, Hardness: 0.3, DropsNothing: true,
+	})
+	extendedBlockDisplayNames["minecraft:glass_pane"] = "玻璃板"
+	for i, color := range colors {
+		name := "minecraft:" + color.id + "_stained_glass_pane"
+		texture := color.id + "_stained_glass_pane_top"
+		definitions = append(definitions, ExtendedBlockDefinition{
+			RuntimeID: 17117 + int32(i), Name: name,
+			TextureTop: texture, TextureBottom: texture, TextureSide: texture,
+			Category: CreativeDecoration, Hardness: 0.3, DropsNothing: true,
+		})
+		extendedBlockDisplayNames[name] = color.name + "色染色玻璃板"
+	}
+	return definitions
+}
+
+// IsGlassPaneBlock reports whether a runtime ID is a clear or colored glass pane.
+func IsGlassPaneBlock(runtimeID int32) bool {
+	definition, ok := ExtendedBlockByID(runtimeID)
+	if !ok {
+		return false
+	}
+	return definition.Name == "minecraft:glass_pane" ||
+		(len(definition.Name) >= len("_stained_glass_pane") && definition.Name[len(definition.Name)-len("_stained_glass_pane"):] == "_stained_glass_pane")
 }
 
 func glazedTerracottaDefinitions() []ExtendedBlockDefinition {

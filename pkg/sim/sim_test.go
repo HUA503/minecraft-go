@@ -236,6 +236,16 @@ func TestStainedGlassBreaksWithoutCreatingDrops(t *testing.T) {
 	if len(eng.ItemDrops) != 0 {
 		t.Fatalf("hand-breaking stained glass spawned item entities: %+v", eng.ItemDrops)
 	}
+	const whiteGlassPane int32 = 17116
+	if !eng.SetBlockChecked(pos.X, pos.Y, pos.Z, whiteGlassPane) {
+		t.Fatal("failed to place glass pane test block")
+	}
+	if drop, harvested := eng.BreakBlockWithTool(player.ID, pos, inventory.ItemAir); !harvested || drop != inventory.ItemAir {
+		t.Fatalf("hand-breaking glass pane = (drop %d, harvested %t), want harvested with no item", drop, harvested)
+	}
+	if len(eng.ItemDrops) != 0 {
+		t.Fatalf("breaking glass pane spawned item entities: %+v", eng.ItemDrops)
+	}
 }
 
 func TestWoodBlockVariantsDropTheirOwnItems(t *testing.T) {

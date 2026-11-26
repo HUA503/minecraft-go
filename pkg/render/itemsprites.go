@@ -21,7 +21,7 @@ func applyLighting(c uint32, factor float32) uint32 {
 // RenderIsometricBlock16x16 rasterizes an authentic 16x16 3D isometric voxel block icon.
 // Light angles match vanilla Minecraft GUI: Top face (1.0x), Left face (0.8x), Right face (0.6x).
 func RenderIsometricBlock16x16(blockID int32) [16][16]uint32 {
-	if inventory.IsWoodFenceBlock(blockID) || inventory.IsMasonryWallBlock(blockID) {
+	if inventory.IsWoodFenceBlock(blockID) || inventory.IsMasonryWallBlock(blockID) || inventory.IsGlassPaneBlock(blockID) {
 		return renderIsometricConnectedBlock16x16(blockID)
 	}
 	if itemID, ok := inventory.StairItemForBlockState(blockID); ok {
@@ -51,7 +51,12 @@ func renderIsometricConnectedBlock16x16(blockID int32) [16][16]uint32 {
 	neighbors := func(x, y, z int32) int32 {
 		return blocks[[3]int32{x, y, z}]
 	}
-	boxes, _ := inventory.WoodFenceCollisionBoxesAt(blockID, 0, 0, 0, neighbors)
+	var boxes []inventory.BlockBox
+	if inventory.IsGlassPaneBlock(blockID) {
+		boxes = inventory.GlassPaneBoxesAt(0, 0, 0, neighbors)
+	} else {
+		boxes, _ = inventory.WoodFenceCollisionBoxesAt(blockID, 0, 0, 0, neighbors)
+	}
 	if inventory.IsMasonryWallBlock(blockID) {
 		boxes, _ = inventory.MasonryWallCollisionBoxesAt(blockID, 0, 0, 0, neighbors)
 	}

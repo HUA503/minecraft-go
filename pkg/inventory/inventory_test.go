@@ -1304,8 +1304,8 @@ func TestCreativeTabsIncludeVanillaCrossCategoryItems(t *testing.T) {
 		}
 		seen[item.ID] = struct{}{}
 	}
-	if all := CreativeCatalog(CreativeAll); len(all) != 866 {
-		t.Fatalf("canonical Search tab has %d items after adding twenty-two special cubes, sixteen dyes, and sixteen stained glass blocks, want 866", len(all))
+	if all := CreativeCatalog(CreativeAll); len(all) != 883 {
+		t.Fatalf("canonical Search tab contains %d items after adding special cubes, dyes, stained glass, and glass panes, want 883", len(all))
 	}
 }
 
@@ -1430,8 +1430,59 @@ func TestJava263StainedGlassCatalogRecipesAndDrops(t *testing.T) {
 			t.Errorf("recipe for %s = %+v, matched=%t; want 8 blocks", name, got, matched)
 		}
 	}
-	if got := len(SearchCreativeCatalog(CreativeDecoration, "stained_glass")); got != len(colors) {
-		t.Fatalf("stained glass search returned %d items, want %d", got, len(colors))
+	if got := len(SearchCreativeCatalog(CreativeDecoration, "stained_glass")); got != 2*len(colors) {
+		t.Fatalf("stained glass and pane search returned %d items, want %d", got, 2*len(colors))
+	}
+}
+
+func TestJava263GlassPanesHaveCatalogShapesAndRecipes(t *testing.T) {
+	colors := []string{
+		"white", "orange", "magenta", "light_blue", "yellow", "lime", "pink", "gray",
+		"light_gray", "cyan", "purple", "blue", "brown", "green", "red", "black",
+	}
+	catalog := CreativeCatalog(CreativeAll)
+	if len(catalog) != 883 {
+		t.Fatalf("all-items catalog contains %d entries after adding clear and colored panes, want 883", len(catalog))
+	}
+	crafting := NewCraftingManager()
+	checkPane := func(id int32, name, texture string, glassID int32) {
+		t.Helper()
+		definition, ok := ExtendedBlockByID(id)
+		if !ok || definition.Name != name || definition.TextureTop != texture || !definition.DropsNothing {
+			t.Fatalf("pane definition %s = %+v, found=%t", name, definition, ok)
+		}
+		if !IsPlaceableBlock(id) || !IsGlassPaneBlock(id) || GetMaxStackSize(id) != 64 {
+			t.Errorf("pane %s lacks placeable/catalog behavior or has stack size %d", name, GetMaxStackSize(id))
+		}
+		matches := SearchCreativeCatalog(CreativeDecoration, name)
+		if len(matches) != 1 || matches[0].ID != id {
+			t.Errorf("creative search %q = %+v", name, matches)
+		}
+		grid := []int32{glassID, glassID, glassID, glassID, glassID, glassID, 0, 0, 0}
+		if got, matched := crafting.MatchCrafting(grid, 3); !matched || got != (ItemStack{ItemID: id, Count: 16}) {
+			t.Errorf("pane recipe %s = %+v, matched=%t; want 16 panes", name, got, matched)
+		}
+	}
+	checkPane(17116, "minecraft:glass_pane", "glass_pane_top", 20)
+	for index, color := range colors {
+		glass, ok := ExtendedBlockByName("minecraft:" + color + "_stained_glass")
+		if !ok {
+			t.Fatalf("missing %s stained glass for pane recipe", color)
+		}
+		checkPane(17117+int32(index), "minecraft:"+color+"_stained_glass_pane", color+"_stained_glass_pane_top", glass.RuntimeID)
+	}
+	isolated := GlassPaneBoxesAt(0, 0, 0, func(int32, int32, int32) int32 { return 0 })
+	if len(isolated) != 1 || isolated[0] != (BlockBox{MinX: 7.0 / 16.0, MinY: 0, MinZ: 7.0 / 16.0, MaxX: 9.0 / 16.0, MaxY: 1, MaxZ: 9.0 / 16.0}) {
+		t.Errorf("isolated pane shape = %+v", isolated)
+	}
+	connected := GlassPaneBoxesAt(0, 0, 0, func(x, y, z int32) int32 {
+		if x == -1 || x == 1 || z == -1 || z == 1 {
+			return 1
+		}
+		return 0
+	})
+	if len(connected) != 5 {
+		t.Errorf("pane connected on four sides has %d collision pieces, want 5", len(connected))
 	}
 }
 
@@ -1498,8 +1549,8 @@ func TestJava263WoolAndConcreteStairItemsAndStates(t *testing.T) {
 			}
 		}
 	}
-	if len(catalog) != 866 {
-		t.Fatalf("all-items search catalog length = %d, want 866", len(catalog))
+	if len(catalog) != 883 {
+		t.Fatalf("all-items search catalog length = %d, want 883", len(catalog))
 	}
 	whiteWoolCount := 0
 	for _, item := range catalog {

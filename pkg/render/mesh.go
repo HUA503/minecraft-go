@@ -95,7 +95,7 @@ func IsOpaqueCube(blockID int32) bool {
 // IsTranslucentBlock identifies blocks that must be sorted and blended after
 // opaque terrain. Cutout textures such as leaves stay in the opaque pass.
 func IsTranslucentBlock(blockID int32) bool {
-	if inventory.IsStainedGlassBlock(blockID) {
+	if inventory.IsStainedGlassBlock(blockID) || inventory.IsGlassPaneBlock(blockID) {
 		return true
 	}
 	switch blockID {
@@ -161,6 +161,11 @@ func BuildSectionMesh(getBlock func(x, y, z int32) int32, originX, originY, orig
 					addBlockBoxesMesh(mesh, originX+x, originY+y, originZ+z, blockID, boxes, getBlock)
 					continue
 				}
+				if inventory.IsGlassPaneBlock(blockID) {
+					boxes := inventory.GlassPaneBoxesAt(originX+x, originY+y, originZ+z, getBlock)
+					addGlassPaneMesh(mesh, originX+x, originY+y, originZ+z, blockID, boxes, getBlock)
+					continue
+				}
 				if boxes, ok := inventory.BlockCollisionBoxes(blockID); ok && !IsOpaqueCube(blockID) {
 					addPartialBlockMesh(mesh, originX+x, originY+y, originZ+z, blockID, boxes, getBlock)
 					continue
@@ -194,6 +199,80 @@ func BuildSectionMesh(getBlock func(x, y, z int32) int32, originX, originY, orig
 	}
 
 	return mesh
+}
+
+func addGlassPaneMesh(mesh *Mesh, x, y, z, blockID int32, boxes []inventory.BlockBox, getBlock func(int32, int32, int32) int32) {
+	for boxIndex, box := range boxes {
+		for face, offset := range NeighborOffsets {
+			if glassPaneBoxesShareFace(boxIndex, face, boxes) {
+				continue
+			}
+			neighbor := getBlock(x+offset[0], y+offset[1], z+offset[2])
+			touchesBoundary := false
+			switch face {
+			case 0:
+				touchesBoundary = box.MaxX >= 1
+			case 1:
+				touchesBoundary = box.MinX <= 0
+			case 2:
+				touchesBoundary = box.MaxY >= 1
+			case 3:
+				touchesBoundary = box.MinY <= 0
+			case 4:
+				touchesBoundary = box.MaxZ >= 1
+			case 5:
+				touchesBoundary = box.MinZ <= 0
+			}
+			if touchesBoundary && (IsOpaqueCube(neighbor) || inventory.IsGlassPaneBlock(neighbor)) {
+				continue
+			}
+			base := len(mesh.Vertices)
+			addFaceQuad(mesh, x, y, z, face, blockID, getBlock)
+			for i := base; i < len(mesh.Vertices); i++ {
+				vertex := &mesh.Vertices[i]
+				vertex.X = float32(x) + box.MinX + (vertex.X-float32(x))*(box.MaxX-box.MinX)
+				vertex.Y = float32(y) + box.MinY + (vertex.Y-float32(y))*(box.MaxY-box.MinY)
+				vertex.Z = float32(z) + box.MinZ + (vertex.Z-float32(z))*(box.MaxZ-box.MinZ)
+				vertex.BlockID = inventory.BlockItemForState(blockID)
+			}
+		}
+	}
+}
+
+func glassPaneBoxesShareFace(boxIndex, face int, boxes []inventory.BlockBox) bool {
+	box := boxes[boxIndex]
+	for otherIndex, other := range boxes {
+		if otherIndex == boxIndex {
+			continue
+		}
+		switch face {
+		case 0:
+			if box.MaxX == other.MinX && box.MinY < other.MaxY && box.MaxY > other.MinY && box.MinZ < other.MaxZ && box.MaxZ > other.MinZ {
+				return true
+			}
+		case 1:
+			if box.MinX == other.MaxX && box.MinY < other.MaxY && box.MaxY > other.MinY && box.MinZ < other.MaxZ && box.MaxZ > other.MinZ {
+				return true
+			}
+		case 2:
+			if box.MaxY == other.MinY && box.MinX < other.MaxX && box.MaxX > other.MinX && box.MinZ < other.MaxZ && box.MaxZ > other.MinZ {
+				return true
+			}
+		case 3:
+			if box.MinY == other.MaxY && box.MinX < other.MaxX && box.MaxX > other.MinX && box.MinZ < other.MaxZ && box.MaxZ > other.MinZ {
+				return true
+			}
+		case 4:
+			if box.MaxZ == other.MinZ && box.MinX < other.MaxX && box.MaxX > other.MinX && box.MinY < other.MaxY && box.MaxY > other.MinY {
+				return true
+			}
+		case 5:
+			if box.MinZ == other.MaxZ && box.MinX < other.MaxX && box.MaxX > other.MinX && box.MinY < other.MaxY && box.MaxY > other.MinY {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func addBlockBoxesMesh(mesh *Mesh, x, y, z, blockID int32, boxes []inventory.BlockBox, getBlock func(x, y, z int32) int32) {

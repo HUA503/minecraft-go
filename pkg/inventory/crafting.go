@@ -696,6 +696,13 @@ func (cm *CraftingManager) registerDyeRecipes() {
 		{"light_gray", ItemLightGrayDye}, {"cyan", ItemCyanDye}, {"purple", ItemPurpleDye}, {"blue", ItemBlueDye},
 		{"brown", ItemBrownDye}, {"green", ItemGreenDye}, {"red", ItemRedDye}, {"black", ItemBlackDye},
 	}
+	if pane, ok := ExtendedBlockByName("minecraft:glass_pane"); ok {
+		cm.Recipes = append(cm.Recipes, Recipe{
+			Width: 3, Height: 2,
+			Pattern: []int32{20, 20, 20, 20, 20, 20},
+			Output:  ItemStack{ItemID: pane.RuntimeID, Count: 16},
+		})
+	}
 	for _, color := range colors {
 		if stainedGlass, ok := ExtendedBlockByName("minecraft:" + color.name + "_stained_glass"); ok {
 			cm.Recipes = append(cm.Recipes, Recipe{
@@ -706,6 +713,17 @@ func (cm *CraftingManager) registerDyeRecipes() {
 					20, 20, 20,
 				},
 				Output: ItemStack{ItemID: stainedGlass.RuntimeID, Count: 8},
+			})
+		}
+		if pane, ok := ExtendedBlockByName("minecraft:" + color.name + "_stained_glass_pane"); ok {
+			glassID := int32(20)
+			if stainedGlass, exists := ExtendedBlockByName("minecraft:" + color.name + "_stained_glass"); exists {
+				glassID = stainedGlass.RuntimeID
+			}
+			cm.Recipes = append(cm.Recipes, Recipe{
+				Width: 3, Height: 2,
+				Pattern: []int32{glassID, glassID, glassID, glassID, glassID, glassID},
+				Output:  ItemStack{ItemID: pane.RuntimeID, Count: 16},
 			})
 		}
 		if color.name == "white" {

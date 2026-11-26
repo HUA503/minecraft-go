@@ -855,6 +855,25 @@ func TestTransparentBlockClassificationAndPortalFaceCulling(t *testing.T) {
 	if len(glassMesh.Vertices) != 40 {
 		t.Fatalf("two adjacent same-color stained glass blocks should cull their shared face, got %d vertices", len(glassMesh.Vertices))
 	}
+
+	const whiteGlassPane int32 = 17116
+	if IsOpaqueCube(whiteGlassPane) || !IsTranslucentBlock(whiteGlassPane) {
+		t.Fatal("glass panes must use transparent rendering and must not occlude opaque geometry")
+	}
+	paneBlocks := map[[3]int32]int32{{0, 0, 0}: whiteGlassPane}
+	paneMesh := BuildSectionMesh(func(x, y, z int32) int32 {
+		return paneBlocks[[3]int32{x, y, z}]
+	}, 0, 0, 0)
+	if len(paneMesh.Vertices) != 24 {
+		t.Fatalf("isolated glass pane should render a six-sided center post, got %d vertices", len(paneMesh.Vertices))
+	}
+	paneBlocks[[3]int32{-1, 0, 0}] = 1
+	connectedPaneMesh := BuildSectionMesh(func(x, y, z int32) int32 {
+		return paneBlocks[[3]int32{x, y, z}]
+	}, 0, 0, 0)
+	if len(connectedPaneMesh.Vertices) <= len(paneMesh.Vertices) {
+		t.Fatalf("connected pane mesh has %d vertices, want arms beyond isolated %d", len(connectedPaneMesh.Vertices), len(paneMesh.Vertices))
+	}
 }
 
 func TestOfficialItemAndBlockTextures(t *testing.T) {

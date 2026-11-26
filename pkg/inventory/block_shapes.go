@@ -193,6 +193,9 @@ func BlockCollisionBoxes(blockID int32) ([]BlockBox, bool) {
 // BlockCollisionBoxesAt resolves neighbor-dependent block outlines (currently
 // stair corners) at a world position. A nil callback gives the straight shape.
 func BlockCollisionBoxesAt(blockID, x, y, z int32, getBlock func(int32, int32, int32) int32) ([]BlockBox, bool) {
+	if IsGlassPaneBlock(blockID) {
+		return GlassPaneBoxesAt(x, y, z, getBlock), true
+	}
 	if IsCushionBlock(blockID) {
 		return cushionVisualBox, true
 	}
@@ -227,6 +230,36 @@ func BlockCollisionBoxesAt(blockID, x, y, z int32, getBlock func(int32, int32, i
 		return bottomSlabBox, true
 	}
 	return nil, false
+}
+
+// GlassPaneBoxesAt returns the pane's center post and connected arms. The
+// 2-pixel-wide arms use the same footprint for rendering and player collision.
+func GlassPaneBoxesAt(x, y, z int32, getBlock func(int32, int32, int32) int32) []BlockBox {
+	const min = float32(7.0 / 16.0)
+	const max = float32(9.0 / 16.0)
+	boxes := []BlockBox{{MinX: min, MinY: 0, MinZ: min, MaxX: max, MaxY: 1, MaxZ: max}}
+	if getBlock == nil {
+		return boxes
+	}
+	connects := func(id int32) bool {
+		if id == 0 || id == 8 || id == 9 || id == 10 || id == 11 || id == 31 || id == 32 || id == 37 || id == 38 || id == 50 || id == 65 || id == 83 || id == 10063 || id == 10100 {
+			return false
+		}
+		return true
+	}
+	if connects(getBlock(x-1, y, z)) {
+		boxes = append(boxes, BlockBox{MinX: 0, MinY: 0, MinZ: min, MaxX: min, MaxY: 1, MaxZ: max})
+	}
+	if connects(getBlock(x+1, y, z)) {
+		boxes = append(boxes, BlockBox{MinX: max, MinY: 0, MinZ: min, MaxX: 1, MaxY: 1, MaxZ: max})
+	}
+	if connects(getBlock(x, y, z-1)) {
+		boxes = append(boxes, BlockBox{MinX: min, MinY: 0, MinZ: 0, MaxX: max, MaxY: 1, MaxZ: min})
+	}
+	if connects(getBlock(x, y, z+1)) {
+		boxes = append(boxes, BlockBox{MinX: min, MinY: 0, MinZ: max, MaxX: max, MaxY: 1, MaxZ: 1})
+	}
+	return boxes
 }
 
 // SlabItemForBlockState resolves a placed slab state to its inventory item.
