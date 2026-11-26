@@ -2,10 +2,11 @@ package inventory
 
 // Recipe defines a craftable output from an input grid.
 type Recipe struct {
-	Width   int
-	Height  int
-	Pattern []int32
-	Output  ItemStack
+	Width     int
+	Height    int
+	Pattern   []int32
+	Shapeless bool
+	Output    ItemStack
 }
 
 // CraftingManager holds known recipes and matches crafting grids.
@@ -682,11 +683,50 @@ func (cm *CraftingManager) registerDefaults() {
 		Pattern: []int32{ItemGoldNugget, ItemGoldNugget, ItemGoldNugget, ItemGoldNugget, ItemMelonSlice, ItemGoldNugget, ItemGoldNugget, ItemGoldNugget, ItemGoldNugget},
 		Output:  ItemStack{ItemID: ItemGlisteringMelon, Count: 1},
 	})
+	cm.registerDyeRecipes()
+}
+
+func (cm *CraftingManager) registerDyeRecipes() {
+	colors := []struct {
+		name  string
+		dyeID int32
+	}{
+		{"white", ItemWhiteDye}, {"orange", ItemOrangeDye}, {"magenta", ItemMagentaDye}, {"light_blue", ItemLightBlueDye},
+		{"yellow", ItemYellowDye}, {"lime", ItemLimeDye}, {"pink", ItemPinkDye}, {"gray", ItemGrayDye},
+		{"light_gray", ItemLightGrayDye}, {"cyan", ItemCyanDye}, {"purple", ItemPurpleDye}, {"blue", ItemBlueDye},
+		{"brown", ItemBrownDye}, {"green", ItemGreenDye}, {"red", ItemRedDye}, {"black", ItemBlackDye},
+	}
+	for _, color := range colors {
+		if color.name == "white" {
+			continue // White dye cannot recolor white wool to a different item.
+		}
+		woolID := int32(0)
+		if wool, ok := ExtendedBlockByName("minecraft:" + color.name + "_wool"); ok {
+			woolID = wool.RuntimeID
+		}
+		if woolID == 0 {
+			continue
+		}
+		cm.Recipes = append(cm.Recipes, Recipe{
+			Pattern:   []int32{35, color.dyeID},
+			Shapeless: true,
+			Output:    ItemStack{ItemID: woolID, Count: 1},
+		})
+	}
 }
 
 // MatchCrafting finds matching recipe for grid (gridSize = 2 for 2x2, 3 for 3x3).
 func (cm *CraftingManager) MatchCrafting(grid []int32, gridSize int) (ItemStack, bool) {
+	if cm == nil || (gridSize != 2 && gridSize != 3) || len(grid) != gridSize*gridSize {
+		return ItemStack{}, false
+	}
 	for _, recipe := range cm.Recipes {
+		if recipe.Shapeless {
+			if matchShapeless(grid, recipe.Pattern) {
+				return recipe.Output, true
+			}
+			continue
+		}
 		if recipe.Width > gridSize || recipe.Height > gridSize {
 			continue
 		}
@@ -704,6 +744,30 @@ func (cm *CraftingManager) MatchCrafting(grid []int32, gridSize int) (ItemStack,
 		}
 	}
 	return ItemStack{}, false
+}
+
+func matchShapeless(grid, inputs []int32) bool {
+	remaining := make(map[int32]int, len(inputs))
+	for _, input := range inputs {
+		if input != ItemAir {
+			remaining[input]++
+		}
+	}
+	for _, item := range grid {
+		if item == ItemAir {
+			continue
+		}
+		if remaining[item] == 0 {
+			return false
+		}
+		remaining[item]--
+	}
+	for _, count := range remaining {
+		if count != 0 {
+			return false
+		}
+	}
+	return len(remaining) != 0
 }
 
 func matchAtOffset(grid []int32, gridSize int, r Recipe, ox, oy int, mirrored bool) bool {

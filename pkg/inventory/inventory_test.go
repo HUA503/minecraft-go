@@ -1202,6 +1202,50 @@ func TestCreativeMaterialsIncludeJava263DyesInVanillaTagOrder(t *testing.T) {
 	}
 }
 
+func TestDyesCraftColoredWoolShapelesslyAndRejectMalformedGrids(t *testing.T) {
+	crafting := NewCraftingManager()
+	colors := []struct {
+		name  string
+		dyeID int32
+	}{
+		{"orange", ItemOrangeDye}, {"magenta", ItemMagentaDye}, {"light_blue", ItemLightBlueDye},
+		{"yellow", ItemYellowDye}, {"lime", ItemLimeDye}, {"pink", ItemPinkDye}, {"gray", ItemGrayDye},
+		{"light_gray", ItemLightGrayDye}, {"cyan", ItemCyanDye}, {"purple", ItemPurpleDye}, {"blue", ItemBlueDye},
+		{"brown", ItemBrownDye}, {"green", ItemGreenDye}, {"red", ItemRedDye}, {"black", ItemBlackDye},
+	}
+	for _, color := range colors {
+		wool, ok := ExtendedBlockByName("minecraft:" + color.name + "_wool")
+		if !ok {
+			t.Fatalf("missing %s wool definition", color.name)
+		}
+		for _, tc := range []struct {
+			name string
+			grid []int32
+			size int
+		}{
+			{"2x2 dye first", []int32{color.dyeID, ItemAir, 35, ItemAir}, 2},
+			{"2x2 wool first", []int32{35, ItemAir, ItemAir, color.dyeID}, 2},
+			{"3x3 separated", []int32{ItemAir, 35, ItemAir, ItemAir, ItemAir, ItemAir, color.dyeID, ItemAir, ItemAir}, 3},
+		} {
+			got, matched := crafting.MatchCrafting(tc.grid, tc.size)
+			if !matched || got != (ItemStack{ItemID: wool.RuntimeID, Count: 1}) {
+				t.Errorf("%s dye recipe %q = %+v, matched=%t", color.name, tc.name, got, matched)
+			}
+		}
+	}
+	if _, matched := crafting.MatchCrafting([]int32{35, ItemRedDye, ItemStone, ItemAir}, 2); matched {
+		t.Error("dye recipe accepted an unrelated extra item")
+	}
+	for _, malformed := range []struct {
+		grid []int32
+		size int
+	}{{[]int32{35}, 2}, {make([]int32, 16), 4}, {nil, 3}} {
+		if _, matched := crafting.MatchCrafting(malformed.grid, malformed.size); matched {
+			t.Errorf("malformed grid size %d unexpectedly matched", malformed.size)
+		}
+	}
+}
+
 func TestCreativeCategoriesFollowJava263DirectItemOrder(t *testing.T) {
 	for _, category := range []CreativeCategory{
 		CreativeBlocks, CreativeDecoration, CreativeNatural, CreativeFunctional, CreativeRedstone,
