@@ -78,6 +78,9 @@ func TestJava263SpecialCubeMiningDrops(t *testing.T) {
 		{14216, 14216, "dead_bubble_coral_block"},
 		{14217, 14217, "dead_fire_coral_block"},
 		{14218, 14218, "dead_horn_coral_block"},
+		{14219, 14219, "ochre_froglight"},
+		{14220, 14220, "verdant_froglight"},
+		{14221, 14221, "pearlescent_froglight"},
 	} {
 		eng.SetBlock(pos.X, pos.Y, pos.Z, block.id)
 		if drop, harvested := eng.BreakBlockWithTool(player.ID, pos, inventory.ItemAir); drop != block.wantDrop || !harvested {

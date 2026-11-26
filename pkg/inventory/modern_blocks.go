@@ -128,6 +128,9 @@ func additionalSpecialCubeDefinitions() []ExtendedBlockDefinition {
 		{14216, "dead_bubble_coral_block", "死气泡珊瑚块", "dead_bubble_coral_block", "dead_bubble_coral_block", "dead_bubble_coral_block", CreativeNatural, 1.5, ToolPickaxe, false, 0, 14216, 1, 1},
 		{14217, "dead_fire_coral_block", "死火珊瑚块", "dead_fire_coral_block", "dead_fire_coral_block", "dead_fire_coral_block", CreativeNatural, 1.5, ToolPickaxe, false, 0, 14217, 1, 1},
 		{14218, "dead_horn_coral_block", "死鹿角珊瑚块", "dead_horn_coral_block", "dead_horn_coral_block", "dead_horn_coral_block", CreativeNatural, 1.5, ToolPickaxe, false, 0, 14218, 1, 1},
+		{14219, "ochre_froglight", "赭黄蛙明灯", "ochre_froglight_top", "ochre_froglight_top", "ochre_froglight_side", CreativeNatural, 0.3, ToolNone, false, 0, 14219, 1, 1},
+		{14220, "verdant_froglight", "青翠蛙明灯", "verdant_froglight_top", "verdant_froglight_top", "verdant_froglight_side", CreativeNatural, 0.3, ToolNone, false, 0, 14220, 1, 1},
+		{14221, "pearlescent_froglight", "珠光蛙明灯", "pearlescent_froglight_top", "pearlescent_froglight_top", "pearlescent_froglight_side", CreativeNatural, 0.3, ToolNone, false, 0, 14221, 1, 1},
 	}
 	definitions := make([]ExtendedBlockDefinition, 0, len(blocks))
 	for _, block := range blocks {
