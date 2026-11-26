@@ -1304,8 +1304,8 @@ func TestCreativeTabsIncludeVanillaCrossCategoryItems(t *testing.T) {
 		}
 		seen[item.ID] = struct{}{}
 	}
-	if all := CreativeCatalog(CreativeAll); len(all) != 883 {
-		t.Fatalf("canonical Search tab contains %d items after adding special cubes, dyes, stained glass, and glass panes, want 883", len(all))
+	if all := CreativeCatalog(CreativeAll); len(all) != 900 {
+		t.Fatalf("canonical Search tab contains %d items after adding the current supported block families, want 900", len(all))
 	}
 }
 
@@ -1441,8 +1441,8 @@ func TestJava263GlassPanesHaveCatalogShapesAndRecipes(t *testing.T) {
 		"light_gray", "cyan", "purple", "blue", "brown", "green", "red", "black",
 	}
 	catalog := CreativeCatalog(CreativeAll)
-	if len(catalog) != 883 {
-		t.Fatalf("all-items catalog contains %d entries after adding clear and colored panes, want 883", len(catalog))
+	if len(catalog) != 900 {
+		t.Fatalf("all-items catalog contains %d entries after adding panes and candles, want 900", len(catalog))
 	}
 	crafting := NewCraftingManager()
 	checkPane := func(id int32, name, texture string, glassID int32) {
@@ -1483,6 +1483,48 @@ func TestJava263GlassPanesHaveCatalogShapesAndRecipes(t *testing.T) {
 	})
 	if len(connected) != 5 {
 		t.Errorf("pane connected on four sides has %d collision pieces, want 5", len(connected))
+	}
+}
+
+func TestJava263CandleCatalogCraftingAndShape(t *testing.T) {
+	colors := []struct {
+		name  string
+		dyeID int32
+	}{
+		{"white", ItemWhiteDye}, {"orange", ItemOrangeDye}, {"magenta", ItemMagentaDye}, {"light_blue", ItemLightBlueDye},
+		{"yellow", ItemYellowDye}, {"lime", ItemLimeDye}, {"pink", ItemPinkDye}, {"gray", ItemGrayDye},
+		{"light_gray", ItemLightGrayDye}, {"cyan", ItemCyanDye}, {"purple", ItemPurpleDye}, {"blue", ItemBlueDye},
+		{"brown", ItemBrownDye}, {"green", ItemGreenDye}, {"red", ItemRedDye}, {"black", ItemBlackDye},
+	}
+	catalog := CreativeCatalog(CreativeAll)
+	if len(catalog) != 900 {
+		t.Fatalf("all-items catalog contains %d entries after adding candle variants, want 900", len(catalog))
+	}
+	crafting := NewCraftingManager()
+	plain, ok := ExtendedBlockByID(17133)
+	if !ok || plain.Name != "minecraft:candle" || plain.TextureTop != "candle" || !IsCandleBlock(plain.RuntimeID) {
+		t.Fatalf("plain candle registration = %+v, found=%t", plain, ok)
+	}
+	if out, matched := crafting.MatchCrafting([]int32{ItemString, 0, ItemHoneycomb, 0}, 2); !matched || out != (ItemStack{ItemID: plain.RuntimeID, Count: 1}) {
+		t.Errorf("string and honeycomb recipe = %+v, matched=%t", out, matched)
+	}
+	shape, ok := BlockCollisionBoxes(plain.RuntimeID)
+	if !ok || len(shape) != 1 || shape[0] != candleCollisionBox[0] {
+		t.Errorf("single candle collision shape = %+v, found=%t", shape, ok)
+	}
+	for index, color := range colors {
+		id := int32(17134 + index)
+		name := "minecraft:" + color.name + "_candle"
+		candle, found := ExtendedBlockByID(id)
+		if !found || candle.Name != name || candle.TextureTop != color.name+"_candle" || !IsCandleBlock(id) {
+			t.Fatalf("%s definition = %+v, found=%t", name, candle, found)
+		}
+		if got := SearchCreativeCatalog(CreativeDecoration, name); len(got) != 1 || got[0].ID != id {
+			t.Errorf("creative lookup %s = %+v", name, got)
+		}
+		if out, matched := crafting.MatchCrafting([]int32{plain.RuntimeID, color.dyeID, 0, 0}, 2); !matched || out != (ItemStack{ItemID: id, Count: 1}) {
+			t.Errorf("dye recipe for %s = %+v, matched=%t", name, out, matched)
+		}
 	}
 }
 
@@ -1549,8 +1591,8 @@ func TestJava263WoolAndConcreteStairItemsAndStates(t *testing.T) {
 			}
 		}
 	}
-	if len(catalog) != 883 {
-		t.Fatalf("all-items search catalog length = %d, want 883", len(catalog))
+	if len(catalog) != 900 {
+		t.Fatalf("all-items search catalog length = %d, want 900", len(catalog))
 	}
 	whiteWoolCount := 0
 	for _, item := range catalog {

@@ -82,6 +82,7 @@ func buildExtendedBlockDefinitions() []ExtendedBlockDefinition {
 	definitions = append(definitions, coloredBlockDefinitions()...)
 	definitions = append(definitions, stainedGlassBlockDefinitions()...)
 	definitions = append(definitions, glassPaneBlockDefinitions()...)
+	definitions = append(definitions, candleBlockDefinitions()...)
 	definitions = append(definitions, glazedTerracottaDefinitions()...)
 	definitions = append(definitions, additionalFullCubeDefinitions()...)
 	definitions = append(definitions, additionalCommonCubeDefinitions()...)
@@ -595,6 +596,39 @@ func IsGlassPaneBlock(runtimeID int32) bool {
 	}
 	return definition.Name == "minecraft:glass_pane" ||
 		(len(definition.Name) >= len("_stained_glass_pane") && definition.Name[len(definition.Name)-len("_stained_glass_pane"):] == "_stained_glass_pane")
+}
+
+func candleBlockDefinitions() []ExtendedBlockDefinition {
+	colors := []struct{ id, name string }{
+		{"", ""}, {"white", "白"}, {"orange", "橙"}, {"magenta", "品红"}, {"light_blue", "淡蓝"},
+		{"yellow", "黄"}, {"lime", "黄绿"}, {"pink", "粉红"}, {"gray", "灰"},
+		{"light_gray", "淡灰"}, {"cyan", "青"}, {"purple", "紫"}, {"blue", "蓝"},
+		{"brown", "棕"}, {"green", "绿"}, {"red", "红"}, {"black", "黑"},
+	}
+	definitions := make([]ExtendedBlockDefinition, 0, len(colors))
+	for i, color := range colors {
+		name := "candle"
+		display := "蜡烛"
+		if color.id != "" {
+			name = color.id + "_candle"
+			display = color.name + "色蜡烛"
+		}
+		registryName := "minecraft:" + name
+		definitions = append(definitions, ExtendedBlockDefinition{
+			RuntimeID: 17133 + int32(i), Name: registryName,
+			TextureTop: name, TextureBottom: name, TextureSide: name,
+			Category: CreativeDecoration, Hardness: 0.1, DropRuntimeID: 17133 + int32(i),
+		})
+		extendedBlockDisplayNames[registryName] = display
+	}
+	return definitions
+}
+
+// IsCandleBlock reports whether a runtime ID belongs to a candle item/block.
+func IsCandleBlock(runtimeID int32) bool {
+	definition, ok := ExtendedBlockByID(runtimeID)
+	return ok && (definition.Name == "minecraft:candle" ||
+		(len(definition.Name) >= len("_candle") && definition.Name[len(definition.Name)-len("_candle"):] == "_candle"))
 }
 
 func glazedTerracottaDefinitions() []ExtendedBlockDefinition {

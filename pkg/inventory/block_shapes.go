@@ -196,6 +196,9 @@ func BlockCollisionBoxesAt(blockID, x, y, z int32, getBlock func(int32, int32, i
 	if IsGlassPaneBlock(blockID) {
 		return GlassPaneBoxesAt(x, y, z, getBlock), true
 	}
+	if IsCandleBlock(blockID) {
+		return candleCollisionBox, true
+	}
 	if IsCushionBlock(blockID) {
 		return cushionVisualBox, true
 	}
@@ -231,6 +234,8 @@ func BlockCollisionBoxesAt(blockID, x, y, z int32, getBlock func(int32, int32, i
 	}
 	return nil, false
 }
+
+var candleCollisionBox = []BlockBox{{MinX: 7.0 / 16.0, MinY: 0, MinZ: 7.0 / 16.0, MaxX: 9.0 / 16.0, MaxY: 6.0 / 16.0, MaxZ: 9.0 / 16.0}}
 
 // GlassPaneBoxesAt returns the pane's center post and connected arms. The
 // 2-pixel-wide arms use the same footprint for rendering and player collision.

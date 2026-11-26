@@ -248,6 +248,28 @@ func TestStainedGlassBreaksWithoutCreatingDrops(t *testing.T) {
 	}
 }
 
+func TestCandlesRequireSupportAndDropTheirItem(t *testing.T) {
+	eng := NewEngine()
+	player := eng.AddPlayer("candle placer", [16]byte{0x18}, Vec3{X: 0.5, Y: 64, Z: 0.5})
+	const candleID int32 = 17133
+	if !eng.SetBlockChecked(10, 63, 10, inventory.ItemStone) {
+		t.Fatal("failed to place candle support block")
+	}
+	if eng.PlaceBlock(player.ID, world.BlockPos{X: 11, Y: 64, Z: 10}, candleID) {
+		t.Fatal("candle was placed without a supporting block")
+	}
+	if !eng.PlaceBlock(player.ID, world.BlockPos{X: 10, Y: 64, Z: 10}, candleID) {
+		t.Fatal("candle was not placed on a solid top face")
+	}
+	if got := eng.GetBlock(10, 64, 10); got != candleID {
+		t.Fatalf("placed candle block ID = %d, want %d", got, candleID)
+	}
+	drop, harvested := eng.BreakBlockWithTool(player.ID, world.BlockPos{X: 10, Y: 64, Z: 10}, inventory.ItemAir)
+	if !harvested || drop != candleID {
+		t.Fatalf("breaking candle = (drop %d, harvested %t), want candle item %d", drop, harvested, candleID)
+	}
+}
+
 func TestWoodBlockVariantsDropTheirOwnItems(t *testing.T) {
 	for _, name := range []string{
 		"oak_wood", "stripped_oak_wood", "spruce_wood", "stripped_spruce_wood",

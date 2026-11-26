@@ -696,6 +696,22 @@ func (cm *CraftingManager) registerDyeRecipes() {
 		{"light_gray", ItemLightGrayDye}, {"cyan", ItemCyanDye}, {"purple", ItemPurpleDye}, {"blue", ItemBlueDye},
 		{"brown", ItemBrownDye}, {"green", ItemGreenDye}, {"red", ItemRedDye}, {"black", ItemBlackDye},
 	}
+	if candle, ok := ExtendedBlockByName("minecraft:candle"); ok {
+		cm.Recipes = append(cm.Recipes, Recipe{
+			Width: 1, Height: 2,
+			Pattern: []int32{ItemString, ItemHoneycomb},
+			Output:  ItemStack{ItemID: candle.RuntimeID, Count: 1},
+		})
+	}
+	for _, color := range colors {
+		if candle, ok := ExtendedBlockByName("minecraft:" + color.name + "_candle"); ok {
+			cm.Recipes = append(cm.Recipes, Recipe{
+				Shapeless: true,
+				Pattern:   []int32{17133, color.dyeID},
+				Output:    ItemStack{ItemID: candle.RuntimeID, Count: 1},
+			})
+		}
+	}
 	if pane, ok := ExtendedBlockByName("minecraft:glass_pane"); ok {
 		cm.Recipes = append(cm.Recipes, Recipe{
 			Width: 3, Height: 2,

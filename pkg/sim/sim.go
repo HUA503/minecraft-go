@@ -1132,8 +1132,8 @@ func (e *Engine) PlaceBlock(playerID int32, pos world.BlockPos, blockID int32) b
 		e.consumePlacedBlockItem(playerID, placedItem)
 		return true
 	}
-	if (blockID == 10100 || inventory.IsCushionBlock(blockID)) && (pos.Y <= 0 || !IsSolidBlock(e.GetBlock(pos.X, pos.Y-1, pos.Z))) {
-		return false // Red shrubs and cushions need a solid block beneath them.
+	if (blockID == 10100 || inventory.IsCushionBlock(blockID) || inventory.IsCandleBlock(blockID)) && (pos.Y <= 0 || !IsSolidBlock(e.GetBlock(pos.X, pos.Y-1, pos.Z))) {
+		return false // Red shrubs, cushions, and candles need a solid block beneath them.
 	}
 
 	// For solid blocks, prevent placing inside living players
