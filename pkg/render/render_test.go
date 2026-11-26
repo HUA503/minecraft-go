@@ -843,6 +843,18 @@ func TestTransparentBlockClassificationAndPortalFaceCulling(t *testing.T) {
 	if len(mesh.Vertices) != 40 {
 		t.Fatalf("two adjacent portal blocks should cull their shared face, got %d vertices", len(mesh.Vertices))
 	}
+
+	const whiteStainedGlass int32 = 17100
+	if IsOpaqueCube(whiteStainedGlass) || !IsTranslucentBlock(whiteStainedGlass) {
+		t.Fatal("stained glass must be transparent and must not occlude opaque geometry")
+	}
+	glass := map[[3]int32]int32{{0, 0, 0}: whiteStainedGlass, {1, 0, 0}: whiteStainedGlass}
+	glassMesh := BuildSectionMesh(func(x, y, z int32) int32 {
+		return glass[[3]int32{x, y, z}]
+	}, 0, 0, 0)
+	if len(glassMesh.Vertices) != 40 {
+		t.Fatalf("two adjacent same-color stained glass blocks should cull their shared face, got %d vertices", len(glassMesh.Vertices))
+	}
 }
 
 func TestOfficialItemAndBlockTextures(t *testing.T) {

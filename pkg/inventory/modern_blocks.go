@@ -15,6 +15,7 @@ type ExtendedBlockDefinition struct {
 	RequiresHarvestTool  bool
 	RequiredHarvestLevel int
 	DropRuntimeID        int32
+	DropsNothing         bool
 	DropCountMin         int
 	DropCountMax         int
 	StrippedVariantID    int32
@@ -79,6 +80,7 @@ func buildExtendedBlockDefinitions() []ExtendedBlockDefinition {
 	definitions = append(definitions, modernFullCubeDefinitions()...)
 	definitions = append(definitions, woodCubeDefinitions()...)
 	definitions = append(definitions, coloredBlockDefinitions()...)
+	definitions = append(definitions, stainedGlassBlockDefinitions()...)
 	definitions = append(definitions, glazedTerracottaDefinitions()...)
 	definitions = append(definitions, additionalFullCubeDefinitions()...)
 	definitions = append(definitions, additionalCommonCubeDefinitions()...)
@@ -526,6 +528,35 @@ func coloredBlockDefinitions() []ExtendedBlockDefinition {
 		}
 	}
 	return definitions
+}
+
+func stainedGlassBlockDefinitions() []ExtendedBlockDefinition {
+	colors := []struct{ id, name string }{
+		{"white", "白"}, {"orange", "橙"}, {"magenta", "品红"}, {"light_blue", "淡蓝"},
+		{"yellow", "黄"}, {"lime", "黄绿"}, {"pink", "粉红"}, {"gray", "灰"},
+		{"light_gray", "淡灰"}, {"cyan", "青"}, {"purple", "紫"}, {"blue", "蓝"},
+		{"brown", "棕"}, {"green", "绿"}, {"red", "红"}, {"black", "黑"},
+	}
+	definitions := make([]ExtendedBlockDefinition, 0, len(colors))
+	for i, color := range colors {
+		texture := color.id + "_stained_glass"
+		name := "minecraft:" + texture
+		definitions = append(definitions, ExtendedBlockDefinition{
+			RuntimeID: 17100 + int32(i), Name: name,
+			TextureTop: texture, TextureBottom: texture, TextureSide: texture,
+			Category: CreativeDecoration, Hardness: 0.3,
+			DropsNothing: true,
+		})
+		extendedBlockDisplayNames[name] = color.name + "色染色玻璃"
+	}
+	return definitions
+}
+
+// IsStainedGlassBlock reports whether the runtime ID is one of Java's colored glass blocks.
+func IsStainedGlassBlock(runtimeID int32) bool {
+	definition, ok := ExtendedBlockByID(runtimeID)
+	return ok && len(definition.Name) >= len("_stained_glass") &&
+		definition.Name[len(definition.Name)-len("_stained_glass"):] == "_stained_glass"
 }
 
 func glazedTerracottaDefinitions() []ExtendedBlockDefinition {

@@ -697,6 +697,17 @@ func (cm *CraftingManager) registerDyeRecipes() {
 		{"brown", ItemBrownDye}, {"green", ItemGreenDye}, {"red", ItemRedDye}, {"black", ItemBlackDye},
 	}
 	for _, color := range colors {
+		if stainedGlass, ok := ExtendedBlockByName("minecraft:" + color.name + "_stained_glass"); ok {
+			cm.Recipes = append(cm.Recipes, Recipe{
+				Width: 3, Height: 3,
+				Pattern: []int32{
+					20, 20, 20,
+					20, color.dyeID, 20,
+					20, 20, 20,
+				},
+				Output: ItemStack{ItemID: stainedGlass.RuntimeID, Count: 8},
+			})
+		}
 		if color.name == "white" {
 			continue // White dye cannot recolor white wool to a different item.
 		}

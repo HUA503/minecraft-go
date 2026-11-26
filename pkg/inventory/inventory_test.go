@@ -1304,8 +1304,8 @@ func TestCreativeTabsIncludeVanillaCrossCategoryItems(t *testing.T) {
 		}
 		seen[item.ID] = struct{}{}
 	}
-	if all := CreativeCatalog(CreativeAll); len(all) != 850 {
-		t.Fatalf("canonical Search tab has %d items after adding twenty-two special cubes and sixteen dyes, want 850", len(all))
+	if all := CreativeCatalog(CreativeAll); len(all) != 866 {
+		t.Fatalf("canonical Search tab has %d items after adding twenty-two special cubes, sixteen dyes, and sixteen stained glass blocks, want 866", len(all))
 	}
 }
 
@@ -1395,6 +1395,46 @@ func TestJava263ColoredCushionsHaveCatalogEntriesAndSprites(t *testing.T) {
 	}
 }
 
+func TestJava263StainedGlassCatalogRecipesAndDrops(t *testing.T) {
+	colors := []string{
+		"white", "orange", "magenta", "light_blue", "yellow", "lime", "pink", "gray",
+		"light_gray", "cyan", "purple", "blue", "brown", "green", "red", "black",
+	}
+	catalog := CreativeCatalog(CreativeAll)
+	crafting := NewCraftingManager()
+	for index, color := range colors {
+		id := int32(17100 + index)
+		name := "minecraft:" + color + "_stained_glass"
+		block, ok := ExtendedBlockByID(id)
+		if !ok || block.Name != name || block.Category != CreativeDecoration || block.TextureTop != color+"_stained_glass" || !block.DropsNothing {
+			t.Fatalf("stained glass definition %s = %+v, %t", name, block, ok)
+		}
+		matches := SearchCreativeCatalog(CreativeDecoration, name)
+		if len(matches) != 1 || matches[0].ID != id {
+			t.Fatalf("search %q = %+v, want one item with id %d", name, matches, id)
+		}
+		found := false
+		for _, item := range catalog {
+			if item.ID == id {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%s missing from all-items catalog", name)
+		}
+		dyeID := []int32{ItemWhiteDye, ItemOrangeDye, ItemMagentaDye, ItemLightBlueDye, ItemYellowDye, ItemLimeDye, ItemPinkDye, ItemGrayDye,
+			ItemLightGrayDye, ItemCyanDye, ItemPurpleDye, ItemBlueDye, ItemBrownDye, ItemGreenDye, ItemRedDye, ItemBlackDye}[index]
+		grid := []int32{20, 20, 20, 20, dyeID, 20, 20, 20, 20}
+		if got, matched := crafting.MatchCrafting(grid, 3); !matched || got != (ItemStack{ItemID: id, Count: 8}) {
+			t.Errorf("recipe for %s = %+v, matched=%t; want 8 blocks", name, got, matched)
+		}
+	}
+	if got := len(SearchCreativeCatalog(CreativeDecoration, "stained_glass")); got != len(colors) {
+		t.Fatalf("stained glass search returned %d items, want %d", got, len(colors))
+	}
+}
+
 func TestJava263WoolAndConcreteStairItemsAndStates(t *testing.T) {
 	if len(colorStairDefinitions) != 32 {
 		t.Fatalf("colored stair family has %d definitions, want 32", len(colorStairDefinitions))
@@ -1458,8 +1498,8 @@ func TestJava263WoolAndConcreteStairItemsAndStates(t *testing.T) {
 			}
 		}
 	}
-	if len(catalog) != 850 {
-		t.Fatalf("all-items search catalog length = %d, want 850", len(catalog))
+	if len(catalog) != 866 {
+		t.Fatalf("all-items search catalog length = %d, want 866", len(catalog))
 	}
 	whiteWoolCount := 0
 	for _, item := range catalog {

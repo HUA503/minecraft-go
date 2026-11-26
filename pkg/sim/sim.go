@@ -946,23 +946,29 @@ func (e *Engine) BreakBlockWithTool(playerID int32, pos world.BlockPos, toolID i
 		case 37, 38, 45, 49, 50, 87, 89, 121, 150:
 			dropItem = origBlock
 		}
-		if definition, ok := inventory.ExtendedBlockByID(origBlock); ok && definition.DropRuntimeID != 0 {
-			dropItem = definition.DropRuntimeID
+		if definition, ok := inventory.ExtendedBlockByID(origBlock); ok {
+			if definition.DropsNothing {
+				dropItem = inventory.ItemAir
+			} else if definition.DropRuntimeID != 0 {
+				dropItem = definition.DropRuntimeID
+			}
 		}
 
-		dropPos := Vec3{X: float64(pos.X) + 0.5, Y: float64(pos.Y) + 0.5, Z: float64(pos.Z) + 0.5}
-		dropCount := e.rollBlockDropCount(origBlock)
-		e.mu.Lock()
-		e.nextItemDropID++
-		e.ItemDrops[e.nextItemDropID] = &ItemDrop{
-			ID:          e.nextItemDropID,
-			ItemID:      dropItem,
-			Count:       dropCount,
-			Position:    dropPos,
-			Velocity:    Vec3{X: 0, Y: 0.18, Z: 0},
-			PickupDelay: 0.4,
+		if dropItem != inventory.ItemAir {
+			dropPos := Vec3{X: float64(pos.X) + 0.5, Y: float64(pos.Y) + 0.5, Z: float64(pos.Z) + 0.5}
+			dropCount := e.rollBlockDropCount(origBlock)
+			e.mu.Lock()
+			e.nextItemDropID++
+			e.ItemDrops[e.nextItemDropID] = &ItemDrop{
+				ID:          e.nextItemDropID,
+				ItemID:      dropItem,
+				Count:       dropCount,
+				Position:    dropPos,
+				Velocity:    Vec3{X: 0, Y: 0.18, Z: 0},
+				PickupDelay: 0.4,
+			}
+			e.mu.Unlock()
 		}
-		e.mu.Unlock()
 	}
 
 	// Apply tool durability loss if player used a tool
@@ -1057,7 +1063,9 @@ func (e *Engine) BreakBlock(playerID int32, pos world.BlockPos) int32 {
 		dropItem = inventory.ItemEmerald
 	}
 	if definition, ok := inventory.ExtendedBlockByID(inventory.BlockItemForState(origBlock)); ok {
-		if definition.DropRuntimeID != 0 {
+		if definition.DropsNothing {
+			dropItem = inventory.ItemAir
+		} else if definition.DropRuntimeID != 0 {
 			dropItem = definition.DropRuntimeID
 		}
 		if definition.RequiresHarvestTool {

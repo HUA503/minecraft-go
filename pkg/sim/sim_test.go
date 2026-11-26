@@ -213,6 +213,31 @@ func TestModernDeepslateHarvestAndDropRules(t *testing.T) {
 	}
 }
 
+func TestStainedGlassBreaksWithoutCreatingDrops(t *testing.T) {
+	eng := NewEngine()
+	player := eng.AddPlayer("glass miner", [16]byte{0x17}, Vec3{X: 0.5, Y: 64, Z: 0.5})
+	pos := world.BlockPos{X: 2, Y: 64, Z: 2}
+	const whiteStainedGlass int32 = 17100
+	if !eng.SetBlockChecked(pos.X, pos.Y, pos.Z, whiteStainedGlass) {
+		t.Fatal("failed to place stained glass test block")
+	}
+	if drop, harvested := eng.BreakBlockWithTool(player.ID, pos, inventory.ItemDiamondPickaxe); !harvested || drop != inventory.ItemAir {
+		t.Fatalf("tool break stained glass = (drop %d, harvested %t), want harvested with no item", drop, harvested)
+	}
+	if len(eng.ItemDrops) != 0 {
+		t.Fatalf("tool-breaking stained glass spawned item entities: %+v", eng.ItemDrops)
+	}
+	if !eng.SetBlockChecked(pos.X, pos.Y, pos.Z, whiteStainedGlass) {
+		t.Fatal("failed to restore stained glass test block")
+	}
+	if drop := eng.BreakBlock(player.ID, pos); drop != inventory.ItemAir {
+		t.Fatalf("hand-breaking stained glass drop = %d, want no item", drop)
+	}
+	if len(eng.ItemDrops) != 0 {
+		t.Fatalf("hand-breaking stained glass spawned item entities: %+v", eng.ItemDrops)
+	}
+}
+
 func TestWoodBlockVariantsDropTheirOwnItems(t *testing.T) {
 	for _, name := range []string{
 		"oak_wood", "stripped_oak_wood", "spruce_wood", "stripped_spruce_wood",
