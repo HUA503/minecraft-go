@@ -12,10 +12,14 @@ func TestJava263SpecialCubeItemsHaveVanillaSprites(t *testing.T) {
 		texture string
 	}{
 		{14200, "crying_obsidian"},
-		{14201, "crimson_nylium"},
-		{14202, "warped_nylium"},
+		{14201, "crimson_nylium_side"},
+		{14202, "warped_nylium_side"},
 		{14203, "warped_wart_block"},
 		{14204, "nether_gold_ore"},
+		{14205, "podzol_side"},
+		{14206, "mycelium_side"},
+		{14207, "magma"},
+		{14208, "dried_kelp_side"},
 	} {
 		if got := GetOfficialItemTextureName(test.id); got != test.texture {
 			t.Errorf("item %d texture = %q, want %q", test.id, got, test.texture)

@@ -50,4 +50,17 @@ func TestJava263SpecialCubeMiningDrops(t *testing.T) {
 	if got < 2 || got > 6 {
 		t.Fatalf("nether gold ore yielded %d nuggets, want 2..6", got)
 	}
+
+	for _, block := range []struct {
+		id   int32
+		name string
+	}{
+		{14205, "podzol"},
+		{14206, "mycelium"},
+	} {
+		eng.SetBlock(pos.X, pos.Y, pos.Z, block.id)
+		if drop, harvested := eng.BreakBlockWithTool(player.ID, pos, inventory.ItemAir); drop != inventory.ItemDirt || !harvested {
+			t.Fatalf("hand-mined %s drop = %d, harvested=%v; want dirt", block.name, drop, harvested)
+		}
+	}
 }

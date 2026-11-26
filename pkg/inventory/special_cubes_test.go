@@ -17,6 +17,10 @@ func TestSpecialCubeItemsAreCreativelyAvailableAndMineCorrectly(t *testing.T) {
 		{"warped_nylium", 14202, 87, 1, 1, CreativeNatural, 0.4, 0},
 		{"warped_wart_block", 14203, 14203, 1, 1, CreativeNatural, 1, 0},
 		{"nether_gold_ore", 14204, ItemGoldNugget, 2, 6, CreativeNatural, 3, 0},
+		{"podzol", 14205, ItemDirt, 1, 1, CreativeNatural, 0.5, 0},
+		{"mycelium", 14206, ItemDirt, 1, 1, CreativeNatural, 0.6, 0},
+		{"magma_block", 14207, 14207, 1, 1, CreativeNatural, 0.5, 0},
+		{"dried_kelp_block", 14208, 14208, 1, 1, CreativeNatural, 0.5, 0},
 	}
 	all := CreativeCatalog(CreativeAll)
 	for _, test := range cases {
@@ -37,6 +41,9 @@ func TestSpecialCubeItemsAreCreativelyAvailableAndMineCorrectly(t *testing.T) {
 			found := false
 			for _, item := range all {
 				if item.ID == test.id && item.Category == test.category {
+					if item.Name == "" {
+						t.Fatal("creative display name is empty")
+					}
 					found = true
 					break
 				}
