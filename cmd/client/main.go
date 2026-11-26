@@ -5906,7 +5906,7 @@ func runGraphicalWindow(c *Client, w, h int) {
 					if maxScroll > 0 {
 						thumbY := render.CreativeScrollThumbY(c.framebuf.Width, c.framebuf.Height, c.creativeScrollRow, maxScroll)
 						scale := render.CalculateGUIScaleFromDimensions(c.framebuf.Width, c.framebuf.Height)
-						thumbHeight := 17 * scale
+						thumbHeight := 15 * scale
 						if my >= thumbY && my < thumbY+thumbHeight {
 							c.creativeScrollOffset = my - thumbY
 						} else {

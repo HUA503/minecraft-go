@@ -210,7 +210,7 @@ func TestCreativeTabsMatchJava263VanillaRows(t *testing.T) {
 	const width, height = 400, 300
 	scale, px, py := creativeGUIOrigin(width, height)
 	hit := HitTestCreativeInventory(width, height, inventory.CreativeAll, "", 0,
-		px+(creativeTabX(hotbar)+8)*scale, py+(creativeTabY(hotbar)-4+8)*scale)
+		px+(creativeTabX(hotbar)+8)*scale, py+(creativeTabY(hotbar)+8)*scale)
 	if hit.Type != SlotCreativeTab || hit.Index != int(inventory.CreativeHotbar) {
 		t.Fatalf("saved hotbars tab hit = %+v, want top-row saved hotbars tab", hit)
 	}
@@ -376,11 +376,22 @@ func TestCreativeInventoryScrollUsesRowsAndReachesLastCatalogItem(t *testing.T) 
 }
 
 func TestCreativeScrollbarThumbDragMapsEveryRow(t *testing.T) {
+	for _, name := range []string{"scroller.png", "scroller_disabled.png"} {
+		image, ok := GetOfficialImage("gui/sprites/container/creative_inventory/" + name)
+		if !ok || image.Width != 12 || image.Height != 15 {
+			t.Fatalf("official creative scrollbar %s = (%v, %dx%d), want 12x15", name, ok, image.Width, image.Height)
+		}
+	}
 	for _, size := range [][2]int{{320, 240}, {400, 300}, {1280, 720}, {1920, 1080}} {
 		const maxScroll = 37
 		width, height := size[0], size[1]
 		scale := CalculateGUIScaleFromDimensions(width, height)
 		offset := 8 * scale
+		thumbTop := CreativeScrollThumbY(width, height, maxScroll, maxScroll)
+		_, _, py := creativeGUIOrigin(width, height)
+		if thumbTop+15*scale != py+130*scale {
+			t.Fatalf("size %dx%d: final scrollbar thumb bottom = %d, want track end %d", width, height, thumbTop+15*scale, py+130*scale)
+		}
 		for row := 0; row <= maxScroll; row++ {
 			mouseY := CreativeScrollThumbY(width, height, row, maxScroll) + offset
 			got := CreativeScrollRowAtPointer(width, height, mouseY, maxScroll, offset)
@@ -611,7 +622,7 @@ func TestCreativeSpecialTabsRenderAndHitPlayerInventory(t *testing.T) {
 
 	hotbarTab := creativeTabForCategory(inventory.CreativeHotbar)
 	hit := HitTestCreativeInventory(width, height, inventory.CreativeAll, "", 0,
-		px+(creativeTabX(hotbarTab)+8)*scale, py+(creativeTabY(hotbarTab)-4+8)*scale)
+		px+(creativeTabX(hotbarTab)+8)*scale, py+(creativeTabY(hotbarTab)+8)*scale)
 	if hit.Type != SlotCreativeTab || hit.Index != int(inventory.CreativeHotbar) {
 		t.Fatalf("hotbar preset tab hit = %+v", hit)
 	}
@@ -625,7 +636,7 @@ func TestCreativeSpecialTabsRenderAndHitPlayerInventory(t *testing.T) {
 
 	invTab := creativeTabForCategory(inventory.CreativeInventory)
 	hit = HitTestCreativeInventory(width, height, inventory.CreativeAll, "", 0,
-		px+(creativeTabX(invTab)+8)*scale, py+(creativeTabY(invTab)-4+8)*scale)
+		px+(creativeTabX(invTab)+8)*scale, py+(creativeTabY(invTab)+8)*scale)
 	if hit.Type != SlotCreativeTab || hit.Index != int(inventory.CreativeInventory) {
 		t.Fatalf("player inventory tab hit = %+v", hit)
 	}
@@ -645,6 +656,22 @@ func TestCreativeSpecialTabsRenderAndHitPlayerInventory(t *testing.T) {
 	fb := NewFramebuffer(width, height)
 	fb.DrawCreativeInventoryGUI(inv, inventory.ItemStack{}, inventory.CreativeHotbar, "", 0, -1, -1, presets)
 	fb.DrawCreativeInventoryGUI(inv, inventory.ItemStack{}, inventory.CreativeInventory, "", 0, -1, -1, presets)
+}
+
+func TestCreativeTabHitboxesMatchOfficialSpriteBounds(t *testing.T) {
+	const width, height = 400, 300
+	scale, px, py := creativeGUIOrigin(width, height)
+	for _, category := range []inventory.CreativeCategory{inventory.CreativeBlocks, inventory.CreativeInventory} {
+		tab := creativeTabForCategory(category)
+		x := px + (creativeTabX(tab)+13)*scale
+		for _, offset := range []int{0, 31} {
+			y := py + (creativeTabY(tab)+offset)*scale
+			hit := HitTestCreativeInventory(width, height, inventory.CreativeAll, "", 0, x, y)
+			if hit.Type != SlotCreativeTab || hit.Index != int(category) {
+				t.Errorf("tab %d sprite-edge hit at y offset %d = %+v", category, offset, hit)
+			}
+		}
+	}
 }
 
 func creativeTabForCategory(category inventory.CreativeCategory) creativeTabLayout {

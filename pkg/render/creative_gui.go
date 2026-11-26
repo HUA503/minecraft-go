@@ -215,7 +215,7 @@ func (fb *Framebuffer) DrawCreativeInventoryGUI(inv *inventory.PlayerInventory, 
 		drawCreativeTooltip(fb, hoveredInventoryName, mouseX, mouseY, scale)
 	}
 	for _, tab := range creativeTabs {
-		x, y := px+creativeTabX(tab)*scale, py+(creativeTabY(tab)-4)*scale
+		x, y := px+creativeTabX(tab)*scale, py+creativeTabY(tab)*scale
 		if mouseX >= x && mouseX < x+26*scale && mouseY >= y && mouseY < y+32*scale {
 			drawCreativeTooltip(fb, tab.name, mouseX, mouseY, scale)
 			break
@@ -603,7 +603,7 @@ func CreativeCatalogMaxScroll(itemCount int) int {
 func CreativeScrollThumbY(w, h, scrollRow, maxScroll int) int {
 	scale, _, py := creativeGUIOrigin(w, h)
 	trackY, trackH := py+18*scale, 112*scale
-	thumbH := 17 * scale
+	thumbH := 15 * scale
 	if maxScroll <= 0 {
 		return trackY
 	}
@@ -619,7 +619,7 @@ func CreativeScrollRowAtPointer(w, h, mouseY, maxScroll, thumbOffset int) int {
 	}
 	scale, _, py := creativeGUIOrigin(w, h)
 	trackY, trackH := py+18*scale, 112*scale
-	thumbH := 17 * scale
+	thumbH := 15 * scale
 	travel := trackH - thumbH
 	if travel <= 0 {
 		return 0
@@ -888,7 +888,7 @@ func HitTestCreativeInventory(w, h int, category inventory.CreativeCategory, que
 		return GUISlotHit{Type: SlotCreativeSearch}
 	}
 	for _, tab := range creativeTabs {
-		x, y := px+creativeTabX(tab)*scale, py+(creativeTabY(tab)-4)*scale
+		x, y := px+creativeTabX(tab)*scale, py+creativeTabY(tab)*scale
 		if mouseX >= x && mouseX <= x+26*scale && mouseY >= y && mouseY <= y+32*scale {
 			return GUISlotHit{Type: SlotCreativeTab, Index: int(tab.category)}
 		}
