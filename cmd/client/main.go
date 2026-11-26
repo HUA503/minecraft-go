@@ -3113,12 +3113,6 @@ func (c *Client) MineTargetedBlock() (int32, bool) {
 	targetPos := c.targetedPos
 	blockID := c.engine.GetBlockIfLoaded(targetPos.X, targetPos.Y, targetPos.Z)
 	drop, ok := c.engine.BreakBlockWithTool(c.player.ID, targetPos, heldToolID)
-	if ok && blockID == 1 {
-		c.UnlockAdvancement("minecraft:story/mine_stone", "石器时代")
-	}
-	if ok && (blockID == 17 || blockID == 162) {
-		c.UnlockAdvancement("minecraft:story/mine_wood", "获取木头")
-	}
 	c.spawnBlockDebris(targetPos, blockID, 20)
 	sound.PlayHardwareFeedback(sound.GetBlockBreakSound(blockID))
 	c.RebuildAffectedMeshes(targetPos)
@@ -3891,19 +3885,47 @@ func (c *Client) processLocalWorldEvents() {
 				c.publishPlayerSnapshot()
 			}
 			if event.Type == "item_pickup" && event.PlayerID == c.player.ID {
-				switch {
-				case event.BlockID == inventory.ItemDiamond:
-					c.UnlockAdvancement("minecraft:story/mine_diamond", "钻石！")
-				case event.BlockID == inventory.ItemIronIngot:
-					c.UnlockAdvancement("minecraft:story/smelt_iron", "来硬的")
-				case event.BlockID >= inventory.ItemLeatherHelmet && event.BlockID <= inventory.ItemGoldenBoots:
-					c.UnlockAdvancement("minecraft:story/obtain_armor", "穿上盔甲")
-				}
+				c.recordObtainedItem(event.BlockID)
 			}
 		default:
 			return
 		}
 	}
+}
+
+func (c *Client) recordObtainedItem(itemID int32) {
+	switch itemID {
+	case inventory.ItemCobblestone:
+		c.UnlockAdvancement("minecraft:story/mine_stone", "石器时代")
+	case inventory.ItemStonePickaxe:
+		c.UnlockAdvancement("minecraft:story/upgrade_tools", "装配升级")
+	case inventory.ItemIronPickaxe:
+		c.UnlockAdvancement("minecraft:story/iron_tools", "不再是木镐")
+	case inventory.ItemDiamond:
+		c.UnlockAdvancement("minecraft:story/mine_diamond", "钻石！")
+	case inventory.ItemIronIngot:
+		c.UnlockAdvancement("minecraft:story/smelt_iron", "来硬的")
+	default:
+		if itemID >= inventory.ItemLeatherHelmet && itemID <= inventory.ItemGoldenBoots {
+			c.UnlockAdvancement("minecraft:story/obtain_armor", "穿上盔甲")
+		} else if isLogItem(itemID) {
+			c.UnlockAdvancement("minecraft:story/mine_wood", "获取木头")
+		}
+	}
+}
+
+func isLogItem(itemID int32) bool {
+	if itemID == 17 || itemID == 22 { // Legacy oak and spruce logs.
+		return true
+	}
+	block, ok := inventory.ExtendedBlockByID(itemID)
+	if !ok {
+		return false
+	}
+	name := strings.TrimPrefix(block.Name, "minecraft:")
+	return strings.HasSuffix(name, "_log") || strings.HasSuffix(name, "_wood") ||
+		strings.HasSuffix(name, "_stem") || strings.HasSuffix(name, "_hyphae") ||
+		name == "bamboo_block" || name == "stripped_bamboo_block"
 }
 
 func (c *Client) drawMob(m *sim.MobEntity) {
@@ -6003,12 +6025,7 @@ func runGraphicalWindow(c *Client, w, h int) {
 							} else {
 								c.cursorItem.Count += c.craftResult.Count
 							}
-							if craftedItemID == inventory.ItemStonePickaxe || craftedItemID == inventory.ItemStoneAxe || craftedItemID == inventory.ItemStoneShovel || craftedItemID == inventory.ItemStoneSword {
-								c.UnlockAdvancement("minecraft:story/upgrade_tools", "装配升级")
-							}
-							if craftedItemID == inventory.ItemIronPickaxe {
-								c.UnlockAdvancement("minecraft:story/iron_tools", "不再是木镐")
-							}
+							c.recordObtainedItem(craftedItemID)
 							sound.PlayHardwareFeedback("minecraft:item.craft")
 							gridSize := 4
 							if c.isCraftingTableOpen {
