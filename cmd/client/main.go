@@ -6037,11 +6037,16 @@ func runGraphicalWindow(c *Client, w, h int) {
 				if hit.Type == render.SlotInventory {
 					if hit.Index >= 0 && hit.Index < len(c.player.Inventory.Slots) {
 						if wnd.IsKeyDown(0x10) { // Shift-click quick transfer
-							if hit.Index < 9 { // Hotbar -> Main
+							item := &c.player.Inventory.Slots[hit.Index]
+							if armorSlot, ok := inventory.ArmorSlotForItem(item.ItemID); ok && c.player.Inventory.Armor[armorSlot].IsEmpty() {
+								c.player.Inventory.Armor[armorSlot] = *item
+								*item = inventory.ItemStack{}
+								c.syncPlayerArmorProtection()
+							} else if hit.Index < 9 { // Hotbar -> Main
 								for s := 9; s < 36 && s < len(c.player.Inventory.Slots); s++ {
 									if c.player.Inventory.Slots[s].IsEmpty() {
-										c.player.Inventory.Slots[s] = c.player.Inventory.Slots[hit.Index]
-										c.player.Inventory.Slots[hit.Index] = inventory.ItemStack{}
+										c.player.Inventory.Slots[s] = *item
+										*item = inventory.ItemStack{}
 										break
 									}
 								}
@@ -6060,6 +6065,34 @@ func runGraphicalWindow(c *Client, w, h int) {
 					}
 					return
 				}
+				if hit.Type == render.SlotCreativeArmor && hit.Index >= 0 && hit.Index < len(c.player.Inventory.Armor) {
+					slot := &c.player.Inventory.Armor[hit.Index]
+					if wnd.IsKeyDown(0x10) && !slot.IsEmpty() {
+						for dst := range c.player.Inventory.Slots {
+							if c.player.Inventory.Slots[dst].IsEmpty() {
+								c.player.Inventory.Slots[dst], *slot = *slot, inventory.ItemStack{}
+								break
+							}
+						}
+					} else {
+						inventory.HandleArmorSlotClick(&c.cursorItem, slot, hit.Index, btn)
+					}
+					c.syncPlayerArmorProtection()
+					return
+				}
+				if hit.Type == render.SlotOffhand {
+					if wnd.IsKeyDown(0x10) && !c.player.Inventory.Offhand.IsEmpty() {
+						for dst := range c.player.Inventory.Slots {
+							if c.player.Inventory.Slots[dst].IsEmpty() {
+								c.player.Inventory.Slots[dst], c.player.Inventory.Offhand = c.player.Inventory.Offhand, inventory.ItemStack{}
+								break
+							}
+						}
+					} else {
+						handleSlotLeftClick(&c.cursorItem, &c.player.Inventory.Offhand)
+					}
+					return
+				}
 			} else if btn == 2 { // Right click
 				if hit.Type == render.SlotCraftGrid {
 					if hit.Index >= 0 && hit.Index < len(c.craftGrid) {
@@ -6072,6 +6105,15 @@ func runGraphicalWindow(c *Client, w, h int) {
 					if hit.Index >= 0 && hit.Index < len(c.player.Inventory.Slots) {
 						handleSlotRightClick(&c.cursorItem, &c.player.Inventory.Slots[hit.Index])
 					}
+					return
+				}
+				if hit.Type == render.SlotCreativeArmor && hit.Index >= 0 && hit.Index < len(c.player.Inventory.Armor) {
+					inventory.HandleArmorSlotClick(&c.cursorItem, &c.player.Inventory.Armor[hit.Index], hit.Index, btn)
+					c.syncPlayerArmorProtection()
+					return
+				}
+				if hit.Type == render.SlotOffhand {
+					handleSlotRightClick(&c.cursorItem, &c.player.Inventory.Offhand)
 					return
 				}
 			}

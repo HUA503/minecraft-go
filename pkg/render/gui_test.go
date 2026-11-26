@@ -37,15 +37,23 @@ func TestGUIHitTestingAndDrawing(t *testing.T) {
 	}
 
 	// Hit inside 2x2 crafting grid slot 0
-	hitCraft := HitTestCraftingGUI(320, 240, gx+40+2, gy+22+2, false)
+	hitCraft := HitTestCraftingGUI(320, 240, gx+98+2, gy+18+2, false)
 	if hitCraft.Type != SlotCraftGrid || hitCraft.Index != 0 {
 		t.Fatalf("expected craft grid slot 0, got %+v", hitCraft)
 	}
 
 	// Hit inside 2x2 result slot
-	hitRes := HitTestCraftingGUI(320, 240, gx+124+2, gy+31+2, false)
+	hitRes := HitTestCraftingGUI(320, 240, gx+154+2, gy+36+2, false)
 	if hitRes.Type != SlotCraftResult {
 		t.Fatalf("expected craft result slot, got %+v", hitRes)
+	}
+	hitHelmet := HitTestCraftingGUI(320, 240, gx+8+2, gy+8+2, false)
+	if hitHelmet.Type != SlotCreativeArmor || hitHelmet.Index != 3 {
+		t.Fatalf("expected helmet slot 3, got %+v", hitHelmet)
+	}
+	hitOffhand := HitTestCraftingGUI(320, 240, gx+77+2, gy+62+2, false)
+	if hitOffhand.Type != SlotOffhand {
+		t.Fatalf("expected offhand slot, got %+v", hitOffhand)
 	}
 
 	// Hit outside
@@ -415,10 +423,14 @@ func TestCreativeInventoryUsesEmbeddedVanillaGUITextures(t *testing.T) {
 	for _, path := range []string{
 		"assets/textures/gui/sprites/container/slot.png",
 		"assets/textures/gui/sprites/container/creative_inventory/tab_top_selected_1.png",
+		"assets/textures/gui/sprites/container/furnace/burn_progress.png",
+		"assets/textures/gui/sprites/container/furnace/lit_progress.png",
 		"assets/textures/gui/sprites/container/creative_inventory/tab_top_unselected_4.png",
 		"assets/textures/gui/sprites/container/creative_inventory/tab_bottom_selected_1.png",
 		"assets/textures/gui/sprites/container/creative_inventory/tab_bottom_unselected_5.png",
 		"assets/textures/gui/container/inventory.png",
+		"assets/textures/gui/container/crafting_table.png",
+		"assets/textures/gui/container/furnace.png",
 		"assets/textures/gui/container/creative_inventory/tab_items.png",
 		"assets/textures/gui/container/creative_inventory/tab_item_search.png",
 		"assets/textures/gui/container/creative_inventory/tab_inventory.png",
@@ -434,6 +446,19 @@ func TestCreativeInventoryUsesEmbeddedVanillaGUITextures(t *testing.T) {
 	for _, path := range []string{"gui/sprites/tooltip/background.png", "gui/sprites/tooltip/frame.png"} {
 		if image, ok := GetOfficialImage(path); !ok || image.Width != 100 || image.Height != 100 {
 			t.Errorf("official tooltip sprite %s = (%v, %t), want 100x100", path, image, ok)
+		}
+	}
+	for _, path := range []string{"gui/container/inventory.png", "gui/container/crafting_table.png", "gui/container/furnace.png"} {
+		if image, ok := GetOfficialImage(path); !ok || image.Width != 256 || image.Height != 256 {
+			t.Errorf("official container texture %s = (%v, %t), want 256x256", path, image, ok)
+		}
+	}
+	for path, want := range map[string][2]int{
+		"gui/sprites/container/furnace/burn_progress.png": {24, 16},
+		"gui/sprites/container/furnace/lit_progress.png":  {14, 14},
+	} {
+		if image, ok := GetOfficialImage(path); !ok || image.Width != want[0] || image.Height != want[1] {
+			t.Errorf("official furnace sprite %s = (%v, %t), want %dx%d", path, image, ok, want[0], want[1])
 		}
 	}
 }

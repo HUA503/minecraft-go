@@ -25,6 +25,7 @@ const (
 	SlotCreativeSearch
 	SlotCreativeTrash
 	SlotCreativeArmor
+	SlotOffhand
 )
 
 // GUISlotHit records the detected slot hit during mouse interactions.
@@ -81,13 +82,23 @@ func HitTestCraftingGUI(w, h, mouseX, mouseY int, is3x3 bool) GUISlotHit {
 		// 3x3 Result slot
 		resX := gx + 124*scale
 		resY := gy + 35*scale
-		resSize := 24 * scale
+		resSize := slotSize
 		if mouseX >= resX && mouseX < resX+resSize && mouseY >= resY && mouseY < resY+resSize {
 			return GUISlotHit{Type: SlotCraftResult, Index: 0}
 		}
 	} else {
-		gridStartX := gx + 40*scale
-		gridStartY := gy + 22*scale
+		for visualRow := 0; visualRow < 4; visualRow++ {
+			sx, sy := gx+8*scale, gy+(8+visualRow*18)*scale
+			if mouseX >= sx && mouseX < sx+slotSize && mouseY >= sy && mouseY < sy+slotSize {
+				return GUISlotHit{Type: SlotCreativeArmor, Index: 3 - visualRow}
+			}
+		}
+		sx, sy := gx+77*scale, gy+62*scale
+		if mouseX >= sx && mouseX < sx+slotSize && mouseY >= sy && mouseY < sy+slotSize {
+			return GUISlotHit{Type: SlotOffhand, Index: 0}
+		}
+		gridStartX := gx + 98*scale
+		gridStartY := gy + 18*scale
 		for row := 0; row < 2; row++ {
 			for col := 0; col < 2; col++ {
 				sx := gridStartX + col*slotSize
@@ -98,9 +109,9 @@ func HitTestCraftingGUI(w, h, mouseX, mouseY int, is3x3 bool) GUISlotHit {
 			}
 		}
 		// 2x2 Result slot
-		resX := gx + 124*scale
-		resY := gy + 31*scale
-		resSize := 24 * scale
+		resX := gx + 154*scale
+		resY := gy + 36*scale
+		resSize := slotSize
 		if mouseX >= resX && mouseX < resX+resSize && mouseY >= resY && mouseY < resY+resSize {
 			return GUISlotHit{Type: SlotCraftResult, Index: 0}
 		}
@@ -132,6 +143,83 @@ func HitTestCraftingGUI(w, h, mouseX, mouseY int, is3x3 bool) GUISlotHit {
 	return GUISlotHit{Type: SlotNone, Index: -1}
 }
 
+func drawContainerBackground(fb *Framebuffer, texture string, x, y, scale int) bool {
+	image, ok := GetOfficialImage(texture)
+	if !ok || image.Width < 176 || image.Height < 166 {
+		return false
+	}
+	drawGUIImageRegion(fb, image, x, y, scale, 176, 166)
+	return true
+}
+
+func drawPlayerEquipmentSlots(fb *Framebuffer, inv *inventory.PlayerInventory, x, y, scale, mouseX, mouseY int) {
+	slot, ok := GetOfficialImage("gui/sprites/container/slot.png")
+	if !ok || slot.Width != 18 || slot.Height != 18 {
+		return
+	}
+	for row := 0; row < 4; row++ {
+		sx, sy := x+8*scale, y+(8+row*18)*scale
+		fb.DrawRawImageScaled(sx, sy, scale, slot)
+		if inv != nil {
+			item := inv.Armor[3-row]
+			if !item.IsEmpty() {
+				fb.DrawItemIconScaled(sx+scale, sy+scale, item.ItemID, scale)
+				if item.Count > 1 {
+					fb.DrawNumberScaled(sx+17*scale, sy+10*scale, item.Count, 0xFFFFFFFF, scale)
+				}
+			}
+		}
+		if mouseX >= sx && mouseX < sx+18*scale && mouseY >= sy && mouseY < sy+18*scale {
+			fb.DrawRect(sx+scale, sy+scale, 16*scale, 16*scale, 0x40FFFFFF)
+		}
+	}
+	sx, sy := x+77*scale, y+62*scale
+	fb.DrawRawImageScaled(sx, sy, scale, slot)
+	if inv != nil && !inv.Offhand.IsEmpty() {
+		fb.DrawItemIconScaled(sx+scale, sy+scale, inv.Offhand.ItemID, scale)
+		if inv.Offhand.Count > 1 {
+			fb.DrawNumberScaled(sx+17*scale, sy+10*scale, inv.Offhand.Count, 0xFFFFFFFF, scale)
+		}
+	}
+	if mouseX >= sx && mouseX < sx+18*scale && mouseY >= sy && mouseY < sy+18*scale {
+		fb.DrawRect(sx+scale, sy+scale, 16*scale, 16*scale, 0x40FFFFFF)
+	}
+}
+
+func drawGUIImageRegion(fb *Framebuffer, image *RawImage, x, y, scale, width, height int) {
+	if fb == nil || image == nil || scale <= 0 || width <= 0 || height <= 0 || image.Width <= 0 || image.Height <= 0 {
+		return
+	}
+	if width > image.Width {
+		width = image.Width
+	}
+	if height > image.Height {
+		height = image.Height
+	}
+	drawCreativeTextureRegion(fb, x, y, scale, image, width, height)
+}
+
+func drawGUIProgressSprite(fb *Framebuffer, texture string, x, y, scale, cropWidth int) {
+	image, ok := GetOfficialImage(texture)
+	if !ok || image.Width <= 0 || image.Height <= 0 || scale <= 0 {
+		return
+	}
+	if cropWidth < 0 {
+		cropWidth = 0
+	}
+	if cropWidth > image.Width {
+		cropWidth = image.Width
+	}
+	for iy := 0; iy < image.Height; iy++ {
+		for ix := 0; ix < cropWidth; ix++ {
+			color := image.Pixels[iy*image.Width+ix]
+			if color>>24 != 0 {
+				fb.DrawRect(x+ix*scale, y+iy*scale, scale, scale, color)
+			}
+		}
+	}
+}
+
 // HitTestFurnaceGUI calculates which slot the mouse coordinates land on in the furnace GUI.
 func HitTestFurnaceGUI(w, h, mouseX, mouseY int) GUISlotHit {
 	scale := CalculateGUIScaleFromDimensions(w, h)
@@ -157,7 +245,7 @@ func HitTestFurnaceGUI(w, h, mouseX, mouseY int) GUISlotHit {
 
 	outX := gx + 116*scale
 	outY := gy + 35*scale
-	outSize := 24 * scale
+	outSize := 18 * scale
 	if mouseX >= outX && mouseX < outX+outSize && mouseY >= outY && mouseY < outY+outSize {
 		return GUISlotHit{Type: SlotFurnaceOutput, Index: 2}
 	}
@@ -216,19 +304,24 @@ func (fb *Framebuffer) DrawCraftingGUI(inv *inventory.PlayerInventory, craftGrid
 
 	slotSize := 18 * scale
 
-	// Dialog outer border and background
-	fb.DrawRect(gx, gy, gw, gh, 0xFF373737)
-	fb.DrawRect(gx+scale, gy+scale, gw-2*scale, gh-2*scale, 0xFFC6C6C6)
-	fb.DrawRect(gx+scale, gy+scale, gw-2*scale, scale, 0xFFFFFFFF)
-	fb.DrawRect(gx+scale, gy+scale, scale, gh-2*scale, 0xFFFFFFFF)
-	fb.DrawRect(gx+gw-2*scale, gy+scale, scale, gh-2*scale, 0xFF555555)
-	fb.DrawRect(gx+scale, gy+gh-2*scale, gw-2*scale, scale, 0xFF555555)
+	texture := "gui/container/crafting_table.png"
+	if !is3x3 {
+		texture = "gui/container/inventory.png"
+	}
+	if !drawContainerBackground(fb, texture, gx, gy, scale) {
+		fb.DrawRect(gx, gy, gw, gh, 0xFFC6C6C6)
+	}
+	if !is3x3 {
+		fb.DrawRect(gx+8*scale, gy+8*scale, 70*scale, 72*scale, 0xFFC6C6C6)
+		drawCreativePlayerPreview(fb, inv, gx+52*scale, gy+12*scale, scale, mouseX, mouseY)
+		drawPlayerEquipmentSlots(fb, inv, gx, gy, scale, mouseX, mouseY)
+	}
 
 	// Title
 	if is3x3 {
 		fb.DrawText5x7(gx+8*scale, gy+6*scale, "工作台", 0xFF404040, scale)
 	} else {
-		fb.DrawText5x7(gx+8*scale, gy+6*scale, "合成", 0xFF404040, scale)
+		fb.DrawText5x7(gx+97*scale, gy+6*scale, "合成", 0xFF404040, scale)
 	}
 
 	// Crafting section
@@ -240,9 +333,6 @@ func (fb *Framebuffer) DrawCraftingGUI(inv *inventory.PlayerInventory, craftGrid
 				idx := row*3 + col
 				sx := gridStartX + col*slotSize
 				sy := gridStartY + row*slotSize
-				fb.DrawRect(sx, sy, slotSize, slotSize, 0xFF373737)
-				fb.DrawRect(sx+scale, sy+scale, slotSize-2*scale, slotSize-2*scale, 0xFF8B8B8B)
-
 				if idx < len(craftGrid) && !craftGrid[idx].IsEmpty() {
 					fb.DrawItemIconScaled(sx+scale, sy+scale, craftGrid[idx].ItemID, scale)
 					if craftGrid[idx].Count > 1 {
@@ -254,39 +344,27 @@ func (fb *Framebuffer) DrawCraftingGUI(inv *inventory.PlayerInventory, craftGrid
 				}
 			}
 		}
-		// Arrow
-		arrowX := gx + 90*scale
-		arrowY := gy + 35*scale
-		fb.DrawRect(arrowX, arrowY+scale, 14*scale, 3*scale, 0xFF555555)
-		fb.DrawRect(arrowX+10*scale, arrowY-2*scale, 3*scale, 9*scale, 0xFF555555)
-		fb.DrawRect(arrowX+12*scale, arrowY-scale, 2*scale, 7*scale, 0xFF555555)
-
 		// 3x3 Result slot
 		resX := gx + 124*scale
 		resY := gy + 35*scale
-		resSize := 24 * scale
-		fb.DrawRect(resX, resY, resSize, resSize, 0xFF373737)
-		fb.DrawRect(resX+scale, resY+scale, resSize-2*scale, resSize-2*scale, 0xFF8B8B8B)
+		resSize := 18 * scale
 		if !craftResult.IsEmpty() {
-			fb.DrawItemIconScaled(resX+4*scale, resY+4*scale, craftResult.ItemID, scale)
+			fb.DrawItemIconScaled(resX+scale, resY+scale, craftResult.ItemID, scale)
 			if craftResult.Count > 1 {
-				fb.DrawNumberScaled(resX+20*scale, resY+14*scale, craftResult.Count, 0xFFFFFFFF, scale)
+				fb.DrawNumberScaled(resX+17*scale, resY+10*scale, craftResult.Count, 0xFFFFFFFF, scale)
 			}
 		}
 		if mouseX >= resX && mouseX < resX+resSize && mouseY >= resY && mouseY < resY+resSize {
 			fb.DrawRect(resX+scale, resY+scale, resSize-2*scale, resSize-2*scale, 0x40FFFFFF)
 		}
 	} else {
-		gridStartX := gx + 40*scale
-		gridStartY := gy + 22*scale
+		gridStartX := gx + 98*scale
+		gridStartY := gy + 18*scale
 		for row := 0; row < 2; row++ {
 			for col := 0; col < 2; col++ {
 				idx := row*2 + col
 				sx := gridStartX + col*slotSize
 				sy := gridStartY + row*slotSize
-				fb.DrawRect(sx, sy, slotSize, slotSize, 0xFF373737)
-				fb.DrawRect(sx+scale, sy+scale, slotSize-2*scale, slotSize-2*scale, 0xFF8B8B8B)
-
 				if idx < len(craftGrid) && !craftGrid[idx].IsEmpty() {
 					fb.DrawItemIconScaled(sx+scale, sy+scale, craftGrid[idx].ItemID, scale)
 					if craftGrid[idx].Count > 1 {
@@ -298,23 +376,14 @@ func (fb *Framebuffer) DrawCraftingGUI(inv *inventory.PlayerInventory, craftGrid
 				}
 			}
 		}
-		// Arrow
-		arrowX := gx + 88*scale
-		arrowY := gy + 35*scale
-		fb.DrawRect(arrowX, arrowY+scale, 14*scale, 3*scale, 0xFF555555)
-		fb.DrawRect(arrowX+10*scale, arrowY-2*scale, 3*scale, 9*scale, 0xFF555555)
-		fb.DrawRect(arrowX+12*scale, arrowY-scale, 2*scale, 7*scale, 0xFF555555)
-
 		// Result slot
-		resX := gx + 124*scale
-		resY := gy + 31*scale
-		resSize := 24 * scale
-		fb.DrawRect(resX, resY, resSize, resSize, 0xFF373737)
-		fb.DrawRect(resX+scale, resY+scale, resSize-2*scale, resSize-2*scale, 0xFF8B8B8B)
+		resX := gx + 154*scale
+		resY := gy + 36*scale
+		resSize := 18 * scale
 		if !craftResult.IsEmpty() {
-			fb.DrawItemIconScaled(resX+4*scale, resY+4*scale, craftResult.ItemID, scale)
+			fb.DrawItemIconScaled(resX+scale, resY+scale, craftResult.ItemID, scale)
 			if craftResult.Count > 1 {
-				fb.DrawNumberScaled(resX+20*scale, resY+14*scale, craftResult.Count, 0xFFFFFFFF, scale)
+				fb.DrawNumberScaled(resX+17*scale, resY+10*scale, craftResult.Count, 0xFFFFFFFF, scale)
 			}
 		}
 		if mouseX >= resX && mouseX < resX+resSize && mouseY >= resY && mouseY < resY+resSize {
@@ -333,9 +402,6 @@ func (fb *Framebuffer) DrawCraftingGUI(inv *inventory.PlayerInventory, craftGrid
 			slotIdx := 9 + row*9 + col
 			sx := invStartX + col*slotSize
 			sy := invStartY + row*slotSize
-
-			fb.DrawRect(sx, sy, slotSize, slotSize, 0xFF373737)
-			fb.DrawRect(sx+scale, sy+scale, slotSize-2*scale, slotSize-2*scale, 0xFF8B8B8B)
 
 			item := inv.Slots[slotIdx]
 			if !item.IsEmpty() {
@@ -371,9 +437,6 @@ func (fb *Framebuffer) DrawCraftingGUI(inv *inventory.PlayerInventory, craftGrid
 	for col := 0; col < 9; col++ {
 		sx := invStartX + col*slotSize
 		sy := hotbarY
-
-		fb.DrawRect(sx, sy, slotSize, slotSize, 0xFF373737)
-		fb.DrawRect(sx+scale, sy+scale, slotSize-2*scale, slotSize-2*scale, 0xFF8B8B8B)
 
 		item := inv.Slots[col]
 		if !item.IsEmpty() {
@@ -442,13 +505,9 @@ func (fb *Framebuffer) DrawFurnaceGUI(furnace *inventory.FurnaceBlockEntity, inv
 
 	slotSize := 18 * scale
 
-	// Dialog outer border and background
-	fb.DrawRect(gx, gy, gw, gh, 0xFF373737)
-	fb.DrawRect(gx+scale, gy+scale, gw-2*scale, gh-2*scale, 0xFFC6C6C6)
-	fb.DrawRect(gx+scale, gy+scale, gw-2*scale, scale, 0xFFFFFFFF)
-	fb.DrawRect(gx+scale, gy+scale, scale, gh-2*scale, 0xFFFFFFFF)
-	fb.DrawRect(gx+gw-2*scale, gy+scale, scale, gh-2*scale, 0xFF555555)
-	fb.DrawRect(gx+scale, gy+gh-2*scale, gw-2*scale, scale, 0xFF555555)
+	if !drawContainerBackground(fb, "gui/container/furnace.png", gx, gy, scale) {
+		fb.DrawRect(gx, gy, gw, gh, 0xFFC6C6C6)
+	}
 
 	// Title
 	fb.DrawText5x7(gx+8*scale, gy+6*scale, "熔炉", 0xFF404040, scale)
@@ -456,8 +515,6 @@ func (fb *Framebuffer) DrawFurnaceGUI(furnace *inventory.FurnaceBlockEntity, inv
 	// Smelting Input Slot
 	inX := gx + 56*scale
 	inY := gy + 17*scale
-	fb.DrawRect(inX, inY, slotSize, slotSize, 0xFF373737)
-	fb.DrawRect(inX+scale, inY+scale, slotSize-2*scale, slotSize-2*scale, 0xFF8B8B8B)
 	if furnace != nil && !furnace.InputSlot.IsEmpty() {
 		fb.DrawItemIconScaled(inX+scale, inY+scale, furnace.InputSlot.ItemID, scale)
 		if furnace.InputSlot.Count > 1 {
@@ -471,26 +528,13 @@ func (fb *Framebuffer) DrawFurnaceGUI(furnace *inventory.FurnaceBlockEntity, inv
 	// Burning Flame Indicator
 	flameX := gx + 56*scale
 	flameY := gy + 37*scale
-	flameH := 14 * scale
-	flameW := 14 * scale
-	fb.DrawRect(flameX+2*scale, flameY, flameW-4*scale, flameH, 0xFF555555)
-	if furnace != nil && furnace.IsBurning() && furnace.MaxBurnTime > 0 {
-		burnRatio := float32(furnace.BurnTimeRemaining) / float32(furnace.MaxBurnTime)
-		if burnRatio > 1.0 {
-			burnRatio = 1.0
-		}
-		activeH := int(burnRatio * float32(flameH))
-		if activeH > 0 {
-			fb.DrawRect(flameX+2*scale, flameY+flameH-activeH, flameW-4*scale, activeH, 0xFFFF6A00) // Vibrant fire orange
-			fb.DrawRect(flameX+4*scale, flameY+flameH-activeH, flameW-8*scale, activeH, 0xFFFFD800) // Yellow inner flame
-		}
+	if furnace != nil && furnace.IsBurning() {
+		drawGUIProgressSprite(fb, "gui/sprites/container/furnace/lit_progress.png", flameX, flameY, scale, 14)
 	}
 
 	// Fuel Slot
 	fuelX := gx + 56*scale
 	fuelY := gy + 53*scale
-	fb.DrawRect(fuelX, fuelY, slotSize, slotSize, 0xFF373737)
-	fb.DrawRect(fuelX+scale, fuelY+scale, slotSize-2*scale, slotSize-2*scale, 0xFF8B8B8B)
 	if furnace != nil && !furnace.FuelSlot.IsEmpty() {
 		fb.DrawItemIconScaled(fuelX+scale, fuelY+scale, furnace.FuelSlot.ItemID, scale)
 		if furnace.FuelSlot.Count > 1 {
@@ -504,33 +548,25 @@ func (fb *Framebuffer) DrawFurnaceGUI(furnace *inventory.FurnaceBlockEntity, inv
 	// Cook Progress Arrow
 	arrowX := gx + 79*scale
 	arrowY := gy + 35*scale
-	arrowW := 22 * scale
-	fb.DrawRect(arrowX, arrowY+scale, arrowW, 6*scale, 0xFF555555)
-	fb.DrawRect(arrowX+arrowW-6*scale, arrowY-2*scale, 6*scale, 12*scale, 0xFF555555)
 	if furnace != nil && furnace.CookTimeTotal > 0 && furnace.CookTimeProgress > 0 {
 		cookRatio := float32(furnace.CookTimeProgress) / float32(furnace.CookTimeTotal)
 		if cookRatio > 1.0 {
 			cookRatio = 1.0
 		}
-		progW := int(cookRatio * float32(arrowW))
+		progW := int(cookRatio * 24)
 		if progW > 0 {
-			fb.DrawRect(arrowX, arrowY+scale, progW, 6*scale, 0xFFFFFFFF)
-			if progW >= arrowW-6*scale {
-				fb.DrawRect(arrowX+arrowW-6*scale, arrowY-2*scale, 6*scale, 12*scale, 0xFFFFFFFF)
-			}
+			drawGUIProgressSprite(fb, "gui/sprites/container/furnace/burn_progress.png", arrowX, arrowY, scale, progW)
 		}
 	}
 
 	// Output Slot
 	outX := gx + 116*scale
 	outY := gy + 35*scale
-	outSize := 24 * scale
-	fb.DrawRect(outX, outY, outSize, outSize, 0xFF373737)
-	fb.DrawRect(outX+scale, outY+scale, outSize-2*scale, outSize-2*scale, 0xFF8B8B8B)
+	outSize := 18 * scale
 	if furnace != nil && !furnace.OutputSlot.IsEmpty() {
-		fb.DrawItemIconScaled(outX+4*scale, outY+4*scale, furnace.OutputSlot.ItemID, scale)
+		fb.DrawItemIconScaled(outX+scale, outY+scale, furnace.OutputSlot.ItemID, scale)
 		if furnace.OutputSlot.Count > 1 {
-			fb.DrawNumberScaled(outX+20*scale, outY+14*scale, furnace.OutputSlot.Count, 0xFFFFFFFF, scale)
+			fb.DrawNumberScaled(outX+17*scale, outY+10*scale, furnace.OutputSlot.Count, 0xFFFFFFFF, scale)
 		}
 	}
 	if mouseX >= outX && mouseX < outX+outSize && mouseY >= outY && mouseY < outY+outSize {
@@ -548,9 +584,6 @@ func (fb *Framebuffer) DrawFurnaceGUI(furnace *inventory.FurnaceBlockEntity, inv
 			slotIdx := 9 + row*9 + col
 			sx := invStartX + col*slotSize
 			sy := invStartY + row*slotSize
-
-			fb.DrawRect(sx, sy, slotSize, slotSize, 0xFF373737)
-			fb.DrawRect(sx+scale, sy+scale, slotSize-2*scale, slotSize-2*scale, 0xFF8B8B8B)
 
 			item := inv.Slots[slotIdx]
 			if !item.IsEmpty() {
@@ -586,9 +619,6 @@ func (fb *Framebuffer) DrawFurnaceGUI(furnace *inventory.FurnaceBlockEntity, inv
 	for col := 0; col < 9; col++ {
 		sx := invStartX + col*slotSize
 		sy := hotbarY
-
-		fb.DrawRect(sx, sy, slotSize, slotSize, 0xFF373737)
-		fb.DrawRect(sx+scale, sy+scale, slotSize-2*scale, slotSize-2*scale, 0xFF8B8B8B)
 
 		item := inv.Slots[col]
 		if !item.IsEmpty() {
