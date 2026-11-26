@@ -337,6 +337,16 @@ func GetOfficialItemTextureName(itemID int32) string {
 		return texture
 	}
 	switch itemID {
+	case inventory.ItemFlintAndSteel:
+		return "flint_and_steel"
+	case 302:
+		return "chainmail_helmet"
+	case 303:
+		return "chainmail_chestplate"
+	case 304:
+		return "chainmail_leggings"
+	case 305:
+		return "chainmail_boots"
 	case 323:
 		return "oak_sign"
 	case 345:

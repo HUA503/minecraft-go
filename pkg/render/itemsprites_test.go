@@ -155,6 +155,20 @@ func TestModernCreativeMaterialItemsUseOfficialIcons(t *testing.T) {
 	}
 }
 
+func TestJava263CatalogItemsHaveRealIcons(t *testing.T) {
+	for _, item := range inventory.CreativeCatalog(inventory.CreativeAll) {
+		if inventory.IsPlaceableBlock(item.ID) {
+			continue // Block items use the isometric block-model renderer.
+		}
+		if _, ok := inventory.GetToolProperties(item.ID); ok {
+			continue // Tools use their tier/type-specific renderer when no flat sprite exists.
+		}
+		if _, ok := GetOfficialItemSprite(item.ID); !ok {
+			t.Errorf("creative item %q (%d) has no official icon and would use the generic fallback", item.Name, item.ID)
+		}
+	}
+}
+
 func TestGetItemSprite16x16(t *testing.T) {
 	items := []int32{
 		inventory.ItemWoodenPickaxe,
