@@ -328,8 +328,16 @@ func ChunkFromNBT(tag *nbt.CompoundTag) (*Chunk, error) {
 	if tag == nil {
 		return nil, errors.New("nil chunk tag")
 	}
-	x := tag.GetInt("xPos")
-	z := tag.GetInt("zPos")
+	xTag, ok := tag.Get("xPos").(*nbt.IntTag)
+	if !ok || xTag == nil {
+		return nil, errors.New("invalid chunk: missing or non-int xPos")
+	}
+	zTag, ok := tag.Get("zPos").(*nbt.IntTag)
+	if !ok || zTag == nil {
+		return nil, errors.New("invalid chunk: missing or non-int zPos")
+	}
+	x := xTag.Value
+	z := zTag.Value
 	c := NewChunk(ChunkPos{X: x, Z: z})
 
 	if secValue := tag.Get("sections"); secValue != nil {

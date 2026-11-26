@@ -53,6 +53,55 @@ func Test26xRedShrubRuntimeIDSurvivesChunkNBT(t *testing.T) {
 	}
 }
 
+func TestChunkFromNBTRejectsMissingOrMalformedCoordinates(t *testing.T) {
+	tests := []struct {
+		name string
+		xPos nbt.Tag
+		zPos nbt.Tag
+	}{
+		{name: "missing xPos", zPos: &nbt.IntTag{Value: 0}},
+		{name: "missing zPos", xPos: &nbt.IntTag{Value: 0}},
+		{name: "non-int xPos", xPos: &nbt.LongTag{Value: 0}, zPos: &nbt.IntTag{Value: 0}},
+		{name: "non-int zPos", xPos: &nbt.IntTag{Value: 0}, zPos: &nbt.StringTag{Value: "0"}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			tag := nbt.NewCompound()
+			if tc.xPos != nil {
+				tag.Put("xPos", tc.xPos)
+			}
+			if tc.zPos != nil {
+				tag.Put("zPos", tc.zPos)
+			}
+			if _, err := ChunkFromNBT(tag); err == nil {
+				t.Fatal("malformed chunk coordinates were accepted")
+			}
+		})
+	}
+}
+
+func TestLoadChunkDoesNotTreatCorruptOriginCoordinatesAsNewChunk(t *testing.T) {
+	dir := t.TempDir()
+	storage, err := NewSaveManager(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer storage.Close()
+
+	region, err := storage.getRegion(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	malformed := nbt.NewCompound()
+	malformed.Put("zPos", &nbt.IntTag{Value: 0}) // xPos missing used to silently default to zero.
+	if err := region.WriteChunkData(0, 0, malformed); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := storage.LoadChunk(ChunkPos{}); err == nil || errors.Is(err, ErrChunkNotFound) {
+		t.Fatalf("corrupt origin chunk load error = %v, want a corruption error", err)
+	}
+}
+
 func TestPalettedContainerPacking(t *testing.T) {
 	pc := NewPalettedContainer(4096, 0)
 	pc.Set(0, 1)
