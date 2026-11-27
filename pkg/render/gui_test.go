@@ -186,6 +186,28 @@ func TestCreativeSearchCaretUsesRenderedGlyphWidths(t *testing.T) {
 	}
 }
 
+func TestCreativeSearchCursorAtPointerUsesRuneBoundaries(t *testing.T) {
+	width, height := 640, 480
+	scale, panelX, _ := creativeGUIOrigin(width, height)
+	query := "ab中"
+	for _, tc := range []struct {
+		name string
+		x    int
+		want int
+	}{
+		{"before text", panelX + 82*scale, 0},
+		{"first rune", panelX + 83*scale + 1*scale, 0},
+		{"after first rune", panelX + 83*scale + 5*scale, 1},
+		{"after all runes", panelX + 83*scale + 30*scale, 3},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := CreativeSearchCursorAt(width, height, query, tc.x); got != tc.want {
+				t.Fatalf("cursor at x=%d = %d, want %d", tc.x, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestCreativeTabsMatchJava263VanillaRows(t *testing.T) {
 	for _, tc := range []struct {
 		category inventory.CreativeCategory

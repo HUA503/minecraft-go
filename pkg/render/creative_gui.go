@@ -84,11 +84,12 @@ func creativeTabSpriteVariant(tab creativeTabLayout) int {
 // DrawCreativeInventoryGUI draws the Java 26.3 creative item picker: a 195x136
 // panel with a 9x5 catalog and the player's hotbar below it.
 func (fb *Framebuffer) DrawCreativeInventoryGUI(inv *inventory.PlayerInventory, cursor inventory.ItemStack, category inventory.CreativeCategory, query string, scrollRow, mouseX, mouseY int, presetValues ...inventory.CreativeHotbarPresets) {
-	fb.DrawCreativeInventoryGUIWithSearchState(inv, cursor, category, query, scrollRow, mouseX, mouseY, len([]rune(query)), false, presetValues...)
+	searchEnd := len([]rune(query))
+	fb.DrawCreativeInventoryGUIWithSearchState(inv, cursor, category, query, scrollRow, mouseX, mouseY, searchEnd, searchEnd, false, presetValues...)
 }
 
 // DrawCreativeInventoryGUIWithSearchState renders the creative inventory and its editable search caret.
-func (fb *Framebuffer) DrawCreativeInventoryGUIWithSearchState(inv *inventory.PlayerInventory, cursor inventory.ItemStack, category inventory.CreativeCategory, query string, scrollRow, mouseX, mouseY, searchCursor int, searchFocused bool, presetValues ...inventory.CreativeHotbarPresets) {
+func (fb *Framebuffer) DrawCreativeInventoryGUIWithSearchState(inv *inventory.PlayerInventory, cursor inventory.ItemStack, category inventory.CreativeCategory, query string, scrollRow, mouseX, mouseY, searchCursor, searchAnchor int, searchFocused bool, presetValues ...inventory.CreativeHotbarPresets) {
 	if fb == nil || inv == nil {
 		return
 	}
@@ -188,6 +189,18 @@ func (fb *Framebuffer) DrawCreativeInventoryGUIWithSearchState(inv *inventory.Pl
 		if query != "" {
 			searchLabel = query
 		}
+		searchCursor = max(0, min(searchCursor, len([]rune(query))))
+		searchAnchor = max(0, min(searchAnchor, len([]rune(query))))
+		selectionStart, selectionEnd := min(searchCursor, searchAnchor), max(searchCursor, searchAnchor)
+		if selectionStart < selectionEnd {
+			selectionX := px + (83+creativeSearchTextAdvance(query, selectionStart))*scale
+			selectionRight := px + (83+creativeSearchTextAdvance(query, selectionEnd))*scale
+			selectionX = max(selectionX, px+83*scale)
+			selectionRight = min(selectionRight, px+162*scale)
+			if selectionRight > selectionX {
+				fb.DrawRect(selectionX, py+6*scale, selectionRight-selectionX, 9*scale, 0xFF8AAED1)
+			}
+		}
 		drawCreativeSearchText(fb, px+82*scale, py+6*scale, searchLabel, 0xFF404040, scale, 80*scale)
 		if searchFocused && time.Now().UnixMilli()/500%2 == 0 {
 			caretX := px + (83+creativeSearchTextAdvance(query, searchCursor))*scale
@@ -272,6 +285,31 @@ func creativeSearchTextAdvance(text string, cursor int) int {
 		}
 	}
 	return width
+}
+
+// CreativeSearchCursorAt maps a click inside the search field to the nearest rune boundary.
+func CreativeSearchCursorAt(w, h int, query string, mouseX int) int {
+	scale, px, _ := creativeGUIOrigin(w, h)
+	if scale <= 0 {
+		return 0
+	}
+	localX := (mouseX - (px + 83*scale)) / scale
+	if localX <= 0 {
+		return 0
+	}
+	runes := []rune(query)
+	advance := 0
+	for index, ch := range runes {
+		width := 6
+		if ch > 0x7f {
+			width = 9
+		}
+		if localX < advance+width/2 {
+			return index
+		}
+		advance += width
+	}
+	return len(runes)
 }
 
 func drawCreativeOffhandSlot(fb *Framebuffer, inv *inventory.PlayerInventory, x, y, scale, mouseX, mouseY int) string {

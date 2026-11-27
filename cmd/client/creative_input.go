@@ -5,6 +5,67 @@ import (
 	"github.com/HUA503/minecraft-go/pkg/render"
 )
 
+func editCreativeSearchKey(query string, cursor, anchor, key int, extend bool) (string, int, int, bool) {
+	runes := []rune(query)
+	cursor = max(0, min(cursor, len(runes)))
+	anchor = max(0, min(anchor, len(runes)))
+	start, end := min(cursor, anchor), max(cursor, anchor)
+	if key == 0x08 || key == 0x2E { // Backspace / Delete
+		if start != end {
+			runes = append(runes[:start], runes[end:]...)
+			cursor, anchor = start, start
+		} else if key == 0x08 && cursor > 0 {
+			runes = append(runes[:cursor-1], runes[cursor:]...)
+			cursor--
+			anchor = cursor
+		} else if key == 0x2E && cursor < len(runes) {
+			runes = append(runes[:cursor], runes[cursor+1:]...)
+			anchor = cursor
+		}
+		return string(runes), cursor, anchor, true
+	}
+	moveTo := cursor
+	switch key {
+	case 0x25: // Left
+		if !extend && start != end {
+			moveTo = start
+		} else if moveTo > 0 {
+			moveTo--
+		}
+	case 0x27: // Right
+		if !extend && start != end {
+			moveTo = end
+		} else if moveTo < len(runes) {
+			moveTo++
+		}
+	case 0x24: // Home
+		moveTo = 0
+	case 0x23: // End
+		moveTo = len(runes)
+	default:
+		return query, cursor, anchor, false
+	}
+	if extend {
+		cursor = moveTo
+	} else {
+		cursor, anchor = moveTo, moveTo
+	}
+	return query, cursor, anchor, true
+}
+
+func insertCreativeSearchRune(query string, cursor, anchor int, ch rune, maxRunes int) (string, int, int, bool) {
+	runes := []rune(query)
+	cursor = max(0, min(cursor, len(runes)))
+	anchor = max(0, min(anchor, len(runes)))
+	start, end := min(cursor, anchor), max(cursor, anchor)
+	if start == end && len(runes) >= maxRunes || start != end && len(runes)-(end-start) >= maxRunes {
+		return query, cursor, anchor, false
+	}
+	runes = append(runes[:start], append([]rune{ch}, runes[end:]...)...)
+	cursor = start + 1
+	return string(runes), cursor, cursor, true
+}
+
 // scrollCreativeCatalog converts Win32 wheel deltas (120 units per notch) into
 // catalog rows while retaining high-resolution partial-wheel movement.
 func scrollCreativeCatalog(current, delta, maxScroll, remainder int) (int, int) {

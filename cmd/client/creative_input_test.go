@@ -7,6 +7,33 @@ import (
 	"github.com/HUA503/minecraft-go/pkg/render"
 )
 
+func TestCreativeSearchSelectionEditing(t *testing.T) {
+	t.Run("backspace removes selected runes", func(t *testing.T) {
+		query, cursor, anchor, handled := editCreativeSearchKey("stone", 4, 1, 0x08, false)
+		if !handled || query != "se" || cursor != 1 || anchor != 1 {
+			t.Fatalf("selection backspace = %q, %d, %d, %v; want %q, 1, 1, true", query, cursor, anchor, handled, "se")
+		}
+	})
+	t.Run("typing replaces selection", func(t *testing.T) {
+		query, cursor, anchor, changed := insertCreativeSearchRune("stone", 4, 1, 'X', 64)
+		if !changed || query != "sXe" || cursor != 2 || anchor != 2 {
+			t.Fatalf("selection insertion = %q, %d, %d, %v; want %q, 2, 2, true", query, cursor, anchor, changed, "sXe")
+		}
+	})
+	t.Run("shift movement retains anchor", func(t *testing.T) {
+		query, cursor, anchor, handled := editCreativeSearchKey("stone", 2, 2, 0x27, true)
+		if !handled || query != "stone" || cursor != 3 || anchor != 2 {
+			t.Fatalf("shift-right = %q, %d, %d, %v; want %q, 3, 2, true", query, cursor, anchor, handled, "stone")
+		}
+	})
+	t.Run("delete selection at rune limit", func(t *testing.T) {
+		query, cursor, anchor, changed := insertCreativeSearchRune("中文", 1, 0, 'A', 2)
+		if !changed || query != "A文" || cursor != 1 || anchor != 1 {
+			t.Fatalf("full query selection insertion = %q, %d, %d, %v; want %q, 1, 1, true", query, cursor, anchor, changed, "A文")
+		}
+	})
+}
+
 func TestNewClientDefaultsCreativeInventoryToSearch(t *testing.T) {
 	client := NewClient("", "test", false, 320, 240)
 	if client.creativeTab != inventory.CreativeAll {
