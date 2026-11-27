@@ -9,6 +9,7 @@ type ExtendedBlockDefinition struct {
 	TextureTop           string
 	TextureBottom        string
 	TextureSide          string
+	TextureItem          string
 	Category             CreativeCategory
 	Hardness             float64
 	HarvestTool          ToolType
@@ -31,15 +32,18 @@ var modernOreDropRanges = map[string][2]int{
 var extendedBlockDefinitions = buildExtendedBlockDefinitions()
 
 const (
-	FirstCushionBlock int32 = 16200
-	LastCushionBlock  int32 = FirstCushionBlock + 15
-	FirstSmallFlower  int32 = 16300
-	LastSmallFlower   int32 = FirstSmallFlower + 9
-	FirstCarpetBlock  int32 = 19600
-	LastCarpetBlock   int32 = FirstCarpetBlock + 15
-	FirstCandleItem   int32 = 17133
-	LastCandleItem    int32 = FirstCandleItem + 16
-	CandleStateBase   int32 = 40000
+	FirstCushionBlock   int32 = 16200
+	LastCushionBlock    int32 = FirstCushionBlock + 15
+	FirstSmallFlower    int32 = 16300
+	LastSmallFlower     int32 = FirstSmallFlower + 9
+	FirstTallFlower     int32 = LastSmallFlower + 1
+	LastTallFlower      int32 = FirstTallFlower + 3
+	TallFlowerStateBase int32 = 52000
+	FirstCarpetBlock    int32 = 19600
+	LastCarpetBlock     int32 = FirstCarpetBlock + 15
+	FirstCandleItem     int32 = 17133
+	LastCandleItem      int32 = FirstCandleItem + 16
+	CandleStateBase     int32 = 40000
 )
 
 var cushionColors = [...]struct {
@@ -118,6 +122,7 @@ func buildExtendedBlockDefinitions() []ExtendedBlockDefinition {
 	definitions = append(definitions, masonryWallBlockDefinitions()...)
 	definitions = append(definitions, cushionBlockDefinitions()...)
 	definitions = append(definitions, smallFlowerBlockDefinitions()...)
+	definitions = append(definitions, tallFlowerBlockDefinitions()...)
 	return definitions
 }
 
@@ -136,6 +141,28 @@ func smallFlowerBlockDefinitions() []ExtendedBlockDefinition {
 		name := "minecraft:" + flower.name
 		definitions = append(definitions, ExtendedBlockDefinition{
 			RuntimeID: id, Name: name, TextureTop: flower.name, TextureBottom: flower.name, TextureSide: flower.name,
+			Category: CreativeNatural, DropRuntimeID: id,
+		})
+		extendedBlockDisplayNames[name] = flower.display
+	}
+	return definitions
+}
+
+func tallFlowerBlockDefinitions() []ExtendedBlockDefinition {
+	flowers := [...]struct {
+		name, display, lower, upper, icon string
+	}{
+		{"sunflower", "向日葵", "sunflower_bottom", "sunflower_top", "sunflower_front"},
+		{"lilac", "丁香", "lilac_bottom", "lilac_top", "lilac_bottom"},
+		{"rose_bush", "玫瑰丛", "rose_bush_bottom", "rose_bush_top", "rose_bush_bottom"},
+		{"peony", "牡丹", "peony_bottom", "peony_top", "peony_bottom"},
+	}
+	definitions := make([]ExtendedBlockDefinition, 0, len(flowers))
+	for index, flower := range flowers {
+		id := FirstTallFlower + int32(index)
+		name := "minecraft:" + flower.name
+		definitions = append(definitions, ExtendedBlockDefinition{
+			RuntimeID: id, Name: name, TextureTop: flower.upper, TextureBottom: flower.lower, TextureSide: flower.lower, TextureItem: flower.icon,
 			Category: CreativeNatural, DropRuntimeID: id,
 		})
 		extendedBlockDisplayNames[name] = flower.display
@@ -773,6 +800,9 @@ func BlockTextureForState(blockID int32) int32 {
 	if _, _, _, _, _, ok := WoodDoorStateProperties(blockID); ok {
 		return blockID
 	}
+	if _, _, ok := TallFlowerStateProperties(blockID); ok {
+		return blockID
+	}
 	return BlockItemForState(blockID)
 }
 
@@ -876,12 +906,76 @@ func IsExtendedLeaves(runtimeID int32) bool {
 }
 
 func IsExtendedFoliage(runtimeID int32) bool {
-	return runtimeID == 10063 || runtimeID == 10100 || IsSmallFlower(runtimeID)
+	return runtimeID == 10063 || runtimeID == 10100 || IsSmallFlower(runtimeID) || IsTallFlowerBlock(runtimeID)
+}
+
+func IsFlowerPlantBlock(blockID int32) bool {
+	return IsSmallFlower(blockID) || IsTallFlowerBlock(blockID)
 }
 
 // IsSmallFlower reports whether runtimeID is one of the single-block vanilla flowers.
 func IsSmallFlower(runtimeID int32) bool {
 	return runtimeID >= FirstSmallFlower && runtimeID <= LastSmallFlower
+}
+
+func IsTallFlowerItem(itemID int32) bool {
+	return itemID >= FirstTallFlower && itemID <= LastTallFlower
+}
+
+func IsTallFlowerBlock(blockID int32) bool {
+	if IsTallFlowerItem(blockID) {
+		return true
+	}
+	return blockID >= TallFlowerStateBase && blockID < TallFlowerStateBase+int32(LastTallFlower-FirstTallFlower+1)
+}
+
+// TallFlowerBlockState returns the lower item block or its paired upper-half state.
+func TallFlowerBlockState(itemID int32, upper bool) (int32, bool) {
+	if !IsTallFlowerItem(itemID) {
+		return itemID, false
+	}
+	if !upper {
+		return itemID, true
+	}
+	return TallFlowerStateBase + itemID - FirstTallFlower, true
+}
+
+// TallFlowerStateProperties resolves a double-height flower block state.
+func TallFlowerStateProperties(blockID int32) (itemID int32, upper bool, ok bool) {
+	if IsTallFlowerItem(blockID) {
+		return blockID, false, true
+	}
+	if blockID < TallFlowerStateBase || blockID >= TallFlowerStateBase+int32(LastTallFlower-FirstTallFlower+1) {
+		return 0, false, false
+	}
+	return FirstTallFlower + blockID - TallFlowerStateBase, true, true
+}
+
+// TallFlowerOtherHalf returns the paired block position offset and state.
+func TallFlowerOtherHalf(blockID int32) (itemID int32, dy int32, otherState int32, ok bool) {
+	itemID, upper, ok := TallFlowerStateProperties(blockID)
+	if !ok {
+		return 0, 0, 0, false
+	}
+	other, _ := TallFlowerBlockState(itemID, !upper)
+	if upper {
+		return itemID, -1, other, true
+	}
+	return itemID, 1, other, true
+}
+
+func TallFlowerItemTextureName(itemID int32) string {
+	if !IsTallFlowerItem(itemID) {
+		return ""
+	}
+	definition, ok := ExtendedBlockByID(itemID)
+	if !ok {
+		return ""
+	}
+	if definition.TextureItem != "" {
+		return definition.TextureItem
+	}
+	return definition.TextureSide
 }
 
 // IsFlowerSoilBlock reports whether a block can support a small flower.
@@ -902,6 +996,9 @@ func IsFlowerSoilBlock(blockID int32) bool {
 }
 
 func ExtendedBlockItemTextureName(runtimeID int32) string {
+	if texture := TallFlowerItemTextureName(runtimeID); texture != "" {
+		return texture
+	}
 	if IsCushionBlock(runtimeID) {
 		return cushionColors[runtimeID-FirstCushionBlock].name + "_cushion"
 	}
@@ -918,6 +1015,9 @@ func ExtendedBlockItemTextureName(runtimeID int32) string {
 		return "red_shrub"
 	default:
 		if definition, ok := ExtendedBlockByID(runtimeID); ok {
+			if definition.TextureItem != "" {
+				return definition.TextureItem
+			}
 			return definition.TextureSide
 		}
 		return ""

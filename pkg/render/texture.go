@@ -980,6 +980,13 @@ func initOfficialBlockTextures() {
 			loadBlock(block.RuntimeID, block.TextureTop, block.TextureBottom, block.TextureSide)
 		}
 	}
+	for _, block := range inventory.ExtendedBlockDefinitions() {
+		if !inventory.IsTallFlowerItem(block.RuntimeID) {
+			continue
+		}
+		upperState, _ := inventory.TallFlowerBlockState(block.RuntimeID, true)
+		loadBlock(upperState, block.TextureTop, block.TextureTop, block.TextureTop)
+	}
 	for _, candle := range inventory.ExtendedBlockDefinitions() {
 		if !inventory.IsCandleItem(candle.RuntimeID) {
 			continue

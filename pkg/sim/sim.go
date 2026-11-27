@@ -881,6 +881,7 @@ func (e *Engine) BreakBlockWithTool(playerID int32, pos world.BlockPos, toolID i
 	if !e.SetBlockChecked(pos.X, pos.Y, pos.Z, 0) {
 		return 0, false
 	}
+	e.removeTallFlowerOtherHalf(pos, origBlock)
 	if carpet := e.removeUnsupportedCarpetAbove(pos); carpet != 0 {
 		e.mu.Lock()
 		e.spawnItemDropLocked(carpet, 1, Vec3{X: float64(pos.X) + 0.5, Y: float64(pos.Y) + 1.1, Z: float64(pos.Z) + 0.5}, Vec3{Y: 0.18}, 0.2)
@@ -1015,6 +1016,7 @@ func (e *Engine) BreakBlock(playerID int32, pos world.BlockPos) int32 {
 	if !e.SetBlockChecked(pos.X, pos.Y, pos.Z, 0) {
 		return 0
 	}
+	e.removeTallFlowerOtherHalf(pos, origBlock)
 	e.removeWoodDoorOtherHalf(pos, origBlock)
 	if carpet := e.removeUnsupportedCarpetAbove(pos); carpet != 0 {
 		e.mu.Lock()
@@ -1155,6 +1157,30 @@ func (e *Engine) rollBlockDropCount(blockID int32) int {
 
 // PlaceBlock places a block if it does not intersect the player's bounding box.
 func (e *Engine) PlaceBlock(playerID int32, pos world.BlockPos, blockID int32) bool {
+	if inventory.IsTallFlowerItem(blockID) {
+		if pos.Y <= world.MinWorldY || pos.Y >= world.MaxWorldY || !inventory.IsFlowerSoilBlock(e.GetBlock(pos.X, pos.Y-1, pos.Z)) {
+			return false
+		}
+		upperPos := world.BlockPos{X: pos.X, Y: pos.Y + 1, Z: pos.Z}
+		if !world.ValidBlockCoordinates(upperPos.X, upperPos.Y, upperPos.Z) ||
+			!inventory.IsReplaceableBlock(e.GetBlock(pos.X, pos.Y, pos.Z)) ||
+			!inventory.IsReplaceableBlock(e.GetBlock(upperPos.X, upperPos.Y, upperPos.Z)) {
+			return false
+		}
+		upperState, _ := inventory.TallFlowerBlockState(blockID, true)
+		if !e.SetBlockChecked(pos.X, pos.Y, pos.Z, blockID) {
+			return false
+		}
+		if !e.SetBlockChecked(upperPos.X, upperPos.Y, upperPos.Z, upperState) {
+			_ = e.SetBlockChecked(pos.X, pos.Y, pos.Z, 0)
+			return false
+		}
+		e.consumePlacedBlockItem(playerID, blockID)
+		return true
+	}
+	if _, _, isTallFlowerState := inventory.TallFlowerStateProperties(blockID); isTallFlowerState {
+		return false
+	}
 	if pressureState, ok := inventory.PressurePlatePlacementState(blockID); ok {
 		blockID = pressureState
 	}
@@ -1223,8 +1249,8 @@ func (e *Engine) PlaceBlock(playerID int32, pos world.BlockPos, blockID int32) b
 		return true
 	}
 	below := e.GetBlock(pos.X, pos.Y-1, pos.Z)
-	if inventory.IsSmallFlower(blockID) && (pos.Y <= world.MinWorldY || !inventory.IsFlowerSoilBlock(below)) {
-		return false // Small flowers require a vanilla flower-supporting soil block.
+	if inventory.IsFlowerPlantBlock(blockID) && (pos.Y <= world.MinWorldY || !inventory.IsFlowerSoilBlock(below)) {
+		return false // Flowers require a vanilla flower-supporting soil block.
 	}
 	if (blockID == 10100 || inventory.IsCushionBlock(blockID) || inventory.IsCandleBlock(blockID) || inventory.IsCarpetBlock(blockID)) && (pos.Y <= world.MinWorldY || !IsSolidBlock(below) || (inventory.IsCarpetBlock(blockID) && inventory.IsCarpetBlock(below))) {
 		return false // Red shrubs, cushions, candles, and carpets need a solid block beneath them.
@@ -1288,14 +1314,34 @@ func (e *Engine) removeUnsupportedFlowerAbove(pos world.BlockPos) int32 {
 		return 0
 	}
 	above := world.BlockPos{X: pos.X, Y: pos.Y + 1, Z: pos.Z}
-	flower := e.GetBlock(above.X, above.Y, above.Z)
-	if !inventory.IsSmallFlower(flower) || inventory.IsFlowerSoilBlock(e.GetBlock(pos.X, pos.Y, pos.Z)) {
+	flowerState := e.GetBlock(above.X, above.Y, above.Z)
+	if !inventory.IsFlowerPlantBlock(flowerState) || inventory.IsFlowerSoilBlock(e.GetBlock(pos.X, pos.Y, pos.Z)) {
 		return 0
 	}
+	flowerItem := inventory.BlockItemForState(flowerState)
+	itemID, upper, isTallFlower := inventory.TallFlowerStateProperties(flowerState)
+	if isTallFlower && !upper {
+		upperPos := world.BlockPos{X: above.X, Y: above.Y + 1, Z: above.Z}
+		upperState, _ := inventory.TallFlowerBlockState(itemID, true)
+		if e.GetBlock(upperPos.X, upperPos.Y, upperPos.Z) == upperState {
+			_ = e.SetBlockChecked(upperPos.X, upperPos.Y, upperPos.Z, 0)
+		}
+	}
 	if e.SetBlockChecked(above.X, above.Y, above.Z, 0) {
-		return flower
+		return flowerItem
 	}
 	return 0
+}
+
+func (e *Engine) removeTallFlowerOtherHalf(pos world.BlockPos, blockID int32) {
+	_, dy, otherState, ok := inventory.TallFlowerOtherHalf(blockID)
+	if !ok || pos.Y+dy < world.MinWorldY || pos.Y+dy > world.MaxWorldY {
+		return
+	}
+	other := world.BlockPos{X: pos.X, Y: pos.Y + dy, Z: pos.Z}
+	if e.GetBlock(other.X, other.Y, other.Z) == otherState {
+		_ = e.SetBlockChecked(other.X, other.Y, other.Z, 0)
+	}
 }
 
 type doorPosState struct {

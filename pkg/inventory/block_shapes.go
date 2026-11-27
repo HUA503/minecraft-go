@@ -450,6 +450,9 @@ func SlabMergeState(existingBlockID, itemID, faceY int32, localHitY float64) (in
 // BlockItemForState returns the placeable item represented by a runtime block
 // state, leaving ordinary block IDs unchanged.
 func BlockItemForState(blockID int32) int32 {
+	if itemID, _, ok := TallFlowerStateProperties(blockID); ok {
+		return itemID
+	}
 	if _, ok := IronChainStateProperties(blockID); ok {
 		return ItemIronChain
 	}

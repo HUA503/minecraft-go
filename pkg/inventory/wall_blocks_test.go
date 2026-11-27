@@ -4,8 +4,8 @@ import "testing"
 
 func TestJava263MasonryWallsAreCataloguedCraftableAndShaped(t *testing.T) {
 	all := CreativeCatalog(CreativeAll)
-	if len(all) != 1003 {
-		t.Fatalf("all-items search catalog length = %d, want 1003", len(all))
+	if len(all) != 1007 {
+		t.Fatalf("all-items search catalog length = %d, want 1007", len(all))
 	}
 	for _, wall := range masonryWallDefinitions {
 		if !IsMasonryWallBlock(wall.ItemID) {
