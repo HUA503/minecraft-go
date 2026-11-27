@@ -869,6 +869,12 @@ func (cm *CraftingManager) registerDyeRecipes() {
 			)
 		}
 	}
+	if _, ok := ExtendedBlockByID(ItemCactusFlower); ok {
+		cm.Recipes = append(cm.Recipes, Recipe{
+			Pattern: []int32{ItemCactusFlower}, Shapeless: true,
+			Output: ItemStack{ItemID: ItemPinkDye, Count: 1},
+		})
+	}
 }
 
 // MatchCrafting finds matching recipe for grid (gridSize = 2 for 2x2, 3 for 3x3).

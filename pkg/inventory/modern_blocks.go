@@ -11,6 +11,7 @@ type ExtendedBlockDefinition struct {
 	TextureSide          string
 	TextureItem          string
 	Category             CreativeCategory
+	DropsOnlyWithShears  bool
 	Hardness             float64
 	HarvestTool          ToolType
 	RequiresHarvestTool  bool
@@ -124,6 +125,7 @@ func buildExtendedBlockDefinitions() []ExtendedBlockDefinition {
 	definitions = append(definitions, smallFlowerBlockDefinitions()...)
 	definitions = append(definitions, tallFlowerBlockDefinitions()...)
 	definitions = append(definitions, mossCarpetBlockDefinitions()...)
+	definitions = append(definitions, springPlantBlockDefinitions()...)
 	return definitions
 }
 
@@ -227,6 +229,42 @@ func mossCarpetBlockDefinitions() []ExtendedBlockDefinition {
 // IsThinCarpetBlock identifies carpet blocks that use the 1/16 block model.
 func IsThinCarpetBlock(blockID int32) bool {
 	return IsCarpetBlock(blockID) || blockID == ItemMossCarpet || blockID == ItemPaleMossCarpet
+}
+
+const (
+	ItemBush         int32 = 16316
+	ItemCactusFlower int32 = 16317
+)
+
+func springPlantBlockDefinitions() []ExtendedBlockDefinition {
+	blocks := [...]struct {
+		id          int32
+		name, label string
+		shearsOnly  bool
+	}{
+		{ItemBush, "bush", "灌木", true},
+		{ItemCactusFlower, "cactus_flower", "仙人掌花", false},
+	}
+	definitions := make([]ExtendedBlockDefinition, 0, len(blocks))
+	for _, block := range blocks {
+		name := "minecraft:" + block.name
+		definitions = append(definitions, ExtendedBlockDefinition{
+			RuntimeID: block.id, Name: name,
+			TextureTop: block.name, TextureBottom: block.name, TextureSide: block.name,
+			Category: CreativeNatural, Hardness: 0, DropRuntimeID: block.id,
+			DropsOnlyWithShears: block.shearsOnly,
+		})
+		extendedBlockDisplayNames[name] = block.label
+	}
+	return definitions
+}
+
+func IsBush(blockID int32) bool { return blockID == ItemBush }
+
+func IsCactusFlower(blockID int32) bool { return blockID == ItemCactusFlower }
+
+func IsDecorativePlantBlock(blockID int32) bool {
+	return IsFlowerPlantBlock(blockID) || IsBush(blockID) || IsCactusFlower(blockID)
 }
 
 func additionalSpecialCubeDefinitions() []ExtendedBlockDefinition {
@@ -938,7 +976,7 @@ func IsExtendedLeaves(runtimeID int32) bool {
 }
 
 func IsExtendedFoliage(runtimeID int32) bool {
-	return runtimeID == 10063 || runtimeID == 10100 || IsSmallFlower(runtimeID) || IsTallFlowerBlock(runtimeID)
+	return runtimeID == 10063 || runtimeID == 10100 || IsSmallFlower(runtimeID) || IsTallFlowerBlock(runtimeID) || IsBush(runtimeID) || IsCactusFlower(runtimeID)
 }
 
 func IsFlowerPlantBlock(blockID int32) bool {

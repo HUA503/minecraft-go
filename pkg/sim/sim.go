@@ -968,6 +968,9 @@ func (e *Engine) BreakBlockWithTool(playerID int32, pos world.BlockPos, toolID i
 			} else if definition.DropRuntimeID != 0 {
 				dropItem = definition.DropRuntimeID
 			}
+			if definition.DropsOnlyWithShears && toolID != inventory.ItemShears {
+				dropItem = inventory.ItemAir
+			}
 		}
 
 		if dropItem != inventory.ItemAir {
@@ -1114,6 +1117,9 @@ func (e *Engine) BreakBlock(playerID int32, pos world.BlockPos) int32 {
 				dropItem = inventory.ItemAir
 			}
 		}
+		if definition.DropsOnlyWithShears {
+			dropItem = inventory.ItemAir
+		}
 	}
 	switch origBlock {
 	case 14, 15, 16, 56, 73, 74, 129:
@@ -1252,6 +1258,9 @@ func (e *Engine) PlaceBlock(playerID int32, pos world.BlockPos, blockID int32) b
 	if inventory.IsFlowerPlantBlock(blockID) && (pos.Y <= world.MinWorldY || !inventory.IsFlowerSoilBlock(below)) {
 		return false // Flowers require a vanilla flower-supporting soil block.
 	}
+	if (inventory.IsBush(blockID) || inventory.IsCactusFlower(blockID)) && (pos.Y <= world.MinWorldY || !IsSolidBlock(below)) {
+		return false // Bushes and cactus flowers require a supporting top face.
+	}
 	if (blockID == 10100 || inventory.IsCushionBlock(blockID) || inventory.IsCandleBlock(blockID) || inventory.IsThinCarpetBlock(blockID)) && (pos.Y <= world.MinWorldY || !IsSolidBlock(below) || (inventory.IsThinCarpetBlock(blockID) && inventory.IsThinCarpetBlock(below))) {
 		return false // Red shrubs, cushions, candles, and carpets need a solid block beneath them.
 	}
@@ -1315,7 +1324,12 @@ func (e *Engine) removeUnsupportedFlowerAbove(pos world.BlockPos) int32 {
 	}
 	above := world.BlockPos{X: pos.X, Y: pos.Y + 1, Z: pos.Z}
 	flowerState := e.GetBlock(above.X, above.Y, above.Z)
-	if !inventory.IsFlowerPlantBlock(flowerState) || inventory.IsFlowerSoilBlock(e.GetBlock(pos.X, pos.Y, pos.Z)) {
+	if !inventory.IsDecorativePlantBlock(flowerState) {
+		return 0
+	}
+	support := e.GetBlock(pos.X, pos.Y, pos.Z)
+	if inventory.IsFlowerPlantBlock(flowerState) && inventory.IsFlowerSoilBlock(support) ||
+		(inventory.IsBush(flowerState) || inventory.IsCactusFlower(flowerState)) && IsSolidBlock(support) {
 		return 0
 	}
 	flowerItem := inventory.BlockItemForState(flowerState)
