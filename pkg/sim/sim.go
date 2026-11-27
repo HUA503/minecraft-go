@@ -881,6 +881,11 @@ func (e *Engine) BreakBlockWithTool(playerID int32, pos world.BlockPos, toolID i
 	if !e.SetBlockChecked(pos.X, pos.Y, pos.Z, 0) {
 		return 0, false
 	}
+	if carpet := e.removeUnsupportedCarpetAbove(pos); carpet != 0 {
+		e.mu.Lock()
+		e.spawnItemDropLocked(carpet, 1, Vec3{X: float64(pos.X) + 0.5, Y: float64(pos.Y) + 1.1, Z: float64(pos.Z) + 0.5}, Vec3{Y: 0.18}, 0.2)
+		e.mu.Unlock()
+	}
 	e.removeWoodDoorOtherHalf(pos, origBlock)
 	if origBlock == 61 || origBlock == 62 {
 		e.mu.Lock()
@@ -1006,6 +1011,13 @@ func (e *Engine) BreakBlock(playerID int32, pos world.BlockPos) int32 {
 		return 0
 	}
 	e.removeWoodDoorOtherHalf(pos, origBlock)
+	if carpet := e.removeUnsupportedCarpetAbove(pos); carpet != 0 {
+		e.mu.Lock()
+		if player, ok := e.Players[playerID]; ok && player.Inventory != nil {
+			player.Inventory.AddItem(carpet, 1)
+		}
+		e.mu.Unlock()
+	}
 	// Java 26.3 cushions are destroyed when their supporting block is broken.
 	// Remove the unsupported block and return its item to the player as well.
 	if pos.Y < world.MaxWorldY {
@@ -1198,8 +1210,9 @@ func (e *Engine) PlaceBlock(playerID int32, pos world.BlockPos, blockID int32) b
 		e.consumePlacedBlockItem(playerID, placedItem)
 		return true
 	}
-	if (blockID == 10100 || inventory.IsCushionBlock(blockID) || inventory.IsCandleBlock(blockID)) && (pos.Y <= 0 || !IsSolidBlock(e.GetBlock(pos.X, pos.Y-1, pos.Z))) {
-		return false // Red shrubs, cushions, and candles need a solid block beneath them.
+	below := e.GetBlock(pos.X, pos.Y-1, pos.Z)
+	if (blockID == 10100 || inventory.IsCushionBlock(blockID) || inventory.IsCandleBlock(blockID) || inventory.IsCarpetBlock(blockID)) && (pos.Y <= world.MinWorldY || !IsSolidBlock(below) || (inventory.IsCarpetBlock(blockID) && inventory.IsCarpetBlock(below))) {
+		return false // Red shrubs, cushions, candles, and carpets need a solid block beneath them.
 	}
 
 	// For solid blocks, prevent placing inside living players
@@ -1238,6 +1251,21 @@ func (e *Engine) PlaceBlock(playerID int32, pos world.BlockPos, blockID int32) b
 		e.mu.Unlock()
 	}
 	return true
+}
+
+func (e *Engine) removeUnsupportedCarpetAbove(pos world.BlockPos) int32 {
+	if pos.Y >= world.MaxWorldY {
+		return 0
+	}
+	above := world.BlockPos{X: pos.X, Y: pos.Y + 1, Z: pos.Z}
+	carpet := e.GetBlock(above.X, above.Y, above.Z)
+	if !inventory.IsCarpetBlock(carpet) || IsSolidBlock(e.GetBlock(pos.X, pos.Y, pos.Z)) {
+		return 0
+	}
+	if e.SetBlockChecked(above.X, above.Y, above.Z, 0) {
+		return carpet
+	}
+	return 0
 }
 
 type doorPosState struct {

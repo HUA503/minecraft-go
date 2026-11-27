@@ -33,6 +33,8 @@ var extendedBlockDefinitions = buildExtendedBlockDefinitions()
 const (
 	FirstCushionBlock int32 = 16200
 	LastCushionBlock  int32 = FirstCushionBlock + 15
+	FirstCarpetBlock  int32 = 19600
+	LastCarpetBlock   int32 = FirstCarpetBlock + 15
 	FirstCandleItem   int32 = 17133
 	LastCandleItem    int32 = FirstCandleItem + 16
 	CandleStateBase   int32 = 40000
@@ -87,6 +89,7 @@ func buildExtendedBlockDefinitions() []ExtendedBlockDefinition {
 	definitions = append(definitions, glassPaneBlockDefinitions()...)
 	definitions = append(definitions, candleBlockDefinitions()...)
 	definitions = append(definitions, glazedTerracottaDefinitions()...)
+	definitions = append(definitions, carpetBlockDefinitions()...)
 	definitions = append(definitions, additionalFullCubeDefinitions()...)
 	definitions = append(definitions, additionalCommonCubeDefinitions()...)
 	definitions = append(definitions, additionalSpecialCubeDefinitions()...)
@@ -113,6 +116,33 @@ func buildExtendedBlockDefinitions() []ExtendedBlockDefinition {
 	definitions = append(definitions, masonryWallBlockDefinitions()...)
 	definitions = append(definitions, cushionBlockDefinitions()...)
 	return definitions
+}
+
+func carpetBlockDefinitions() []ExtendedBlockDefinition {
+	colors := [...]struct{ id, display string }{
+		{"white", "白色"}, {"orange", "橙色"}, {"magenta", "品红色"}, {"light_blue", "淡蓝色"},
+		{"yellow", "黄色"}, {"lime", "黄绿色"}, {"pink", "粉红色"}, {"gray", "灰色"},
+		{"light_gray", "淡灰色"}, {"cyan", "青色"}, {"purple", "紫色"}, {"blue", "蓝色"},
+		{"brown", "棕色"}, {"green", "绿色"}, {"red", "红色"}, {"black", "黑色"},
+	}
+	definitions := make([]ExtendedBlockDefinition, 0, len(colors))
+	for i, color := range colors {
+		name := "minecraft:" + color.id + "_carpet"
+		texture := color.id + "_wool"
+		id := FirstCarpetBlock + int32(i)
+		definitions = append(definitions, ExtendedBlockDefinition{
+			RuntimeID: id, Name: name,
+			TextureTop: texture, TextureBottom: texture, TextureSide: texture,
+			Category: CreativeDecoration, Hardness: 0.1, DropRuntimeID: id,
+		})
+		extendedBlockDisplayNames[name] = color.display + "地毯"
+	}
+	return definitions
+}
+
+// IsCarpetBlock reports whether the runtime ID is a colored carpet block.
+func IsCarpetBlock(runtimeID int32) bool {
+	return runtimeID >= FirstCarpetBlock && runtimeID <= LastCarpetBlock
 }
 
 func additionalSpecialCubeDefinitions() []ExtendedBlockDefinition {

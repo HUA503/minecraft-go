@@ -214,6 +214,9 @@ func BlockCollisionBoxesAt(blockID, x, y, z int32, getBlock func(int32, int32, i
 	if IsCushionBlock(blockID) {
 		return cushionVisualBox, true
 	}
+	if IsCarpetBlock(blockID) {
+		return carpetCollisionBox, true
+	}
 	if boxes, ok := FenceCollisionBoxesAt(blockID, x, y, z, getBlock); ok {
 		return boxes, true
 	}
@@ -257,6 +260,8 @@ func BlockCollisionBoxesAt(blockID, x, y, z int32, getBlock func(int32, int32, i
 }
 
 var candleCollisionBox = []BlockBox{{MinX: 7.0 / 16.0, MinY: 0, MinZ: 7.0 / 16.0, MaxX: 9.0 / 16.0, MaxY: 6.0 / 16.0, MaxZ: 9.0 / 16.0}}
+
+var carpetCollisionBox = []BlockBox{{MinX: 0, MinY: 0, MinZ: 0, MaxX: 1, MaxY: 1.0 / 16.0, MaxZ: 1}}
 
 // CandleBoxes returns the individual 2x2-pixel candle bodies in the selected
 // vanilla count state; lit candles share the same collision outline.

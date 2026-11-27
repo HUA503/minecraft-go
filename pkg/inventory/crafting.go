@@ -811,6 +811,18 @@ func (cm *CraftingManager) registerDyeRecipes() {
 		})
 	}
 	for _, color := range colors {
+		woolID := int32(0)
+		if color.name == "white" {
+			woolID = 35
+		} else if wool, ok := ExtendedBlockByName("minecraft:" + color.name + "_wool"); ok {
+			woolID = wool.RuntimeID
+		}
+		if carpet, ok := ExtendedBlockByName("minecraft:" + color.name + "_carpet"); ok && woolID != 0 {
+			cm.Recipes = append(cm.Recipes,
+				Recipe{Width: 2, Height: 1, Pattern: []int32{woolID, woolID}, Output: ItemStack{ItemID: carpet.RuntimeID, Count: 3}},
+				Recipe{Width: 1, Height: 2, Pattern: []int32{woolID, woolID}, Output: ItemStack{ItemID: carpet.RuntimeID, Count: 3}},
+			)
+		}
 		if stainedGlass, ok := ExtendedBlockByName("minecraft:" + color.name + "_stained_glass"); ok {
 			cm.Recipes = append(cm.Recipes, Recipe{
 				Width: 3, Height: 3,
@@ -835,10 +847,6 @@ func (cm *CraftingManager) registerDyeRecipes() {
 		}
 		if color.name == "white" {
 			continue // White dye cannot recolor white wool to a different item.
-		}
-		woolID := int32(0)
-		if wool, ok := ExtendedBlockByName("minecraft:" + color.name + "_wool"); ok {
-			woolID = wool.RuntimeID
 		}
 		if woolID == 0 {
 			continue
