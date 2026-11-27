@@ -1990,38 +1990,79 @@ func (e *Engine) updatePressurePlatesLocked() {
 	if e.pressurePlatePowered == nil {
 		e.pressurePlatePowered = make(map[world.BlockPos]struct{})
 	}
-	pressed := make(map[world.BlockPos]struct{})
-	for _, player := range e.Players {
-		if !player.IsAlive {
-			continue
+	entityCounts := make(map[world.BlockPos]int)
+	plateItems := make(map[world.BlockPos]int32)
+	countEntity := func(position Vec3, radius float64, itemEntity bool) {
+		baseY := int32(math.Floor(position.Y))
+		minY, maxY := baseY, baseY
+		if itemEntity {
+			minY = baseY - 1
 		}
-		feetY := int32(math.Floor(player.Position.Y))
-		centerX, centerZ := player.Position.X, player.Position.Z
-		for x := int32(math.Floor(centerX)) - 1; x <= int32(math.Floor(centerX))+1; x++ {
-			for z := int32(math.Floor(centerZ)) - 1; z <= int32(math.Floor(centerZ))+1; z++ {
-				pos := world.BlockPos{X: x, Y: feetY, Z: z}
-				itemID, powered, ok := inventory.PressurePlateStateProperties(e.getBlockLocked(x, feetY, z))
-				if !ok || centerX+.3 <= float64(x)+.125 || centerX-.3 >= float64(x)+.875 ||
-					centerZ+.3 <= float64(z)+.125 || centerZ-.3 >= float64(z)+.875 ||
-					player.Position.Y < float64(feetY)+.05 || player.Position.Y > float64(feetY)+.2 {
-					continue
-				}
-				pressed[pos] = struct{}{}
-				e.pressurePlatePowered[pos] = struct{}{}
-				if !powered {
-					e.setBlockLocked(x, feetY, z, inventory.PressurePlateBlockState(itemID, true))
+		baseX, baseZ := int32(math.Floor(position.X)), int32(math.Floor(position.Z))
+		for y := minY; y <= maxY; y++ {
+			for x := baseX - 1; x <= baseX+1; x++ {
+				for z := baseZ - 1; z <= baseZ+1; z++ {
+					pos := world.BlockPos{X: x, Y: y, Z: z}
+					state := e.getBlockLocked(x, y, z)
+					itemID, _, ok := inventory.PressurePlateStateProperties(state)
+					if !ok || (itemEntity && !inventory.IsWeightedPressurePlate(itemID) && !inventory.IsWoodenPressurePlate(itemID)) ||
+						position.X+radius <= float64(x)+.125 || position.X-radius >= float64(x)+.875 ||
+						position.Z+radius <= float64(z)+.125 || position.Z-radius >= float64(z)+.875 {
+						continue
+					}
+					if itemEntity {
+						if position.Y < float64(y)+.5 || position.Y > float64(y)+1.3 {
+							continue
+						}
+					} else if position.Y < float64(y)+.05 || position.Y > float64(y)+.35 {
+						continue
+					}
+					entityCounts[pos]++
+					plateItems[pos] = itemID
 				}
 			}
 		}
 	}
+	for _, player := range e.Players {
+		if player != nil && player.IsAlive {
+			countEntity(player.Position, .3, false)
+		}
+	}
+	for _, mob := range e.Mobs {
+		if mob != nil && mob.IsAlive {
+			countEntity(mob.Position, .35, false)
+		}
+	}
+	for _, drop := range e.ItemDrops {
+		if drop != nil {
+			countEntity(drop.Position, .125, true)
+		}
+	}
 	for pos := range e.pressurePlatePowered {
-		if _, stillPressed := pressed[pos]; stillPressed {
-			continue
+		if _, exists := entityCounts[pos]; !exists {
+			plateItems[pos], _, _ = inventory.PressurePlateStateProperties(e.getBlockLocked(pos.X, pos.Y, pos.Z))
 		}
-		if itemID, powered, ok := inventory.PressurePlateStateProperties(e.getBlockLocked(pos.X, pos.Y, pos.Z)); ok && powered {
-			e.setBlockLocked(pos.X, pos.Y, pos.Z, inventory.PressurePlateBlockState(itemID, false))
+	}
+	for pos, itemID := range plateItems {
+		count := entityCounts[pos]
+		signal := inventory.WeightedPressurePlateSignal(itemID, count)
+		if !inventory.IsWeightedPressurePlate(itemID) && count > 0 {
+			signal = 15
 		}
-		delete(e.pressurePlatePowered, pos)
+		state := int32(0)
+		if inventory.IsWeightedPressurePlate(itemID) {
+			state = inventory.WeightedPressurePlateBlockState(itemID, signal)
+		} else {
+			state = inventory.PressurePlateBlockState(itemID, signal > 0)
+		}
+		if current := e.getBlockLocked(pos.X, pos.Y, pos.Z); current != state {
+			e.setBlockLocked(pos.X, pos.Y, pos.Z, state)
+		}
+		if signal > 0 {
+			e.pressurePlatePowered[pos] = struct{}{}
+		} else {
+			delete(e.pressurePlatePowered, pos)
+		}
 	}
 }
 

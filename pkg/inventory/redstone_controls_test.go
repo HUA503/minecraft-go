@@ -3,8 +3,8 @@ package inventory
 import "testing"
 
 func TestRedstoneControlItemsStatesAndRecipes(t *testing.T) {
-	if len(pressurePlateDefinitions) != 15 || len(buttonDefinitions) != 15 {
-		t.Fatalf("control family sizes = (%d,%d), want 15 each", len(pressurePlateDefinitions), len(buttonDefinitions))
+	if len(pressurePlateDefinitions) != 15 || len(weightedPressurePlateDefinitions) != 2 || len(buttonDefinitions) != 15 {
+		t.Fatalf("control family sizes = (%d,%d,%d), want 15 regular plates, 2 weighted plates, 15 buttons", len(pressurePlateDefinitions), len(weightedPressurePlateDefinitions), len(buttonDefinitions))
 	}
 	catalog := CreativeCatalog(CreativeAll)
 	seen := make(map[int32]bool, len(catalog))
@@ -12,7 +12,7 @@ func TestRedstoneControlItemsStatesAndRecipes(t *testing.T) {
 		seen[item.ID] = true
 	}
 	crafting := NewCraftingManager()
-	for _, group := range [][]controlBlockDefinition{pressurePlateDefinitions, buttonDefinitions} {
+	for _, group := range [][]controlBlockDefinition{allPressurePlateDefinitions(), buttonDefinitions} {
 		for _, definition := range group {
 			if !seen[definition.itemID] {
 				t.Errorf("%s missing from creative inventory", definition.name)
@@ -47,6 +47,29 @@ func TestRedstoneControlItemsStatesAndRecipes(t *testing.T) {
 				if !matched || out != (ItemStack{ItemID: definition.itemID, Count: 1}) {
 					t.Errorf("pressure plate recipe %s = %+v, matched=%t", definition.name, out, matched)
 				}
+			}
+		}
+	}
+	for _, tc := range []struct {
+		itemID int32
+		count  int
+		want   int
+	}{
+		{ItemLightWeightedPressurePlate, 1, 1}, {ItemLightWeightedPressurePlate, 100, 15},
+		{ItemHeavyWeightedPressurePlate, 0, 0}, {ItemHeavyWeightedPressurePlate, 9, 1},
+		{ItemHeavyWeightedPressurePlate, 10, 1}, {ItemHeavyWeightedPressurePlate, 11, 2},
+		{ItemHeavyWeightedPressurePlate, 149, 15}, {ItemHeavyWeightedPressurePlate, 150, 15},
+	} {
+		if got := WeightedPressurePlateSignal(tc.itemID, tc.count); got != tc.want {
+			t.Errorf("weighted plate %d with %d entities signal=%d, want %d", tc.itemID, tc.count, got, tc.want)
+		}
+	}
+	for _, definition := range weightedPressurePlateDefinitions {
+		for signal := 0; signal <= 15; signal++ {
+			state := WeightedPressurePlateBlockState(definition.itemID, signal)
+			itemID, powered, ok := PressurePlateStateProperties(state)
+			if !ok || itemID != definition.itemID || powered != (signal > 0) || PressurePlateSignalStrength(state) != signal || BlockItemForState(state) != definition.itemID {
+				t.Errorf("weighted plate %s signal %d did not round-trip: state=%d item=%d powered=%t ok=%t level=%d", definition.name, signal, state, itemID, powered, ok, PressurePlateSignalStrength(state))
 			}
 		}
 	}

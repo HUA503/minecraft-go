@@ -3,10 +3,12 @@ package inventory
 import "fmt"
 
 const (
-	ItemStonePressurePlate int32 = 70
-	ItemOakPressurePlate   int32 = 72
-	ItemStoneButton        int32 = 77
-	ItemOakButton          int32 = 143
+	ItemStonePressurePlate         int32 = 70
+	ItemOakPressurePlate           int32 = 72
+	ItemLightWeightedPressurePlate int32 = 19402
+	ItemHeavyWeightedPressurePlate int32 = 19403
+	ItemStoneButton                int32 = 77
+	ItemOakButton                  int32 = 143
 
 	FirstWoodPressurePlateItem          int32 = 19200
 	FirstWoodButtonItem                 int32 = 19300
@@ -18,16 +20,21 @@ const (
 )
 
 type controlBlockDefinition struct {
-	itemID  int32
-	name    string
-	display string
-	texture string
-	source  string
-	kind    string
-	legacy  bool
+	itemID   int32
+	name     string
+	display  string
+	texture  string
+	source   string
+	kind     string
+	legacy   bool
+	weighted bool
 }
 
 var pressurePlateDefinitions = buildControlBlockDefinitions("pressure_plate")
+var weightedPressurePlateDefinitions = []controlBlockDefinition{
+	{itemID: ItemLightWeightedPressurePlate, name: "minecraft:light_weighted_pressure_plate", display: "轻质测重压力板", texture: "gold_block", source: "minecraft:gold_ingot", kind: "pressure_plate", weighted: true},
+	{itemID: ItemHeavyWeightedPressurePlate, name: "minecraft:heavy_weighted_pressure_plate", display: "重质测重压力板", texture: "iron_block", source: "minecraft:iron_ingot", kind: "pressure_plate", weighted: true},
+}
 var buttonDefinitions = buildControlBlockDefinitions("button")
 
 func buildControlBlockDefinitions(kind string) []controlBlockDefinition {
@@ -86,7 +93,7 @@ func controlBlockExtendedDefinitions(definitions []controlBlockDefinition) []Ext
 		}
 		hardness := 0.5
 		tool := ToolAxe
-		if item.source == "minecraft:stone" || item.source == "minecraft:polished_blackstone" {
+		if item.source == "minecraft:stone" || item.source == "minecraft:polished_blackstone" || item.weighted {
 			tool = ToolPickaxe
 		}
 		blocks = append(blocks, ExtendedBlockDefinition{
@@ -98,8 +105,23 @@ func controlBlockExtendedDefinitions(definitions []controlBlockDefinition) []Ext
 	return blocks
 }
 
+func allPressurePlateDefinitions() []controlBlockDefinition {
+	return append(append([]controlBlockDefinition(nil), pressurePlateDefinitions...), weightedPressurePlateDefinitions...)
+}
+
 func IsPressurePlateItem(id int32) bool {
-	return controlDefinitionByID(pressurePlateDefinitions, id) != nil
+	return controlDefinitionByID(allPressurePlateDefinitions(), id) != nil
+}
+func IsWeightedPressurePlate(id int32) bool {
+	if controlDefinitionByID(weightedPressurePlateDefinitions, id) != nil {
+		return true
+	}
+	itemID, _, ok := PressurePlateStateProperties(id)
+	return ok && controlDefinitionByID(weightedPressurePlateDefinitions, itemID) != nil
+}
+func IsWoodenPressurePlate(id int32) bool {
+	definition := controlDefinitionByID(pressurePlateDefinitions, id)
+	return definition != nil && definition.source != "minecraft:stone" && definition.source != "minecraft:polished_blackstone"
 }
 func IsButtonItem(id int32) bool { return controlDefinitionByID(buttonDefinitions, id) != nil }
 
@@ -131,6 +153,12 @@ func controlDefinitionByID(definitions []controlBlockDefinition, id int32) *cont
 }
 
 func PressurePlateBlockState(itemID int32, powered bool) int32 {
+	if controlDefinitionByID(weightedPressurePlateDefinitions, itemID) != nil {
+		if powered {
+			return WeightedPressurePlateBlockState(itemID, 15)
+		}
+		return WeightedPressurePlateBlockState(itemID, 0)
+	}
 	index := controlDefinitionIndex(pressurePlateDefinitions, itemID)
 	if index < 0 {
 		return 0
@@ -144,15 +172,70 @@ func PressurePlateBlockState(itemID int32, powered bool) int32 {
 
 func PressurePlateStateProperties(state int32) (itemID int32, powered, ok bool) {
 	offset := state - PressurePlateStateBase
-	if offset < 0 || offset >= int32(len(pressurePlateDefinitions)*2) {
+	if offset >= 0 && offset < int32(len(pressurePlateDefinitions)*2) {
+		return pressurePlateDefinitions[offset/2].itemID, offset%2 != 0, true
+	}
+	weightedOffset := offset - int32(len(pressurePlateDefinitions)*2)
+	if weightedOffset < 0 || weightedOffset >= int32(len(weightedPressurePlateDefinitions)*16) {
 		return 0, false, false
 	}
-	return pressurePlateDefinitions[offset/2].itemID, offset%2 != 0, true
+	return weightedPressurePlateDefinitions[weightedOffset/16].itemID, weightedOffset%16 > 0, true
+}
+
+func WeightedPressurePlateBlockState(itemID int32, signal int) int32 {
+	index := controlDefinitionIndex(weightedPressurePlateDefinitions, itemID)
+	if index < 0 {
+		return 0
+	}
+	if signal < 0 {
+		signal = 0
+	} else if signal > 15 {
+		signal = 15
+	}
+	return PressurePlateStateBase + int32(len(pressurePlateDefinitions)*2+index*16+signal)
+}
+
+func PressurePlateSignalStrength(state int32) int {
+	offset := state - PressurePlateStateBase
+	if offset >= 0 && offset < int32(len(pressurePlateDefinitions)*2) {
+		if offset%2 != 0 {
+			return 15
+		}
+		return 0
+	}
+	weightedOffset := offset - int32(len(pressurePlateDefinitions)*2)
+	if weightedOffset < 0 || weightedOffset >= int32(len(weightedPressurePlateDefinitions)*16) {
+		return 0
+	}
+	return int(weightedOffset % 16)
+}
+
+func WeightedPressurePlateSignal(itemID int32, entityCount int) int {
+	if entityCount <= 0 {
+		return 0
+	}
+	if itemID == ItemLightWeightedPressurePlate {
+		if entityCount > 15 {
+			return 15
+		}
+		return entityCount
+	}
+	if itemID == ItemHeavyWeightedPressurePlate {
+		signal := (entityCount + 9) / 10
+		if signal > 15 {
+			return 15
+		}
+		return signal
+	}
+	return 0
 }
 
 func PressurePlatePlacementState(itemID int32) (int32, bool) {
 	if !IsPressurePlateItem(itemID) {
 		return 0, false
+	}
+	if controlDefinitionByID(weightedPressurePlateDefinitions, itemID) != nil {
+		return WeightedPressurePlateBlockState(itemID, 0), true
 	}
 	return PressurePlateBlockState(itemID, false), true
 }
@@ -282,7 +365,7 @@ func ButtonModelBoxes(state int32) ([]BlockBox, bool) {
 }
 
 func ControlBlockDefinitions() []ExtendedBlockDefinition {
-	definitions := append(controlBlockExtendedDefinitions(pressurePlateDefinitions), controlBlockExtendedDefinitions(buttonDefinitions)...)
+	definitions := append(controlBlockExtendedDefinitions(allPressurePlateDefinitions()), controlBlockExtendedDefinitions(buttonDefinitions)...)
 	return append([]ExtendedBlockDefinition(nil), definitions...)
 }
 

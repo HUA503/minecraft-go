@@ -78,3 +78,23 @@ func TestJava263IronChainHasOfficialSpriteAndAxisMeshes(t *testing.T) {
 		}
 	}
 }
+
+func TestJava263WeightedPressurePlatesHaveVanillaTextures(t *testing.T) {
+	for _, tc := range []struct {
+		id      int32
+		texture string
+	}{
+		{inventory.ItemLightWeightedPressurePlate, "gold_block"},
+		{inventory.ItemHeavyWeightedPressurePlate, "iron_block"},
+	} {
+		if got := GetOfficialItemTextureName(tc.id); got != tc.texture {
+			t.Errorf("weighted plate %d item texture=%q, want %q", tc.id, got, tc.texture)
+		}
+		if _, ok := GetOfficialItemSprite(tc.id); !ok {
+			t.Errorf("weighted plate %d has no official item sprite", tc.id)
+		}
+		if Textures[tc.id] == nil {
+			t.Errorf("weighted plate %d has no official block texture", tc.id)
+		}
+	}
+}

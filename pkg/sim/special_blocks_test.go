@@ -131,6 +131,53 @@ func TestJava263IronChainAxisStateDropsCanonicalItem(t *testing.T) {
 	}
 }
 
+func TestJava263WeightedPressurePlatesCountEntitiesAndRelease(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		itemID int32
+		drops  int
+		mobs   int
+		want   int
+	}{
+		{"light plate counts one item entity", inventory.ItemLightWeightedPressurePlate, 1, 0, 1},
+		{"heavy plate is off with no entity", inventory.ItemHeavyWeightedPressurePlate, 0, 0, 0},
+		{"heavy plate rounds one mob up to one signal", inventory.ItemHeavyWeightedPressurePlate, 0, 1, 1},
+		{"heavy plate counts mixed mob and item entities", inventory.ItemHeavyWeightedPressurePlate, 1, 10, 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			eng := NewEngine()
+			pos := world.BlockPos{X: 5, Y: 64, Z: 5}
+			eng.SetBlock(pos.X, pos.Y-1, pos.Z, inventory.ItemStone)
+			initial, ok := inventory.PressurePlatePlacementState(tc.itemID)
+			if !ok || !eng.SetBlockChecked(pos.X, pos.Y, pos.Z, initial) {
+				t.Fatal("failed to place weighted pressure plate")
+			}
+			for i := 0; i < tc.drops; i++ {
+				eng.ItemDrops[int32(i+1)] = &ItemDrop{ID: int32(i + 1), ItemID: inventory.ItemStone, Count: 64, Position: Vec3{X: 5.5, Y: 65, Z: 5.5}}
+			}
+			for i := 0; i < tc.mobs; i++ {
+				mob := NewMobEntity(int32(i+100), MobCow, Vec3{X: 5.5, Y: 64.1, Z: 5.5})
+				eng.Mobs[mob.ID] = mob
+			}
+			eng.mu.Lock()
+			eng.updatePressurePlatesLocked()
+			eng.mu.Unlock()
+			state := eng.GetBlock(pos.X, pos.Y, pos.Z)
+			if got := inventory.PressurePlateSignalStrength(state); got != tc.want {
+				t.Fatalf("signal with %d item drops and %d mobs=%d, want %d", tc.drops, tc.mobs, got, tc.want)
+			}
+			eng.ItemDrops = make(map[int32]*ItemDrop)
+			eng.Mobs = make(map[int32]*MobEntity)
+			eng.mu.Lock()
+			eng.updatePressurePlatesLocked()
+			eng.mu.Unlock()
+			if got := inventory.PressurePlateSignalStrength(eng.GetBlock(pos.X, pos.Y, pos.Z)); got != 0 {
+				t.Fatalf("signal after entities leave=%d, want 0", got)
+			}
+		})
+	}
+}
+
 func TestJava263LiveCoralRandomTick(t *testing.T) {
 	t.Run("water keeps coral alive", func(t *testing.T) {
 		eng := NewEngine()

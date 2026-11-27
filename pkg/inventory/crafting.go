@@ -738,7 +738,7 @@ func (cm *CraftingManager) registerDefaults() {
 		Pattern: []int32{ItemGoldNugget, ItemGoldNugget, ItemGoldNugget, ItemGoldNugget, ItemMelonSlice, ItemGoldNugget, ItemGoldNugget, ItemGoldNugget, ItemGoldNugget},
 		Output:  ItemStack{ItemID: ItemGlisteringMelon, Count: 1},
 	})
-	for _, controls := range [][]controlBlockDefinition{pressurePlateDefinitions, buttonDefinitions} {
+	for _, controls := range [][]controlBlockDefinition{allPressurePlateDefinitions(), buttonDefinitions} {
 		for _, control := range controls {
 			var inputID int32
 			if block, ok := ExtendedBlockByName(control.source); ok {
