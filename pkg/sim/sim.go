@@ -1318,6 +1318,16 @@ func (e *Engine) SetWoodTrapdoorOpen(pos world.BlockPos, open bool) bool {
 	return e.SetBlockChecked(pos.X, pos.Y, pos.Z, inventory.WoodTrapdoorBlockState(itemID, facing, open, top))
 }
 
+// SetIronTrapdoorPowered applies the redstone-controlled open state. Iron
+// trapdoors are intentionally not toggled by the player's use action.
+func (e *Engine) SetIronTrapdoorPowered(pos world.BlockPos, powered bool) bool {
+	facing, open, top, ok := inventory.IronTrapdoorStateProperties(e.GetBlock(pos.X, pos.Y, pos.Z))
+	if !ok || open == powered {
+		return false
+	}
+	return e.SetBlockChecked(pos.X, pos.Y, pos.Z, inventory.IronTrapdoorBlockState(facing, powered, top))
+}
+
 func (e *Engine) consumePlacedBlockItem(playerID int32, itemID int32) {
 	e.mu.Lock()
 	if p, ok := e.Players[playerID]; ok && p.Inventory != nil {

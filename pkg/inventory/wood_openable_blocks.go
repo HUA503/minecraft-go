@@ -126,6 +126,10 @@ func IsWoodTrapdoorBlock(id int32) bool {
 	return ok
 }
 
+func IsTrapdoorBlock(id int32) bool {
+	return IsWoodTrapdoorBlock(id) || IsIronTrapdoorBlock(id)
+}
+
 func WoodDoorBlockState(itemID int32, facing int, open, rightHinge, upper bool) int32 {
 	itemIndex := woodDoorItemIndex(itemID)
 	if itemIndex < 0 || facing < 0 || facing > 3 {
@@ -241,8 +245,16 @@ func WoodDoorModelBoxes(id int32) ([]BlockBox, bool) {
 func WoodTrapdoorModelBoxes(id int32) ([]BlockBox, bool) {
 	itemID, facing, open, top, ok := WoodTrapdoorStateProperties(id)
 	if !ok {
+		if ironFacing, ironOpen, ironTop, valid := IronTrapdoorStateProperties(id); valid {
+			itemID, facing, open, top, ok = ItemIronTrapdoor, ironFacing, ironOpen, ironTop, true
+		}
+	}
+	if !ok {
 		if IsWoodTrapdoorItem(id) {
 			return WoodTrapdoorModelBoxes(WoodTrapdoorBlockState(id, 0, false, false))
+		}
+		if IsIronTrapdoorItem(id) {
+			return WoodTrapdoorModelBoxes(IronTrapdoorBlockState(0, false, false))
 		}
 		return nil, false
 	}

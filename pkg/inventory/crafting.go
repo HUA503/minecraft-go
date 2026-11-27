@@ -654,6 +654,10 @@ func (cm *CraftingManager) registerDefaults() {
 			Recipe{Width: 3, Height: 2, Pattern: []int32{planksID, planksID, planksID, planksID, planksID, planksID}, Output: ItemStack{ItemID: woodTrapdoorDefinitions[index].ItemID, Count: 2}},
 		)
 	}
+	cm.Recipes = append(cm.Recipes, Recipe{
+		Width: 2, Height: 2, Pattern: []int32{ItemIronIngot, ItemIronIngot, ItemIronIngot, ItemIronIngot},
+		Output: ItemStack{ItemID: ItemIronTrapdoor, Count: 1},
+	})
 	for _, wall := range masonryWallDefinitions {
 		var sourceID int32
 		for _, item := range CreativeCatalog(CreativeAll) {

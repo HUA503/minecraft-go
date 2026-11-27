@@ -77,4 +77,29 @@ func TestJava263WoodDoorsAndTrapdoorsUseVanillaTexturesAndModels(t *testing.T) {
 			}
 		}
 	}
+	iron, ok := inventory.ExtendedBlockByID(inventory.ItemIronTrapdoor)
+	if !ok {
+		t.Fatal("iron trapdoor is not registered")
+	}
+	if _, ok := GetOfficialTexture("block", iron.TextureSide); !ok {
+		t.Fatalf("missing official iron trapdoor texture %q", iron.TextureSide)
+	}
+	if countVisiblePixels(GetItemSprite16x16(inventory.ItemIronTrapdoor)) < 8 {
+		t.Fatal("iron trapdoor creative icon is empty")
+	}
+	state := inventory.IronTrapdoorBlockState(0, true, true)
+	mesh := BuildSectionMesh(func(x, y, z int32) int32 {
+		if x == 4 && y == 4 && z == 4 {
+			return state
+		}
+		return 0
+	}, 0, 0, 0)
+	if len(mesh.Vertices) == 0 {
+		t.Fatal("iron trapdoor state produced no mesh")
+	}
+	for _, vertex := range mesh.Vertices {
+		if vertex.BlockID != inventory.ItemIronTrapdoor {
+			t.Fatalf("iron trapdoor state uses texture ID %d, want item %d", vertex.BlockID, inventory.ItemIronTrapdoor)
+		}
+	}
 }

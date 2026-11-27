@@ -437,6 +437,9 @@ func BlockItemForState(blockID int32) int32 {
 	if itemID, _, _, _, ok := WoodTrapdoorStateProperties(blockID); ok {
 		return itemID
 	}
+	if _, _, _, ok := IronTrapdoorStateProperties(blockID); ok {
+		return ItemIronTrapdoor
+	}
 	if itemID, _, _, _, ok := FenceGateStateProperties(blockID); ok {
 		return itemID
 	}

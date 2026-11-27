@@ -3185,6 +3185,9 @@ func (c *Client) PlaceBlockInFront() bool {
 	if trapdoorState, isTrapdoor := inventory.WoodTrapdoorPlacementState(selected.ItemID, c.camera.Yaw, res.FaceY, localHitY); isTrapdoor {
 		placedBlockID = trapdoorState
 	}
+	if inventory.IsIronTrapdoorItem(selected.ItemID) {
+		placedBlockID = inventory.IronTrapdoorPlacementState(c.camera.Yaw, res.FaceY, localHitY)
+	}
 	if stackCandle {
 		// The engine adds one matching candle to the clicked cluster.
 	} else if mergeSlab {

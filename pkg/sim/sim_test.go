@@ -900,6 +900,33 @@ func TestWoodDoorAndTrapdoorPlacementToggleAndDrop(t *testing.T) {
 	}
 }
 
+func TestIronTrapdoorUsesRedstoneControlledState(t *testing.T) {
+	eng := NewEngine()
+	player := eng.AddPlayer("Steve", [16]byte{93}, Vec3{X: 10.5, Y: 64, Z: 10.5})
+	pos := world.BlockPos{X: 14, Y: 64, Z: 10}
+	player.Inventory.Slots[0] = inventory.ItemStack{ItemID: inventory.ItemIronTrapdoor, Count: 1}
+	state := inventory.IronTrapdoorPlacementState(90, -1, .2)
+	if !eng.PlaceBlock(player.ID, pos, state) {
+		t.Fatal("could not place iron trapdoor")
+	}
+	if eng.SetIronTrapdoorPowered(pos, false) {
+		t.Fatal("unpowered iron trapdoor changed state")
+	}
+	if !eng.SetIronTrapdoorPowered(pos, true) {
+		t.Fatal("powered iron trapdoor did not open")
+	}
+	if _, open, _, ok := inventory.IronTrapdoorStateProperties(eng.GetBlock(pos.X, pos.Y, pos.Z)); !ok || !open {
+		t.Fatal("powered iron trapdoor state is not open")
+	}
+	if !eng.SetIronTrapdoorPowered(pos, false) {
+		t.Fatal("unpowered iron trapdoor did not close")
+	}
+	player.Inventory.Slots[0] = inventory.ItemStack{ItemID: inventory.ItemWoodenPickaxe, Count: 1}
+	if got := eng.BreakBlock(player.ID, pos); got != inventory.ItemIronTrapdoor {
+		t.Fatalf("breaking iron trapdoor dropped %d, want %d", got, inventory.ItemIronTrapdoor)
+	}
+}
+
 func TestBoneMealGrowsRedShrubAndConsumesOnlyInSurvival(t *testing.T) {
 	for _, gameMode := range []int{0, 1} {
 		eng := NewEngine()

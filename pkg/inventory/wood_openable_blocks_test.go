@@ -84,7 +84,54 @@ func TestJava263WoodDoorsAndTrapdoorsCatalogRecipesAndStates(t *testing.T) {
 			}
 		}
 	}
-	if got := len(CreativeCatalog(CreativeAll)); got != 938 {
-		t.Fatalf("all-items catalog count = %d after 13 doors and trapdoors, want 938", got)
+	if got := len(CreativeCatalog(CreativeAll)); got != 939 {
+		t.Fatalf("all-items catalog count = %d after wooden doors/trapdoors and iron trapdoor, want 939", got)
 	}
+}
+
+func TestJava263IronTrapdoorCatalogRecipeAndRedstoneStates(t *testing.T) {
+	definition, ok := ExtendedBlockByID(ItemIronTrapdoor)
+	if !ok || definition.Name != "minecraft:iron_trapdoor" || definition.Category != CreativeBlocks {
+		t.Fatalf("iron trapdoor block definition = %+v, found=%v", definition, ok)
+	}
+	if got := CreativeCatalog(CreativeBlocks); !containsCreativeItem(got, ItemIronTrapdoor) {
+		t.Fatal("iron trapdoor missing from Building Blocks creative tab")
+	}
+	recipeFound := false
+	for _, recipe := range NewCraftingManager().Recipes {
+		if recipe.Output.ItemID == ItemIronTrapdoor && recipe.Output.Count == 1 && recipe.Width == 2 && recipe.Height == 2 {
+			recipeFound = true
+			for _, input := range recipe.Pattern {
+				if input != ItemIronIngot {
+					t.Fatalf("iron trapdoor recipe contains input %d, want iron ingots", input)
+				}
+			}
+		}
+	}
+	if !recipeFound {
+		t.Fatal("missing 2x2 iron trapdoor recipe")
+	}
+	for facing := 0; facing < 4; facing++ {
+		for _, open := range []bool{false, true} {
+			for _, top := range []bool{false, true} {
+				state := IronTrapdoorBlockState(facing, open, top)
+				gotFacing, gotOpen, gotTop, valid := IronTrapdoorStateProperties(state)
+				if !valid || gotFacing != facing || gotOpen != open || gotTop != top || BlockItemForState(state) != ItemIronTrapdoor {
+					t.Errorf("iron trapdoor state round trip failed for state %d", state)
+				}
+				if boxes, valid := WoodTrapdoorModelBoxes(state); !valid || len(boxes) != 1 {
+					t.Errorf("iron trapdoor model shape for state %d = %v, valid=%v", state, boxes, valid)
+				}
+			}
+		}
+	}
+}
+
+func containsCreativeItem(items []CreativeItem, id int32) bool {
+	for _, item := range items {
+		if item.ID == id {
+			return true
+		}
+	}
+	return false
 }
