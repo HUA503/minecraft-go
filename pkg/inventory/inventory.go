@@ -191,6 +191,9 @@ func IsPlaceableBlock(itemID int32) bool {
 
 // IsReplaceableBlock reports whether a block can be replaced by placing another block into its space.
 func IsReplaceableBlock(blockID int32) bool {
+	if IsSmallFlower(blockID) {
+		return true
+	}
 	switch blockID {
 	case 0, 6, 8, 9, 10, 11, 31, 32, 33, 37, 38, 50, 83, 111, 10063, 10100:
 		return true

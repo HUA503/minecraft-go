@@ -192,6 +192,9 @@ var BlockHardness = map[int32]float64{
 // GetBlockHardness returns the hardness of a block ID.
 func GetBlockHardness(blockID int32) float64 {
 	blockID = BlockItemForState(blockID)
+	if IsSmallFlower(blockID) {
+		return 0 // Vanilla single-block flowers break instantly.
+	}
 	if definition, ok := ExtendedBlockByID(blockID); ok && definition.Hardness > 0 {
 		return definition.Hardness
 	}

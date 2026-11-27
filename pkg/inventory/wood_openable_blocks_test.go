@@ -84,8 +84,8 @@ func TestJava263WoodDoorsAndTrapdoorsCatalogRecipesAndStates(t *testing.T) {
 			}
 		}
 	}
-	if got := len(CreativeCatalog(CreativeAll)); got != 993 {
-		t.Fatalf("all-items catalog count = %d after colored carpets, want 993", got)
+	if got := len(CreativeCatalog(CreativeAll)); got != 1003 {
+		t.Fatalf("all-items catalog count = %d, want 1003", got)
 	}
 }
 

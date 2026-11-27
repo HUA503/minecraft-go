@@ -886,6 +886,11 @@ func (e *Engine) BreakBlockWithTool(playerID int32, pos world.BlockPos, toolID i
 		e.spawnItemDropLocked(carpet, 1, Vec3{X: float64(pos.X) + 0.5, Y: float64(pos.Y) + 1.1, Z: float64(pos.Z) + 0.5}, Vec3{Y: 0.18}, 0.2)
 		e.mu.Unlock()
 	}
+	if flower := e.removeUnsupportedFlowerAbove(pos); flower != 0 {
+		e.mu.Lock()
+		e.spawnItemDropLocked(flower, 1, Vec3{X: float64(pos.X) + 0.5, Y: float64(pos.Y) + 1.1, Z: float64(pos.Z) + 0.5}, Vec3{Y: 0.18}, 0.2)
+		e.mu.Unlock()
+	}
 	e.removeWoodDoorOtherHalf(pos, origBlock)
 	if origBlock == 61 || origBlock == 62 {
 		e.mu.Lock()
@@ -1015,6 +1020,13 @@ func (e *Engine) BreakBlock(playerID int32, pos world.BlockPos) int32 {
 		e.mu.Lock()
 		if player, ok := e.Players[playerID]; ok && player.Inventory != nil {
 			player.Inventory.AddItem(carpet, 1)
+		}
+		e.mu.Unlock()
+	}
+	if flower := e.removeUnsupportedFlowerAbove(pos); flower != 0 {
+		e.mu.Lock()
+		if player, ok := e.Players[playerID]; ok && player.Inventory != nil {
+			player.Inventory.AddItem(flower, 1)
 		}
 		e.mu.Unlock()
 	}
@@ -1211,6 +1223,9 @@ func (e *Engine) PlaceBlock(playerID int32, pos world.BlockPos, blockID int32) b
 		return true
 	}
 	below := e.GetBlock(pos.X, pos.Y-1, pos.Z)
+	if inventory.IsSmallFlower(blockID) && (pos.Y <= world.MinWorldY || !inventory.IsFlowerSoilBlock(below)) {
+		return false // Small flowers require a vanilla flower-supporting soil block.
+	}
 	if (blockID == 10100 || inventory.IsCushionBlock(blockID) || inventory.IsCandleBlock(blockID) || inventory.IsCarpetBlock(blockID)) && (pos.Y <= world.MinWorldY || !IsSolidBlock(below) || (inventory.IsCarpetBlock(blockID) && inventory.IsCarpetBlock(below))) {
 		return false // Red shrubs, cushions, candles, and carpets need a solid block beneath them.
 	}
@@ -1264,6 +1279,21 @@ func (e *Engine) removeUnsupportedCarpetAbove(pos world.BlockPos) int32 {
 	}
 	if e.SetBlockChecked(above.X, above.Y, above.Z, 0) {
 		return carpet
+	}
+	return 0
+}
+
+func (e *Engine) removeUnsupportedFlowerAbove(pos world.BlockPos) int32 {
+	if pos.Y >= world.MaxWorldY {
+		return 0
+	}
+	above := world.BlockPos{X: pos.X, Y: pos.Y + 1, Z: pos.Z}
+	flower := e.GetBlock(above.X, above.Y, above.Z)
+	if !inventory.IsSmallFlower(flower) || inventory.IsFlowerSoilBlock(e.GetBlock(pos.X, pos.Y, pos.Z)) {
+		return 0
+	}
+	if e.SetBlockChecked(above.X, above.Y, above.Z, 0) {
+		return flower
 	}
 	return 0
 }

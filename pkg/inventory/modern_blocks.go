@@ -33,6 +33,8 @@ var extendedBlockDefinitions = buildExtendedBlockDefinitions()
 const (
 	FirstCushionBlock int32 = 16200
 	LastCushionBlock  int32 = FirstCushionBlock + 15
+	FirstSmallFlower  int32 = 16300
+	LastSmallFlower   int32 = FirstSmallFlower + 9
 	FirstCarpetBlock  int32 = 19600
 	LastCarpetBlock   int32 = FirstCarpetBlock + 15
 	FirstCandleItem   int32 = 17133
@@ -115,6 +117,29 @@ func buildExtendedBlockDefinitions() []ExtendedBlockDefinition {
 	definitions = append(definitions, ControlBlockDefinitions()...)
 	definitions = append(definitions, masonryWallBlockDefinitions()...)
 	definitions = append(definitions, cushionBlockDefinitions()...)
+	definitions = append(definitions, smallFlowerBlockDefinitions()...)
+	return definitions
+}
+
+func smallFlowerBlockDefinitions() []ExtendedBlockDefinition {
+	flowers := [...]struct {
+		name, display string
+	}{
+		{"blue_orchid", "兰花"}, {"allium", "绒球葱"}, {"azure_bluet", "蓝花美耳草"},
+		{"red_tulip", "红色郁金香"}, {"orange_tulip", "橙色郁金香"}, {"white_tulip", "白色郁金香"},
+		{"pink_tulip", "粉红色郁金香"}, {"oxeye_daisy", "滨菊"}, {"cornflower", "矢车菊"},
+		{"lily_of_the_valley", "铃兰"},
+	}
+	definitions := make([]ExtendedBlockDefinition, 0, len(flowers))
+	for index, flower := range flowers {
+		id := FirstSmallFlower + int32(index)
+		name := "minecraft:" + flower.name
+		definitions = append(definitions, ExtendedBlockDefinition{
+			RuntimeID: id, Name: name, TextureTop: flower.name, TextureBottom: flower.name, TextureSide: flower.name,
+			Category: CreativeNatural, DropRuntimeID: id,
+		})
+		extendedBlockDisplayNames[name] = flower.display
+	}
 	return definitions
 }
 
@@ -851,7 +876,29 @@ func IsExtendedLeaves(runtimeID int32) bool {
 }
 
 func IsExtendedFoliage(runtimeID int32) bool {
-	return runtimeID == 10063 || runtimeID == 10100
+	return runtimeID == 10063 || runtimeID == 10100 || IsSmallFlower(runtimeID)
+}
+
+// IsSmallFlower reports whether runtimeID is one of the single-block vanilla flowers.
+func IsSmallFlower(runtimeID int32) bool {
+	return runtimeID >= FirstSmallFlower && runtimeID <= LastSmallFlower
+}
+
+// IsFlowerSoilBlock reports whether a block can support a small flower.
+func IsFlowerSoilBlock(blockID int32) bool {
+	if blockID == ItemGrass || blockID == ItemDirt {
+		return true
+	}
+	definition, ok := ExtendedBlockByID(blockID)
+	if !ok {
+		return false
+	}
+	switch definition.Name {
+	case "minecraft:podzol", "minecraft:mycelium", "minecraft:coarse_dirt", "minecraft:rooted_dirt", "minecraft:moss_block", "minecraft:mud", "minecraft:muddy_mangrove_roots", "minecraft:farmland":
+		return true
+	default:
+		return false
+	}
 }
 
 func ExtendedBlockItemTextureName(runtimeID int32) string {
