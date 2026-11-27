@@ -1,5 +1,7 @@
 package inventory
 
+import "strings"
+
 // ExtendedBlockDefinition provides namespaced identity for recently added
 // vanilla blocks while the rest of the game is migrated off legacy numeric IDs.
 // RuntimeID is an internal save/protocol value and is not a Mojang registry ID.
@@ -126,6 +128,7 @@ func buildExtendedBlockDefinitions() []ExtendedBlockDefinition {
 	definitions = append(definitions, tallFlowerBlockDefinitions()...)
 	definitions = append(definitions, mossCarpetBlockDefinitions()...)
 	definitions = append(definitions, springPlantBlockDefinitions()...)
+	definitions = append(definitions, dryGrassBlockDefinitions()...)
 	return definitions
 }
 
@@ -232,8 +235,10 @@ func IsThinCarpetBlock(blockID int32) bool {
 }
 
 const (
-	ItemBush         int32 = 16316
-	ItemCactusFlower int32 = 16317
+	ItemBush          int32 = 16316
+	ItemCactusFlower  int32 = 16317
+	ItemDryShortGrass int32 = 16318
+	ItemDryTallGrass  int32 = 16319
 )
 
 func springPlantBlockDefinitions() []ExtendedBlockDefinition {
@@ -264,7 +269,49 @@ func IsBush(blockID int32) bool { return blockID == ItemBush }
 func IsCactusFlower(blockID int32) bool { return blockID == ItemCactusFlower }
 
 func IsDecorativePlantBlock(blockID int32) bool {
-	return IsFlowerPlantBlock(blockID) || IsBush(blockID) || IsCactusFlower(blockID)
+	return IsFlowerPlantBlock(blockID) || IsBush(blockID) || IsCactusFlower(blockID) || IsDryGrass(blockID)
+}
+
+func dryGrassBlockDefinitions() []ExtendedBlockDefinition {
+	blocks := [...]struct {
+		id                   int32
+		name, label, texture string
+	}{
+		{ItemDryShortGrass, "dry_short_grass", "短干草", "short_dry_grass"},
+		{ItemDryTallGrass, "dry_tall_grass", "高干草", "tall_dry_grass"},
+	}
+	definitions := make([]ExtendedBlockDefinition, 0, len(blocks))
+	for _, block := range blocks {
+		name := "minecraft:" + block.name
+		definitions = append(definitions, ExtendedBlockDefinition{
+			RuntimeID: block.id, Name: name,
+			TextureTop: block.texture, TextureBottom: block.texture, TextureSide: block.texture,
+			Category: CreativeNatural, Hardness: 0, DropRuntimeID: block.id,
+		})
+		extendedBlockDisplayNames[name] = block.label
+	}
+	return definitions
+}
+
+func IsDryGrass(blockID int32) bool {
+	return blockID == ItemDryShortGrass || blockID == ItemDryTallGrass
+}
+
+// IsDryVegetationSupport matches the vanilla support tags used by dry grass.
+func IsDryVegetationSupport(blockID int32) bool {
+	switch blockID {
+	case ItemGrass, ItemDirt, 12, 60: // Grass/dirt, sand, farmland.
+		return true
+	}
+	for _, name := range []string{"podzol", "mycelium", "coarse_dirt", "rooted_dirt", "mud"} {
+		if definition, ok := ExtendedBlockByName("minecraft:" + name); ok && definition.RuntimeID == blockID {
+			return true
+		}
+	}
+	if definition, ok := ExtendedBlockByID(blockID); ok {
+		return definition.Name == "minecraft:terracotta" || strings.HasSuffix(definition.Name, "_terracotta") || definition.Name == "minecraft:red_sand"
+	}
+	return false
 }
 
 func additionalSpecialCubeDefinitions() []ExtendedBlockDefinition {
@@ -976,7 +1023,7 @@ func IsExtendedLeaves(runtimeID int32) bool {
 }
 
 func IsExtendedFoliage(runtimeID int32) bool {
-	return runtimeID == 10063 || runtimeID == 10100 || IsSmallFlower(runtimeID) || IsTallFlowerBlock(runtimeID) || IsBush(runtimeID) || IsCactusFlower(runtimeID)
+	return runtimeID == 10063 || runtimeID == 10100 || IsSmallFlower(runtimeID) || IsTallFlowerBlock(runtimeID) || IsBush(runtimeID) || IsCactusFlower(runtimeID) || IsDryGrass(runtimeID)
 }
 
 func IsFlowerPlantBlock(blockID int32) bool {

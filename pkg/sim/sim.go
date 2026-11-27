@@ -1261,6 +1261,9 @@ func (e *Engine) PlaceBlock(playerID int32, pos world.BlockPos, blockID int32) b
 	if (inventory.IsBush(blockID) || inventory.IsCactusFlower(blockID)) && (pos.Y <= world.MinWorldY || !IsSolidBlock(below)) {
 		return false // Bushes and cactus flowers require a supporting top face.
 	}
+	if inventory.IsDryGrass(blockID) && (pos.Y <= world.MinWorldY || !inventory.IsDryVegetationSupport(below)) {
+		return false // Dry grass only grows on the vanilla dry-vegetation substrate tags.
+	}
 	if (blockID == 10100 || inventory.IsCushionBlock(blockID) || inventory.IsCandleBlock(blockID) || inventory.IsThinCarpetBlock(blockID)) && (pos.Y <= world.MinWorldY || !IsSolidBlock(below) || (inventory.IsThinCarpetBlock(blockID) && inventory.IsThinCarpetBlock(below))) {
 		return false // Red shrubs, cushions, candles, and carpets need a solid block beneath them.
 	}
@@ -1330,6 +1333,9 @@ func (e *Engine) removeUnsupportedFlowerAbove(pos world.BlockPos) int32 {
 	support := e.GetBlock(pos.X, pos.Y, pos.Z)
 	if inventory.IsFlowerPlantBlock(flowerState) && inventory.IsFlowerSoilBlock(support) ||
 		(inventory.IsBush(flowerState) || inventory.IsCactusFlower(flowerState)) && IsSolidBlock(support) {
+		return 0
+	}
+	if inventory.IsDryGrass(flowerState) && inventory.IsDryVegetationSupport(support) {
 		return 0
 	}
 	flowerItem := inventory.BlockItemForState(flowerState)
@@ -1533,6 +1539,67 @@ func (e *Engine) UseBoneMealOnRedShrub(playerID int32, pos world.BlockPos) (worl
 		e.mu.Unlock()
 	}
 	return grown, true
+}
+
+// UseBoneMealOnDryGrass grows short dry grass in place or spreads tall dry
+// grass to one adjacent supported position. Bone meal is consumed on success.
+func (e *Engine) UseBoneMealOnDryGrass(playerID int32, pos world.BlockPos) (world.BlockPos, int32, bool) {
+	if !world.ValidBlockCoordinates(pos.X, pos.Y, pos.Z) {
+		return world.BlockPos{}, 0, false
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	player := e.Players[playerID]
+	if player == nil || player.Inventory == nil || e.CurrentDimension != 0 {
+		return world.BlockPos{}, 0, false
+	}
+	selected := player.Inventory.GetSelectedItem()
+	if selected.ItemID != inventory.ItemBoneMeal || player.GameMode != 1 && selected.Count < 1 {
+		return world.BlockPos{}, 0, false
+	}
+	current := e.getBlockLocked(pos.X, pos.Y, pos.Z)
+	newState := int32(0)
+	resultPos := pos
+	switch current {
+	case inventory.ItemDryShortGrass:
+		newState = inventory.ItemDryTallGrass
+		e.setBlockLocked(pos.X, pos.Y, pos.Z, newState)
+	case inventory.ItemDryTallGrass:
+		start := int(e.nextRandomTickValueLocked() % 4)
+		directions := [4][2]int32{{1, 0}, {-1, 0}, {0, 1}, {0, -1}}
+		for i := range directions {
+			direction := directions[(start+i)%len(directions)]
+			candidate := world.BlockPos{X: pos.X + direction[0], Y: pos.Y, Z: pos.Z + direction[1]}
+			if !world.ValidBlockCoordinates(candidate.X, candidate.Y, candidate.Z) {
+				continue
+			}
+			below := world.BlockPos{X: candidate.X, Y: candidate.Y - 1, Z: candidate.Z}
+			if e.World[candidate.ToChunkPos()] == nil || e.World[below.ToChunkPos()] == nil ||
+				e.getBlockLocked(candidate.X, candidate.Y, candidate.Z) != 0 ||
+				!inventory.IsDryVegetationSupport(e.getBlockLocked(below.X, below.Y, below.Z)) {
+				continue
+			}
+			resultPos, newState = candidate, inventory.ItemDryShortGrass
+			e.setBlockLocked(candidate.X, candidate.Y, candidate.Z, newState)
+			break
+		}
+	default:
+		return world.BlockPos{}, 0, false
+	}
+	if newState == 0 {
+		return world.BlockPos{}, 0, false
+	}
+	if player.GameMode != 1 {
+		slot := player.Inventory.SelectedHotbar
+		if slot < 0 || slot >= len(player.Inventory.Slots) || player.Inventory.Slots[slot].ItemID != inventory.ItemBoneMeal || player.Inventory.Slots[slot].Count < 1 {
+			return world.BlockPos{}, 0, false
+		}
+		player.Inventory.Slots[slot].Count--
+		if player.Inventory.Slots[slot].Count == 0 {
+			player.Inventory.Slots[slot] = inventory.ItemStack{}
+		}
+	}
+	return resultPos, newState, true
 }
 
 func (e *Engine) AddPlayer(username string, uuid [16]byte, spawnPos Vec3) *PlayerEntity {

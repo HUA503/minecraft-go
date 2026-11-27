@@ -67,6 +67,8 @@ var FuelBurnTimes = map[int32]int{
 	ItemOakLog:        300,   // Wood log: 15 seconds (smelts 1.5 items)
 	ItemOakPlanks:     300,   // Wood plank: 15 seconds (smelts 1.5 items)
 	ItemStick:         100,   // Stick: 5 seconds (smelts 0.5 items)
+	ItemDryShortGrass: 100,   // Short dry grass: 5 seconds (smelts 0.5 items)
+	ItemDryTallGrass:  100,   // Tall dry grass: 5 seconds (smelts 0.5 items)
 	ItemCraftingTable: 300,   // Crafting table: 15 seconds
 	ItemWoodenPickaxe: 200,   // Wooden tools: 10 seconds
 	325:               20000, // Lava Bucket: 1000 seconds (smelts 100 items)

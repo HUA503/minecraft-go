@@ -3309,6 +3309,11 @@ func (c *Client) UpdateRightClick(isRightDown bool, dt float64) {
 				c.spawnBlockDebris(grown, 10100, 6)
 				sound.PlayHardwareFeedback("minecraft:item.bone_meal.use")
 				c.placeCooldown = 0.3
+			} else if grown, newState, ok := c.engine.UseBoneMealOnDryGrass(c.player.ID, c.targetedPos); ok {
+				c.RebuildAffectedMeshes(grown)
+				c.spawnBlockDebris(grown, newState, 6)
+				sound.PlayHardwareFeedback("minecraft:item.bone_meal.use")
+				c.placeCooldown = 0.3
 			}
 		}
 		return
