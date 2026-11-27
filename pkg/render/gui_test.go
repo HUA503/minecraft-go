@@ -186,6 +186,23 @@ func TestCreativeSearchCaretUsesRenderedGlyphWidths(t *testing.T) {
 	}
 }
 
+func TestCreativeSearchUsesTheSameVanillaASCIIAtlasAsOtherGUIText(t *testing.T) {
+	const query = "Minecraft 26.3"
+	vanilla := NewFramebuffer(180, 24)
+	search := NewFramebuffer(180, 24)
+	vanilla.DrawText5x7(2, 2, query, 0xFFFFFFFF, 1)
+	drawCreativeSearchText(search, 2, 2, query, 0xFFFFFFFF, 1, 170)
+	for i := range vanilla.Color {
+		if vanilla.Color[i] != search.Color[i] {
+			t.Fatalf("creative search glyph raster differs from vanilla GUI text at pixel (%d,%d)", i%vanilla.Width, i/vanilla.Width)
+		}
+	}
+	queryWidth := vanillaASCIICharWidth(mustVanillaASCIIAtlas(t), 'W') + vanillaASCIICharWidth(mustVanillaASCIIAtlas(t), 'i')
+	if got := creativeSearchTextAdvance("Wi", 2); got != queryWidth {
+		t.Fatalf("creative search caret width for Wi = %d, want atlas width %d", got, queryWidth)
+	}
+}
+
 func TestCreativeSearchCursorAtPointerUsesRuneBoundaries(t *testing.T) {
 	width, height := 640, 480
 	scale, panelX, _ := creativeGUIOrigin(width, height)

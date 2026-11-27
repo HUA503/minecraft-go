@@ -278,11 +278,19 @@ func creativeSearchTextAdvance(text string, cursor int) int {
 		cursor = len(runes)
 	}
 	width := 0
+	atlas, hasAtlas := vanillaASCIIAtlas()
 	for _, ch := range runes[:cursor] {
 		if ch > 0x7f {
 			width += 9
 		} else {
-			width += 6
+			glyphWidth := 0
+			if hasAtlas {
+				glyphWidth = vanillaASCIICharWidth(atlas, byte(ch))
+			}
+			if glyphWidth <= 0 {
+				glyphWidth = 6
+			}
+			width += glyphWidth
 		}
 	}
 	return width
@@ -960,6 +968,7 @@ func drawCreativeSearchText(fb *Framebuffer, x, y int, text string, color uint32
 	}
 	drawPass := func(originX, originY int, drawColor uint32) {
 		cursorX := originX
+		atlas, hasAtlas := vanillaASCIIAtlas()
 		for _, ch := range text {
 			if ch > 0x7F {
 				glyph := GetCJKGlyph(ch)
@@ -976,6 +985,23 @@ func drawCreativeSearchText(fb *Framebuffer, x, y int, text string, color uint32
 				cursorX += glyphSize * scale
 				continue
 			}
+			if hasAtlas {
+				glyphWidth := vanillaASCIICharWidth(atlas, byte(ch))
+				if glyphWidth > 0 {
+					srcX := int(byte(ch)%16) * vanillaASCIIGlyphCell
+					srcY := int(byte(ch)/16) * vanillaASCIIGlyphCell
+					for gy := 0; gy < vanillaASCIIGlyphCell; gy++ {
+						for gx := 0; gx < glyphWidth-1 && gx < vanillaASCIIGlyphCell; gx++ {
+							alpha := atlas.Pixels[(srcY+gy)*atlas.Width+srcX+gx] >> 24
+							if alpha != 0 {
+								drawCreativeSearchGlyphPixel(fb, cursorX+gx*scale, originY+gy*scale, scale, drawColor, alpha, x, x+maxWidth)
+							}
+						}
+					}
+					cursorX += glyphWidth * scale
+					continue
+				}
+			}
 			glyph, ok := font5x7[ch]
 			if !ok {
 				glyph = font5x7['?']
@@ -990,8 +1016,34 @@ func drawCreativeSearchText(fb *Framebuffer, x, y int, text string, color uint32
 			cursorX += 6 * scale
 		}
 	}
-	drawPass(x+scale, y+scale, 0xFF222222)
+	drawPass(x+scale, y+scale, vanillaTextShadowColor(color))
 	drawPass(x, y, color)
+}
+
+func drawCreativeSearchGlyphPixel(fb *Framebuffer, x, y, scale int, color uint32, glyphAlpha uint32, clipLeft, clipRight int) {
+	alpha := glyphAlpha * ((color >> 24) & 0xFF) / 0xFF
+	if alpha == 0 {
+		return
+	}
+	for dy := 0; dy < scale; dy++ {
+		py := y + dy
+		if py < 0 || py >= fb.Height {
+			continue
+		}
+		for dx := 0; dx < scale; dx++ {
+			px := x + dx
+			if px < clipLeft || px >= clipRight || px < 0 || px >= fb.Width {
+				continue
+			}
+			index := py*fb.Width + px
+			background := fb.Color[index]
+			inverse := 0xFF - alpha
+			r := (((color>>16)&0xFF)*alpha + ((background>>16)&0xFF)*inverse) / 0xFF
+			g := (((color>>8)&0xFF)*alpha + ((background>>8)&0xFF)*inverse) / 0xFF
+			b := ((color&0xFF)*alpha + (background&0xFF)*inverse) / 0xFF
+			fb.Color[index] = 0xFF000000 | (r << 16) | (g << 8) | b
+		}
+	}
 }
 
 func drawCreativeSearchPixel(fb *Framebuffer, x, y, scale int, color uint32, clipLeft, clipRight int) {
