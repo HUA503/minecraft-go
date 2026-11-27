@@ -1252,7 +1252,7 @@ func (e *Engine) PlaceBlock(playerID int32, pos world.BlockPos, blockID int32) b
 	if inventory.IsFlowerPlantBlock(blockID) && (pos.Y <= world.MinWorldY || !inventory.IsFlowerSoilBlock(below)) {
 		return false // Flowers require a vanilla flower-supporting soil block.
 	}
-	if (blockID == 10100 || inventory.IsCushionBlock(blockID) || inventory.IsCandleBlock(blockID) || inventory.IsCarpetBlock(blockID)) && (pos.Y <= world.MinWorldY || !IsSolidBlock(below) || (inventory.IsCarpetBlock(blockID) && inventory.IsCarpetBlock(below))) {
+	if (blockID == 10100 || inventory.IsCushionBlock(blockID) || inventory.IsCandleBlock(blockID) || inventory.IsThinCarpetBlock(blockID)) && (pos.Y <= world.MinWorldY || !IsSolidBlock(below) || (inventory.IsThinCarpetBlock(blockID) && inventory.IsThinCarpetBlock(below))) {
 		return false // Red shrubs, cushions, candles, and carpets need a solid block beneath them.
 	}
 
@@ -1300,7 +1300,7 @@ func (e *Engine) removeUnsupportedCarpetAbove(pos world.BlockPos) int32 {
 	}
 	above := world.BlockPos{X: pos.X, Y: pos.Y + 1, Z: pos.Z}
 	carpet := e.GetBlock(above.X, above.Y, above.Z)
-	if !inventory.IsCarpetBlock(carpet) || IsSolidBlock(e.GetBlock(pos.X, pos.Y, pos.Z)) {
+	if !inventory.IsThinCarpetBlock(carpet) || IsSolidBlock(e.GetBlock(pos.X, pos.Y, pos.Z)) {
 		return 0
 	}
 	if e.SetBlockChecked(above.X, above.Y, above.Z, 0) {

@@ -214,7 +214,7 @@ func BlockCollisionBoxesAt(blockID, x, y, z int32, getBlock func(int32, int32, i
 	if IsCushionBlock(blockID) {
 		return cushionVisualBox, true
 	}
-	if IsCarpetBlock(blockID) {
+	if IsThinCarpetBlock(blockID) {
 		return carpetCollisionBox, true
 	}
 	if boxes, ok := FenceCollisionBoxesAt(blockID, x, y, z, getBlock); ok {

@@ -857,6 +857,18 @@ func (cm *CraftingManager) registerDyeRecipes() {
 			Output:    ItemStack{ItemID: woolID, Count: 1},
 		})
 	}
+	for _, recipe := range []struct{ carpet, source string }{
+		{"moss_carpet", "moss_block"}, {"pale_moss_carpet", "pale_moss_block"},
+	} {
+		carpetBlock, carpetOK := ExtendedBlockByName("minecraft:" + recipe.carpet)
+		sourceBlock, sourceOK := ExtendedBlockByName("minecraft:" + recipe.source)
+		if carpetOK && sourceOK {
+			cm.Recipes = append(cm.Recipes,
+				Recipe{Width: 2, Height: 1, Pattern: []int32{sourceBlock.RuntimeID, sourceBlock.RuntimeID}, Output: ItemStack{ItemID: carpetBlock.RuntimeID, Count: 3}},
+				Recipe{Width: 1, Height: 2, Pattern: []int32{sourceBlock.RuntimeID, sourceBlock.RuntimeID}, Output: ItemStack{ItemID: carpetBlock.RuntimeID, Count: 3}},
+			)
+		}
+	}
 }
 
 // MatchCrafting finds matching recipe for grid (gridSize = 2 for 2x2, 3 for 3x3).

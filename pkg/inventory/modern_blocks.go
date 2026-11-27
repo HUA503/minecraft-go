@@ -123,6 +123,7 @@ func buildExtendedBlockDefinitions() []ExtendedBlockDefinition {
 	definitions = append(definitions, cushionBlockDefinitions()...)
 	definitions = append(definitions, smallFlowerBlockDefinitions()...)
 	definitions = append(definitions, tallFlowerBlockDefinitions()...)
+	definitions = append(definitions, mossCarpetBlockDefinitions()...)
 	return definitions
 }
 
@@ -195,6 +196,37 @@ func carpetBlockDefinitions() []ExtendedBlockDefinition {
 // IsCarpetBlock reports whether the runtime ID is a colored carpet block.
 func IsCarpetBlock(runtimeID int32) bool {
 	return runtimeID >= FirstCarpetBlock && runtimeID <= LastCarpetBlock
+}
+
+const (
+	ItemMossCarpet     int32 = 16314
+	ItemPaleMossCarpet int32 = 16315
+)
+
+func mossCarpetBlockDefinitions() []ExtendedBlockDefinition {
+	blocks := []struct {
+		id                   int32
+		name, label, texture string
+	}{
+		{ItemMossCarpet, "moss_carpet", "苔藓地毯", "moss_block"},
+		{ItemPaleMossCarpet, "pale_moss_carpet", "苍白苔藓地毯", "pale_moss_carpet"},
+	}
+	definitions := make([]ExtendedBlockDefinition, 0, len(blocks))
+	for _, block := range blocks {
+		name := "minecraft:" + block.name
+		definitions = append(definitions, ExtendedBlockDefinition{
+			RuntimeID: block.id, Name: name,
+			TextureTop: block.texture, TextureBottom: block.texture, TextureSide: block.texture,
+			Category: CreativeNatural, Hardness: 0.1, DropRuntimeID: block.id,
+		})
+		extendedBlockDisplayNames[name] = block.label
+	}
+	return definitions
+}
+
+// IsThinCarpetBlock identifies carpet blocks that use the 1/16 block model.
+func IsThinCarpetBlock(blockID int32) bool {
+	return IsCarpetBlock(blockID) || blockID == ItemMossCarpet || blockID == ItemPaleMossCarpet
 }
 
 func additionalSpecialCubeDefinitions() []ExtendedBlockDefinition {
