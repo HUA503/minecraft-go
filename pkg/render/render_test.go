@@ -848,6 +848,19 @@ func TestTransparentBlockClassificationAndPortalFaceCulling(t *testing.T) {
 	if IsOpaqueCube(whiteStainedGlass) || !IsTranslucentBlock(whiteStainedGlass) {
 		t.Fatal("stained glass must be transparent and must not occlude opaque geometry")
 	}
+	const tintedGlass int32 = 14224
+	if IsOpaqueCube(tintedGlass) || !IsTranslucentBlock(tintedGlass) {
+		t.Fatal("tinted glass must use the transparent render pass and must not occlude opaque geometry")
+	}
+	tintedMesh := BuildSectionMesh(func(x, y, z int32) int32 {
+		if (x == 0 || x == 1) && y == 0 && z == 0 {
+			return tintedGlass
+		}
+		return 0
+	}, 0, 0, 0)
+	if len(tintedMesh.Vertices) != 40 {
+		t.Fatalf("two adjacent tinted glass blocks should cull their shared face, got %d vertices", len(tintedMesh.Vertices))
+	}
 	glass := map[[3]int32]int32{{0, 0, 0}: whiteStainedGlass, {1, 0, 0}: whiteStainedGlass}
 	glassMesh := BuildSectionMesh(func(x, y, z int32) int32 {
 		return glass[[3]int32{x, y, z}]

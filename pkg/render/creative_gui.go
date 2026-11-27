@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/HUA503/minecraft-go/pkg/inventory"
 )
@@ -83,6 +84,11 @@ func creativeTabSpriteVariant(tab creativeTabLayout) int {
 // DrawCreativeInventoryGUI draws the Java 26.3 creative item picker: a 195x136
 // panel with a 9x5 catalog and the player's hotbar below it.
 func (fb *Framebuffer) DrawCreativeInventoryGUI(inv *inventory.PlayerInventory, cursor inventory.ItemStack, category inventory.CreativeCategory, query string, scrollRow, mouseX, mouseY int, presetValues ...inventory.CreativeHotbarPresets) {
+	fb.DrawCreativeInventoryGUIWithSearchState(inv, cursor, category, query, scrollRow, mouseX, mouseY, len([]rune(query)), false, presetValues...)
+}
+
+// DrawCreativeInventoryGUIWithSearchState renders the creative inventory and its editable search caret.
+func (fb *Framebuffer) DrawCreativeInventoryGUIWithSearchState(inv *inventory.PlayerInventory, cursor inventory.ItemStack, category inventory.CreativeCategory, query string, scrollRow, mouseX, mouseY, searchCursor int, searchFocused bool, presetValues ...inventory.CreativeHotbarPresets) {
 	if fb == nil || inv == nil {
 		return
 	}
@@ -183,6 +189,11 @@ func (fb *Framebuffer) DrawCreativeInventoryGUI(inv *inventory.PlayerInventory, 
 			searchLabel = query
 		}
 		drawCreativeSearchText(fb, px+82*scale, py+6*scale, searchLabel, 0xFF404040, scale, 80*scale)
+		if searchFocused && time.Now().UnixMilli()/500%2 == 0 {
+			caretX := px + (83+creativeSearchTextAdvance(query, searchCursor))*scale
+			caretX = min(caretX, px+161*scale)
+			fb.DrawRect(caretX, py+6*scale, scale, 9*scale, 0xFF333333)
+		}
 	}
 
 	invX, invY := px+9*scale, py+creativeHotbarY*scale
@@ -242,6 +253,25 @@ func (fb *Framebuffer) DrawCreativeInventoryGUI(inv *inventory.PlayerInventory, 
 			fb.DrawNumberScaled(mouseX+8*scale, mouseY+3*scale, cursor.Count, 0xFFFFFFFF, scale)
 		}
 	}
+}
+
+func creativeSearchTextAdvance(text string, cursor int) int {
+	runes := []rune(text)
+	if cursor < 0 {
+		cursor = 0
+	}
+	if cursor > len(runes) {
+		cursor = len(runes)
+	}
+	width := 0
+	for _, ch := range runes[:cursor] {
+		if ch > 0x7f {
+			width += 9
+		} else {
+			width += 6
+		}
+	}
+	return width
 }
 
 func drawCreativeOffhandSlot(fb *Framebuffer, inv *inventory.PlayerInventory, x, y, scale, mouseX, mouseY int) string {

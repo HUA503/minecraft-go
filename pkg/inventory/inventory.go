@@ -20,6 +20,7 @@ const (
 	ItemStone          int32 = 1
 	ItemGrass          int32 = 2
 	ItemDirt           int32 = 3
+	ItemGlass          int32 = 20
 	ItemCobblestone    int32 = 4
 	ItemOakPlanks      int32 = 5
 	ItemOakLog         int32 = 17

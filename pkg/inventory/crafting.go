@@ -720,6 +720,13 @@ func (cm *CraftingManager) registerDefaults() {
 			Output:  ItemStack{ItemID: amethystBlock.RuntimeID, Count: 1},
 		})
 	}
+	if tintedGlass, ok := ExtendedBlockByName("minecraft:tinted_glass"); ok {
+		cm.Recipes = append(cm.Recipes, Recipe{
+			Width: 3, Height: 3,
+			Pattern: []int32{ItemAir, ItemAmethystShard, ItemAir, ItemAmethystShard, ItemGlass, ItemAmethystShard, ItemAir, ItemAmethystShard, ItemAir},
+			Output:  ItemStack{ItemID: tintedGlass.RuntimeID, Count: 2},
+		})
+	}
 	if honeycombBlock, ok := ExtendedBlockByName("minecraft:honeycomb_block"); ok {
 		cm.Recipes = append(cm.Recipes, Recipe{
 			Width: 2, Height: 2,

@@ -174,6 +174,18 @@ func TestCreativeInventoryCatalogAndHitTesting(t *testing.T) {
 	}
 }
 
+func TestCreativeSearchCaretUsesRenderedGlyphWidths(t *testing.T) {
+	if got := creativeSearchTextAdvance("ab中文", 3); got != 21 {
+		t.Fatalf("search caret advance = %d, want 21 pixels", got)
+	}
+	if got := creativeSearchTextAdvance("ab中文", 99); got != 30 {
+		t.Fatalf("clamped search caret advance = %d, want 30 pixels", got)
+	}
+	if got := creativeSearchTextAdvance("ab中文", -1); got != 0 {
+		t.Fatalf("negative search caret advance = %d, want 0", got)
+	}
+}
+
 func TestCreativeTabsMatchJava263VanillaRows(t *testing.T) {
 	for _, tc := range []struct {
 		category inventory.CreativeCategory

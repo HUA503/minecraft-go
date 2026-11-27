@@ -191,6 +191,7 @@ type Client struct {
 	showInventoryGUI       bool
 	creativeTab            inventory.CreativeCategory
 	creativeSearch         string
+	creativeSearchCursor   int
 	creativeSearchActive   bool
 	creativeScrollRow      int
 	creativeScrollDrag     bool
@@ -3881,7 +3882,7 @@ func (c *Client) RenderFrame() {
 			mx, my = c.wndRef.GetCursorClientPos(c.framebuf.Width, c.framebuf.Height)
 		}
 		if c.isCreative && !c.isCraftingTableOpen {
-			c.framebuf.DrawCreativeInventoryGUI(c.player.Inventory, c.cursorItem, c.creativeTab, c.creativeSearch, c.creativeScrollRow, mx, my, c.creativeHotbars)
+			c.framebuf.DrawCreativeInventoryGUIWithSearchState(c.player.Inventory, c.cursorItem, c.creativeTab, c.creativeSearch, c.creativeScrollRow, mx, my, c.creativeSearchCursor, c.creativeSearchActive, c.creativeHotbars)
 		} else {
 			c.framebuf.DrawCraftingGUI(c.player.Inventory, c.craftGrid[:], c.craftResult, c.isCraftingTableOpen, c.cursorItem, mx, my)
 		}
@@ -5638,10 +5639,37 @@ func runGraphicalWindow(c *Client, w, h int) {
 			switch vkCode {
 			case 0x08: // Backspace
 				runes := []rune(c.creativeSearch)
-				if len(runes) > 0 {
-					c.creativeSearch = string(runes[:len(runes)-1])
+				if c.creativeSearchCursor > len(runes) {
+					c.creativeSearchCursor = len(runes)
+				}
+				if c.creativeSearchCursor > 0 {
+					c.creativeSearch = string(append(runes[:c.creativeSearchCursor-1], runes[c.creativeSearchCursor:]...))
+					c.creativeSearchCursor--
 					c.creativeScrollRow = 0
 				}
+				return
+			case 0x2E: // Delete
+				runes := []rune(c.creativeSearch)
+				if c.creativeSearchCursor >= 0 && c.creativeSearchCursor < len(runes) {
+					c.creativeSearch = string(append(runes[:c.creativeSearchCursor], runes[c.creativeSearchCursor+1:]...))
+					c.creativeScrollRow = 0
+				}
+				return
+			case 0x25: // Left
+				if c.creativeSearchCursor > 0 {
+					c.creativeSearchCursor--
+				}
+				return
+			case 0x27: // Right
+				if c.creativeSearchCursor < len([]rune(c.creativeSearch)) {
+					c.creativeSearchCursor++
+				}
+				return
+			case 0x24: // Home
+				c.creativeSearchCursor = 0
+				return
+			case 0x23: // End
+				c.creativeSearchCursor = len([]rune(c.creativeSearch))
 				return
 			case 0x0D: // Enter ends search editing
 				c.creativeSearchActive = false
@@ -5668,6 +5696,7 @@ func runGraphicalWindow(c *Client, w, h int) {
 					c.isCraftingTableOpen = false
 					c.isFurnaceOpen = false
 					c.creativeSearch = ""
+					c.creativeSearchCursor = 0
 					if c.isCreative {
 						// Java 26.3 opens the creative inventory on the Search tab
 						// with its query field ready for typing.
@@ -5831,7 +5860,15 @@ func runGraphicalWindow(c *Client, w, h int) {
 		}
 		if c.isCreative && c.showInventoryGUI && !c.isCraftingTableOpen && c.creativeSearchActive {
 			if ch >= 32 && ch != 127 && len([]rune(c.creativeSearch)) < 64 {
-				c.creativeSearch += string(ch)
+				runes := []rune(c.creativeSearch)
+				if c.creativeSearchCursor < 0 || c.creativeSearchCursor > len(runes) {
+					c.creativeSearchCursor = len(runes)
+				}
+				runes = append(runes, 0)
+				copy(runes[c.creativeSearchCursor+1:], runes[c.creativeSearchCursor:])
+				runes[c.creativeSearchCursor] = ch
+				c.creativeSearch = string(runes)
+				c.creativeSearchCursor++
 				c.creativeScrollRow = 0
 			}
 			return
@@ -6015,6 +6052,7 @@ func runGraphicalWindow(c *Client, w, h int) {
 				switch hit.Type {
 				case render.SlotCreativeSearch:
 					c.creativeSearchActive = true
+					c.creativeSearchCursor = len([]rune(c.creativeSearch))
 				case render.SlotCreativeTab:
 					previousTab := c.creativeTab
 					c.creativeTab = inventory.CreativeCategory(hit.Index)
@@ -6022,6 +6060,9 @@ func runGraphicalWindow(c *Client, w, h int) {
 						c.creativeSearch = ""
 					}
 					c.creativeSearchActive = c.creativeTab == inventory.CreativeAll
+					if c.creativeSearchActive {
+						c.creativeSearchCursor = len([]rune(c.creativeSearch))
+					}
 					c.creativeScrollRow = 0
 				case render.SlotCreativeScroll:
 					c.creativeSearchActive = false

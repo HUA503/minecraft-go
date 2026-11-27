@@ -90,6 +90,12 @@ func buildExtendedBlockDefinitions() []ExtendedBlockDefinition {
 	definitions = append(definitions, additionalFullCubeDefinitions()...)
 	definitions = append(definitions, additionalCommonCubeDefinitions()...)
 	definitions = append(definitions, additionalSpecialCubeDefinitions()...)
+	definitions = append(definitions, ExtendedBlockDefinition{
+		RuntimeID: 14224, Name: "minecraft:tinted_glass",
+		TextureTop: "tinted_glass", TextureBottom: "tinted_glass", TextureSide: "tinted_glass",
+		Category: CreativeDecoration, Hardness: 0.3, DropsNothing: true,
+	})
+	extendedBlockDisplayNames["minecraft:tinted_glass"] = "遮光玻璃"
 	definitions = append(definitions, woodSlabBlockDefinitions()...)
 	definitions = append(definitions, colorSlabBlockDefinitions()...)
 	definitions = append(definitions, colorStairBlockDefinitions()...)
@@ -577,6 +583,11 @@ func IsStainedGlassBlock(runtimeID int32) bool {
 	definition, ok := ExtendedBlockByID(runtimeID)
 	return ok && len(definition.Name) >= len("_stained_glass") &&
 		definition.Name[len(definition.Name)-len("_stained_glass"):] == "_stained_glass"
+}
+
+// IsTintedGlassBlock reports whether the block uses tinted glass rendering.
+func IsTintedGlassBlock(runtimeID int32) bool {
+	return runtimeID == 14224
 }
 
 func glassPaneBlockDefinitions() []ExtendedBlockDefinition {

@@ -36,6 +36,7 @@ func TestSpecialCubeItemsAreCreativelyAvailableAndMineCorrectly(t *testing.T) {
 		{"pearlescent_froglight", 14221, 14221, 1, 1, CreativeNatural, 0.3, 0},
 		{"reinforced_deepslate", 14222, 0, 0, 0, CreativeBlocks, 55, 0},
 		{"gilded_blackstone", 14223, ItemGoldNugget, 2, 5, CreativeBlocks, 1.5, 0},
+		{"tinted_glass", 14224, 0, 0, 0, CreativeDecoration, 0.3, 0},
 	}
 	all := CreativeCatalog(CreativeAll)
 	for _, test := range cases {

@@ -53,7 +53,7 @@ var NeighborOffsets = [6][3]int32{
 
 // IsOpaqueCube returns whether a block is a solid, fully opaque 1x1x1 cube that hides neighbor faces.
 func IsOpaqueCube(blockID int32) bool {
-	if inventory.IsExtendedLeaves(blockID) || inventory.IsExtendedFoliage(blockID) || inventory.IsStainedGlassBlock(blockID) {
+	if inventory.IsExtendedLeaves(blockID) || inventory.IsExtendedFoliage(blockID) || inventory.IsStainedGlassBlock(blockID) || inventory.IsTintedGlassBlock(blockID) {
 		return false
 	}
 	if boxes, ok := inventory.BlockCollisionBoxes(blockID); ok {
@@ -95,7 +95,7 @@ func IsOpaqueCube(blockID int32) bool {
 // IsTranslucentBlock identifies blocks that must be sorted and blended after
 // opaque terrain. Cutout textures such as leaves stay in the opaque pass.
 func IsTranslucentBlock(blockID int32) bool {
-	if inventory.IsStainedGlassBlock(blockID) || inventory.IsGlassPaneBlock(blockID) {
+	if inventory.IsStainedGlassBlock(blockID) || inventory.IsTintedGlassBlock(blockID) || inventory.IsGlassPaneBlock(blockID) {
 		return true
 	}
 	switch blockID {
@@ -120,7 +120,7 @@ func IsFoliage(blockID int32) bool {
 }
 
 func isCutoutCube(blockID int32) bool {
-	if inventory.IsStainedGlassBlock(blockID) {
+	if inventory.IsStainedGlassBlock(blockID) || inventory.IsTintedGlassBlock(blockID) {
 		return true
 	}
 	if inventory.IsExtendedLeaves(blockID) {

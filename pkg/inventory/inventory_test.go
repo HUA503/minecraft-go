@@ -1304,8 +1304,30 @@ func TestCreativeTabsIncludeVanillaCrossCategoryItems(t *testing.T) {
 		}
 		seen[item.ID] = struct{}{}
 	}
-	if all := CreativeCatalog(CreativeAll); len(all) != 976 {
-		t.Fatalf("canonical Search tab contains %d items after adding doors and trapdoors, want 976", len(all))
+	if all := CreativeCatalog(CreativeAll); len(all) != 977 {
+		t.Fatalf("canonical Search tab contains %d items after adding doors and trapdoors, want 977", len(all))
+	}
+}
+
+func TestTintedGlassCreativeEntryAndRecipe(t *testing.T) {
+	block, ok := ExtendedBlockByName("minecraft:tinted_glass")
+	if !ok || block.RuntimeID != 14224 || block.Category != CreativeDecoration || block.TextureTop != "tinted_glass" || !block.DropsNothing {
+		t.Fatalf("tinted glass definition = %+v, registered=%t", block, ok)
+	}
+	found := false
+	for _, item := range CreativeCatalog(CreativeDecoration) {
+		if item.ID == block.RuntimeID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("tinted glass is absent from the decoration creative tab")
+	}
+	grid := []int32{ItemAir, ItemAmethystShard, ItemAir, ItemAmethystShard, ItemGlass, ItemAmethystShard, ItemAir, ItemAmethystShard, ItemAir}
+	crafted, ok := NewCraftingManager().MatchCrafting(grid, 3)
+	if !ok || crafted != (ItemStack{ItemID: block.RuntimeID, Count: 2}) {
+		t.Fatalf("tinted glass recipe = %+v, matched=%t", crafted, ok)
 	}
 }
 
@@ -1441,8 +1463,8 @@ func TestJava263GlassPanesHaveCatalogShapesAndRecipes(t *testing.T) {
 		"light_gray", "cyan", "purple", "blue", "brown", "green", "red", "black",
 	}
 	catalog := CreativeCatalog(CreativeAll)
-	if len(catalog) != 976 {
-		t.Fatalf("all-items catalog contains %d entries after adding doors and trapdoors, want 976", len(catalog))
+	if len(catalog) != 977 {
+		t.Fatalf("all-items catalog contains %d entries after adding doors and trapdoors, want 977", len(catalog))
 	}
 	crafting := NewCraftingManager()
 	checkPane := func(id int32, name, texture string, glassID int32) {
@@ -1530,8 +1552,8 @@ func TestJava263CandleCatalogCraftingAndShape(t *testing.T) {
 		{"brown", ItemBrownDye}, {"green", ItemGreenDye}, {"red", ItemRedDye}, {"black", ItemBlackDye},
 	}
 	catalog := CreativeCatalog(CreativeAll)
-	if len(catalog) != 976 {
-		t.Fatalf("all-items catalog contains %d entries after adding doors and trapdoors, want 976", len(catalog))
+	if len(catalog) != 977 {
+		t.Fatalf("all-items catalog contains %d entries after adding doors and trapdoors, want 977", len(catalog))
 	}
 	crafting := NewCraftingManager()
 	plain, ok := ExtendedBlockByID(17133)
@@ -1639,8 +1661,8 @@ func TestJava263WoolAndConcreteStairItemsAndStates(t *testing.T) {
 			}
 		}
 	}
-	if len(catalog) != 976 {
-		t.Fatalf("all-items search catalog length = %d, want 976", len(catalog))
+	if len(catalog) != 977 {
+		t.Fatalf("all-items search catalog length = %d, want 977", len(catalog))
 	}
 	whiteWoolCount := 0
 	for _, item := range catalog {
