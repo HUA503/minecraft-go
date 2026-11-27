@@ -967,6 +967,10 @@ func initOfficialBlockTextures() {
 	loadSingle(7, "bedrock")
 	loadBlock(24, "sandstone_top", "sandstone_bottom", "sandstone")
 	loadSingle(25, "note_block")
+	loadSingle(inventory.ItemStonePressurePlate, "stone")
+	loadSingle(inventory.ItemOakPressurePlate, "oak_planks")
+	loadSingle(inventory.ItemStoneButton, "stone")
+	loadSingle(inventory.ItemOakButton, "oak_planks")
 	for _, block := range inventory.ExtendedBlockDefinitions() {
 		if inventory.IsCushionBlock(block.RuntimeID) {
 			if texture, ok := GetOfficialTexture("entity/cushion", block.TextureTop); ok {

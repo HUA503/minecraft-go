@@ -266,6 +266,7 @@ func creativeItemRegistryName(itemID int32) string {
 // runtime IDs; this map does not claim protocol or save-format compatibility.
 var legacyCreativeRegistryNames = map[int32]string{
 	1: "stone", 2: "grass_block", 3: "dirt", 4: "cobblestone", 5: "oak_planks", 6: "oak_sapling", 7: "bedrock",
+	70: "stone_pressure_plate", 72: "oak_pressure_plate", 77: "stone_button", 143: "oak_button",
 	12: "sand", 13: "gravel", 14: "gold_ore", 15: "iron_ore",
 	16: "coal_ore", 17: "oak_log", 18: "oak_leaves", 19: "sponge", 20: "glass", 21: "birch_leaves", 22: "spruce_log",
 	23: "spruce_leaves", 24: "sandstone", 25: "note_block", 31: "short_grass", 32: "dead_bush", 33: "fern",
@@ -300,6 +301,8 @@ var legacyCreativeRegistryNames = map[int32]string{
 
 var creativeCatalog = []CreativeItem{
 	{1, "石头", CreativeBlocks}, {2, "草方块", CreativeBlocks}, {3, "泥土", CreativeBlocks}, {4, "圆石", CreativeBlocks},
+	{ItemStonePressurePlate, "石质压力板", CreativeRedstone}, {ItemOakPressurePlate, "橡木压力板", CreativeRedstone},
+	{ItemStoneButton, "石质按钮", CreativeRedstone}, {ItemOakButton, "橡木按钮", CreativeRedstone},
 	{5, "橡木木板", CreativeBlocks}, {6, "橡木树苗", CreativeNatural}, {7, "基岩", CreativeBlocks},
 	{12, "沙子", CreativeBlocks}, {13, "沙砾", CreativeBlocks}, {14, "金矿石", CreativeBlocks}, {15, "铁矿石", CreativeBlocks},
 	{16, "煤矿石", CreativeBlocks}, {17, "橡木原木", CreativeBlocks}, {18, "橡木树叶", CreativeNatural}, {19, "海绵", CreativeBlocks}, {20, "玻璃", CreativeDecoration},

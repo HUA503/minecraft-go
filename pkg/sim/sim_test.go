@@ -1890,3 +1890,55 @@ func TestFurnaceSmeltingAndDrop(t *testing.T) {
 		t.Fatalf("expected furnace contents (iron ingot) dropped when broken")
 	}
 }
+
+func TestRedstoneControlPlacementAndButtonReset(t *testing.T) {
+	eng := NewEngine()
+	platePos := world.BlockPos{X: 10, Y: 64, Z: 10}
+	if !eng.SetBlockChecked(platePos.X, platePos.Y-1, platePos.Z, inventory.ItemStone) {
+		t.Fatal("could not place pressure plate support")
+	}
+	if !eng.PlaceBlock(0, platePos, inventory.ItemOakPressurePlate) {
+		t.Fatal("supported oak pressure plate placement failed")
+	}
+	if got := eng.GetBlock(platePos.X, platePos.Y, platePos.Z); got != inventory.PressurePlateBlockState(inventory.ItemOakPressurePlate, false) {
+		t.Fatalf("placed pressure plate state = %d", got)
+	}
+	if got := BlockCollisionAABBs(eng.GetBlock(platePos.X, platePos.Y, platePos.Z), platePos.X, platePos.Y, platePos.Z); len(got) != 1 || got[0].Max.Y-got[0].Min.Y > .07 {
+		t.Fatalf("pressure plate collision = %+v", got)
+	}
+	player := eng.AddPlayer("plate-tester", [16]byte{}, Vec3{X: 10.5, Y: 64.0625, Z: 10.5})
+	eng.Tick()
+	if _, powered, ok := inventory.PressurePlateStateProperties(eng.GetBlock(platePos.X, platePos.Y, platePos.Z)); !ok || !powered {
+		t.Fatal("player standing on pressure plate did not activate it")
+	}
+	player.Position.X = 14.5
+	eng.Tick()
+	if _, powered, ok := inventory.PressurePlateStateProperties(eng.GetBlock(platePos.X, platePos.Y, platePos.Z)); !ok || powered {
+		t.Fatal("pressure plate did not reset after player left")
+	}
+
+	buttonPos := world.BlockPos{X: 11, Y: 64, Z: 10}
+	buttonState := inventory.ButtonBlockState(inventory.ItemOakButton, 5, false)
+	if !eng.PlaceBlock(0, buttonPos, buttonState) {
+		t.Fatal("button with west-side support failed to place")
+	}
+	if eng.PlaceBlock(0, world.BlockPos{X: 13, Y: 64, Z: 10}, inventory.ButtonBlockState(inventory.ItemStoneButton, 5, false)) {
+		t.Fatal("unsupported button placement succeeded")
+	}
+	if !eng.PressButton(buttonPos) {
+		t.Fatal("button did not activate")
+	}
+	if _, _, powered, ok := inventory.ButtonStateProperties(eng.GetBlock(buttonPos.X, buttonPos.Y, buttonPos.Z)); !ok || !powered {
+		t.Fatal("button did not enter powered state")
+	}
+	for range 9 {
+		eng.Tick()
+	}
+	if _, _, powered, _ := inventory.ButtonStateProperties(eng.GetBlock(buttonPos.X, buttonPos.Y, buttonPos.Z)); !powered {
+		t.Fatal("button released before ten ticks")
+	}
+	eng.Tick()
+	if _, _, powered, ok := inventory.ButtonStateProperties(eng.GetBlock(buttonPos.X, buttonPos.Y, buttonPos.Z)); !ok || powered {
+		t.Fatal("button did not reset after ten ticks")
+	}
+}

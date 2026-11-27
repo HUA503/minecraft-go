@@ -563,11 +563,33 @@ func (sess *ClientSession) handlePacket(raw *protocol.RawPacket) error {
 				return err
 			}
 			if world.ValidBlockCoordinates(bu.X, bu.Y, bu.Z) && bu.BlockID >= 0 && sess.canModifyBlock(bu) {
-				if !sess.server.simEngine.SetBlockChecked(bu.X, bu.Y, bu.Z, bu.BlockID) {
+				pos := world.BlockPos{X: bu.X, Y: bu.Y, Z: bu.Z}
+				applied := false
+				if itemID, _, powered, isButton := inventory.ButtonStateProperties(bu.BlockID); isButton && powered {
+					currentItem, _, currentPowered, currentIsButton := inventory.ButtonStateProperties(sess.server.simEngine.GetBlock(bu.X, bu.Y, bu.Z))
+					if currentIsButton && currentItem == itemID && !currentPowered {
+						applied = sess.server.simEngine.PressButton(pos)
+					}
+				} else {
+					if _, powered, isPlate := inventory.PressurePlateStateProperties(bu.BlockID); isPlate &&
+						(powered || bu.Y <= 0 || !sim.IsSolidBlock(sess.server.simEngine.GetBlock(bu.X, bu.Y-1, bu.Z))) {
+						return nil
+					}
+					if _, _, powered, isButton := inventory.ButtonStateProperties(bu.BlockID); isButton {
+						sx, sy, sz, _ := inventory.ButtonSupportOffset(bu.BlockID)
+						if powered || !world.ValidBlockCoordinates(bu.X+sx, bu.Y+sy, bu.Z+sz) ||
+							!sim.IsSolidBlock(sess.server.simEngine.GetBlock(bu.X+sx, bu.Y+sy, bu.Z+sz)) {
+							return nil
+						}
+					}
+					applied = sess.server.simEngine.SetBlockChecked(bu.X, bu.Y, bu.Z, bu.BlockID)
+				}
+				if !applied {
 					return nil
 				}
+				appliedState := sess.server.simEngine.GetBlock(bu.X, bu.Y, bu.Z)
 				sess.server.mu.Lock()
-				sess.server.modifiedBlocks[world.BlockPos{X: bu.X, Y: bu.Y, Z: bu.Z}] = bu.BlockID
+				sess.server.modifiedBlocks[pos] = appliedState
 				sess.server.mu.Unlock()
 			}
 
@@ -616,4 +638,3 @@ func main() {
 		log.Fatalf("[Server] Fatal error: %v", err)
 	}
 }
-

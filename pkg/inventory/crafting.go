@@ -728,6 +728,35 @@ func (cm *CraftingManager) registerDefaults() {
 		Pattern: []int32{ItemGoldNugget, ItemGoldNugget, ItemGoldNugget, ItemGoldNugget, ItemMelonSlice, ItemGoldNugget, ItemGoldNugget, ItemGoldNugget, ItemGoldNugget},
 		Output:  ItemStack{ItemID: ItemGlisteringMelon, Count: 1},
 	})
+	for _, controls := range [][]controlBlockDefinition{pressurePlateDefinitions, buttonDefinitions} {
+		for _, control := range controls {
+			var inputID int32
+			if block, ok := ExtendedBlockByName(control.source); ok {
+				inputID = block.RuntimeID
+			} else {
+				for _, item := range CreativeCatalog(CreativeAll) {
+					if creativeItemRegistryName(item.ID) == control.source {
+						inputID = item.ID
+						break
+					}
+				}
+			}
+			if inputID == 0 {
+				continue
+			}
+			if control.kind == "button" {
+				cm.Recipes = append(cm.Recipes, Recipe{
+					Width: 1, Height: 1, Pattern: []int32{inputID},
+					Output: ItemStack{ItemID: control.itemID, Count: 1},
+				})
+			} else {
+				cm.Recipes = append(cm.Recipes, Recipe{
+					Width: 2, Height: 1, Pattern: []int32{inputID, inputID},
+					Output: ItemStack{ItemID: control.itemID, Count: 1},
+				})
+			}
+		}
+	}
 	cm.registerDyeRecipes()
 }
 

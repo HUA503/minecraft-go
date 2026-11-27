@@ -93,6 +93,12 @@ func (a AABB) Intersects(b AABB) bool {
 // IsSolidBlock returns whether a block impedes physical player movement.
 // Air (0), liquids (8, 9, 10, 11), foliage (31, 32, 37, 38), and torches (50) are passable.
 func IsSolidBlock(blockID int32) bool {
+	if inventory.IsButtonBlock(blockID) {
+		return false
+	}
+	if inventory.IsPressurePlateBlock(blockID) {
+		return true
+	}
 	if inventory.IsCushionBlock(blockID) {
 		return false
 	}

@@ -168,11 +168,15 @@ const (
 
 // IsPlaceableBlock reports whether an item ID corresponds to a placeable voxel block.
 func IsPlaceableBlock(itemID int32) bool {
+	if baseItem := BlockItemForState(itemID); baseItem != itemID {
+		return IsPlaceableBlock(baseItem)
+	}
 	if _, ok := ExtendedBlockByID(itemID); ok {
 		return true
 	}
 	switch itemID {
 	case ItemStone, ItemGrass, ItemDirt, ItemCobblestone, ItemOakPlanks,
+		ItemStonePressurePlate, ItemOakPressurePlate, ItemStoneButton, ItemOakButton,
 		6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, ItemOakLog, 18, 19, 20, 21, 22, 23, 24, 35, 43,
 		31, 32, 33, 37, 38, ItemGoldBlock, ItemIronBlock, ItemStoneSlab, 45, 46, 47, 48, 49, ItemTorch, 52, ItemChest, 56, ItemDiamondBlock, ItemCraftingTable, ItemFurnace,
 		25, 65, 73, 74, 79, 80, 81, 82, 83, 84, 86, 87, 88, 89, 90, 91, 98, 103, 111, 112, 119, 120, 121, 122, 123, 124, 126, 129, 133, 138, 150, 152, 153, 154, 155, 159, 165, 168, 169, 170, 172, 173, 174, 179, 324, 330:

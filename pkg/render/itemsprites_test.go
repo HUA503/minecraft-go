@@ -169,6 +169,35 @@ func TestJava263CatalogItemsHaveRealIcons(t *testing.T) {
 	}
 }
 
+func TestRedstoneControlIconsUseOfficialBlockTextures(t *testing.T) {
+	items := []int32{
+		inventory.ItemStonePressurePlate, inventory.ItemOakPressurePlate,
+		inventory.ItemStoneButton, inventory.ItemOakButton,
+		inventory.ItemPolishedBlackstonePressurePlate, inventory.ItemPolishedBlackstoneButton,
+	}
+	for _, definition := range inventory.ControlBlockDefinitions() {
+		items = append(items, definition.RuntimeID)
+	}
+	for _, id := range items {
+		if Textures[id] == nil {
+			t.Errorf("redstone control %d has no loaded official block texture", id)
+			continue
+		}
+		icon := RenderIsometricBlock16x16(id)
+		nonTransparent := 0
+		for y := range icon {
+			for x := range icon[y] {
+				if icon[y][x]>>24 != 0 {
+					nonTransparent++
+				}
+			}
+		}
+		if nonTransparent == 0 {
+			t.Errorf("redstone control %d rendered a blank icon", id)
+		}
+	}
+}
+
 func TestGetItemSprite16x16(t *testing.T) {
 	items := []int32{
 		inventory.ItemWoodenPickaxe,

@@ -127,60 +127,64 @@ type WorldEvent struct {
 
 // Engine manages the authoritative 20 TPS game simulation.
 type Engine struct {
-	mu               sync.RWMutex
-	saveMu           sync.Mutex
-	mobMu            sync.Mutex
-	World            map[world.ChunkPos]*world.Chunk
-	DimensionWorlds  map[int]map[world.ChunkPos]*world.Chunk
-	CurrentDimension int // 0: Overworld, 1: Nether, 2: End
-	Players          map[int32]*PlayerEntity
-	clientPlayers    map[int32]PlayerEntity
-	nextPlayerID     int32
-	Mobs             map[int32]*MobEntity
-	nextMobID        int32
-	ItemDrops        map[int32]*ItemDrop
-	nextItemDropID   int32
-	EnderDragon      *EnderDragon
-	EndCrystals      map[int32]*EndCrystal
-	nextCrystalID    int32
-	TickCount        int64
-	WorldTime        int64
-	randomTickState  uint64
-	Events           chan WorldEvent
-	stopChan         chan struct{}
-	loopMu           sync.Mutex
-	tickDone         chan struct{}
-	tickLoopStarted  bool
-	stopped          bool
-	stopOnce         sync.Once
-	Storage          *world.SaveManager
-	DimensionStorage [3]*world.SaveManager
-	Furnaces         map[world.BlockPos]*inventory.FurnaceBlockEntity
-	IsPaused         bool
-	Difficulty       int // 0: Peaceful, 1: Easy, 2: Normal, 3: Hard
+	mu                   sync.RWMutex
+	saveMu               sync.Mutex
+	mobMu                sync.Mutex
+	World                map[world.ChunkPos]*world.Chunk
+	DimensionWorlds      map[int]map[world.ChunkPos]*world.Chunk
+	CurrentDimension     int // 0: Overworld, 1: Nether, 2: End
+	Players              map[int32]*PlayerEntity
+	clientPlayers        map[int32]PlayerEntity
+	nextPlayerID         int32
+	Mobs                 map[int32]*MobEntity
+	nextMobID            int32
+	ItemDrops            map[int32]*ItemDrop
+	nextItemDropID       int32
+	EnderDragon          *EnderDragon
+	EndCrystals          map[int32]*EndCrystal
+	nextCrystalID        int32
+	TickCount            int64
+	WorldTime            int64
+	randomTickState      uint64
+	Events               chan WorldEvent
+	stopChan             chan struct{}
+	loopMu               sync.Mutex
+	tickDone             chan struct{}
+	tickLoopStarted      bool
+	stopped              bool
+	stopOnce             sync.Once
+	Storage              *world.SaveManager
+	DimensionStorage     [3]*world.SaveManager
+	Furnaces             map[world.BlockPos]*inventory.FurnaceBlockEntity
+	buttonReleaseAt      map[world.BlockPos]int64
+	pressurePlatePowered map[world.BlockPos]struct{}
+	IsPaused             bool
+	Difficulty           int // 0: Peaceful, 1: Easy, 2: Normal, 3: Hard
 }
 
 func NewEngine() *Engine {
 	eng := &Engine{
-		World:            make(map[world.ChunkPos]*world.Chunk),
-		DimensionWorlds:  make(map[int]map[world.ChunkPos]*world.Chunk),
-		CurrentDimension: 0,
-		Players:          make(map[int32]*PlayerEntity),
-		clientPlayers:    make(map[int32]PlayerEntity),
-		nextPlayerID:     1,
-		Mobs:             make(map[int32]*MobEntity),
-		nextMobID:        100,
-		ItemDrops:        make(map[int32]*ItemDrop),
-		nextItemDropID:   1,
-		EndCrystals:      make(map[int32]*EndCrystal),
-		nextCrystalID:    1,
-		WorldTime:        6000, // Canonical Minecraft noon daylight
-		randomTickState:  uint64(time.Now().UnixNano()) | 1,
-		Difficulty:       2, // Default: Normal difficulty
-		Events:           make(chan WorldEvent, 1024),
-		stopChan:         make(chan struct{}),
-		tickDone:         make(chan struct{}),
-		Furnaces:         make(map[world.BlockPos]*inventory.FurnaceBlockEntity),
+		World:                make(map[world.ChunkPos]*world.Chunk),
+		DimensionWorlds:      make(map[int]map[world.ChunkPos]*world.Chunk),
+		CurrentDimension:     0,
+		Players:              make(map[int32]*PlayerEntity),
+		clientPlayers:        make(map[int32]PlayerEntity),
+		nextPlayerID:         1,
+		Mobs:                 make(map[int32]*MobEntity),
+		nextMobID:            100,
+		ItemDrops:            make(map[int32]*ItemDrop),
+		nextItemDropID:       1,
+		EndCrystals:          make(map[int32]*EndCrystal),
+		nextCrystalID:        1,
+		WorldTime:            6000, // Canonical Minecraft noon daylight
+		randomTickState:      uint64(time.Now().UnixNano()) | 1,
+		Difficulty:           2, // Default: Normal difficulty
+		Events:               make(chan WorldEvent, 1024),
+		stopChan:             make(chan struct{}),
+		tickDone:             make(chan struct{}),
+		Furnaces:             make(map[world.BlockPos]*inventory.FurnaceBlockEntity),
+		buttonReleaseAt:      make(map[world.BlockPos]int64),
+		pressurePlatePowered: make(map[world.BlockPos]struct{}),
 	}
 	eng.DimensionWorlds[0] = eng.World
 	eng.DimensionWorlds[1] = make(map[world.ChunkPos]*world.Chunk)
@@ -1127,6 +1131,12 @@ func (e *Engine) rollBlockDropCount(blockID int32) int {
 
 // PlaceBlock places a block if it does not intersect the player's bounding box.
 func (e *Engine) PlaceBlock(playerID int32, pos world.BlockPos, blockID int32) bool {
+	if pressureState, ok := inventory.PressurePlatePlacementState(blockID); ok {
+		blockID = pressureState
+	}
+	if buttonState, ok := inventory.ButtonPlacementState(blockID, 0, 1, 0); ok {
+		blockID = buttonState
+	}
 	existing := e.GetBlock(pos.X, pos.Y, pos.Z)
 	if itemID, facing, _, hinge, upper, isDoor := inventory.WoodDoorStateProperties(blockID); isDoor {
 		if upper || pos.Y <= 0 || !inventory.IsReplaceableBlock(existing) || !IsSolidBlock(e.GetBlock(pos.X, pos.Y-1, pos.Z)) {
@@ -1164,6 +1174,17 @@ func (e *Engine) PlaceBlock(playerID int32, pos world.BlockPos, blockID int32) b
 			return true
 		}
 		blockID = inventory.CandleBlockState(blockID, 1, false)
+	}
+	if inventory.IsPressurePlateState(blockID) {
+		if pos.Y <= 0 || !IsSolidBlock(e.GetBlock(pos.X, pos.Y-1, pos.Z)) {
+			return false
+		}
+	}
+	if _, _, _, isButton := inventory.ButtonStateProperties(blockID); isButton {
+		sx, sy, sz, _ := inventory.ButtonSupportOffset(blockID)
+		if !world.ValidBlockCoordinates(pos.X+sx, pos.Y+sy, pos.Z+sz) || !IsSolidBlock(e.GetBlock(pos.X+sx, pos.Y+sy, pos.Z+sz)) {
+			return false
+		}
 	}
 	if !inventory.IsReplaceableBlock(existing) {
 		existingItem, existingIsSlab := inventory.SlabItemForBlockState(existing)
@@ -1717,6 +1738,15 @@ func (e *Engine) Tick() {
 	}
 	e.TickCount++
 	e.WorldTime = (e.WorldTime + 1) % 24000
+	for pos, releaseTick := range e.buttonReleaseAt {
+		if e.TickCount < releaseTick {
+			continue
+		}
+		if itemID, facing, powered, ok := inventory.ButtonStateProperties(e.getBlockLocked(pos.X, pos.Y, pos.Z)); ok && powered {
+			e.setBlockLocked(pos.X, pos.Y, pos.Z, inventory.ButtonBlockState(itemID, facing, false))
+		}
+		delete(e.buttonReleaseAt, pos)
+	}
 
 	getBlock := func(x, y, z int32) int32 {
 		cp := world.BlockPos{X: x, Y: y, Z: z}.ToChunkPos()
@@ -1758,6 +1788,7 @@ func (e *Engine) Tick() {
 		p.Position = resPos
 		p.OnGround = ground
 	}
+	e.updatePressurePlatesLocked()
 
 	// Update physical floating item drops
 	for id, drop := range e.ItemDrops {
@@ -1953,6 +1984,64 @@ func (e *Engine) Tick() {
 	for _, m := range activeMobs {
 		m.TickMob(e)
 	}
+}
+
+func (e *Engine) updatePressurePlatesLocked() {
+	if e.pressurePlatePowered == nil {
+		e.pressurePlatePowered = make(map[world.BlockPos]struct{})
+	}
+	pressed := make(map[world.BlockPos]struct{})
+	for _, player := range e.Players {
+		if !player.IsAlive {
+			continue
+		}
+		feetY := int32(math.Floor(player.Position.Y))
+		centerX, centerZ := player.Position.X, player.Position.Z
+		for x := int32(math.Floor(centerX)) - 1; x <= int32(math.Floor(centerX))+1; x++ {
+			for z := int32(math.Floor(centerZ)) - 1; z <= int32(math.Floor(centerZ))+1; z++ {
+				pos := world.BlockPos{X: x, Y: feetY, Z: z}
+				itemID, powered, ok := inventory.PressurePlateStateProperties(e.getBlockLocked(x, feetY, z))
+				if !ok || centerX+.3 <= float64(x)+.125 || centerX-.3 >= float64(x)+.875 ||
+					centerZ+.3 <= float64(z)+.125 || centerZ-.3 >= float64(z)+.875 ||
+					player.Position.Y < float64(feetY)+.05 || player.Position.Y > float64(feetY)+.2 {
+					continue
+				}
+				pressed[pos] = struct{}{}
+				e.pressurePlatePowered[pos] = struct{}{}
+				if !powered {
+					e.setBlockLocked(x, feetY, z, inventory.PressurePlateBlockState(itemID, true))
+				}
+			}
+		}
+	}
+	for pos := range e.pressurePlatePowered {
+		if _, stillPressed := pressed[pos]; stillPressed {
+			continue
+		}
+		if itemID, powered, ok := inventory.PressurePlateStateProperties(e.getBlockLocked(pos.X, pos.Y, pos.Z)); ok && powered {
+			e.setBlockLocked(pos.X, pos.Y, pos.Z, inventory.PressurePlateBlockState(itemID, false))
+		}
+		delete(e.pressurePlatePowered, pos)
+	}
+}
+
+// PressButton powers a button for ten game ticks and schedules its reset.
+func (e *Engine) PressButton(pos world.BlockPos) bool {
+	state := e.GetBlock(pos.X, pos.Y, pos.Z)
+	itemID, facing, powered, ok := inventory.ButtonStateProperties(state)
+	if !ok || powered {
+		return false
+	}
+	if !e.SetBlockChecked(pos.X, pos.Y, pos.Z, inventory.ButtonBlockState(itemID, facing, true)) {
+		return false
+	}
+	e.mu.Lock()
+	if e.buttonReleaseAt == nil {
+		e.buttonReleaseAt = make(map[world.BlockPos]int64)
+	}
+	e.buttonReleaseAt[pos] = e.TickCount + 10
+	e.mu.Unlock()
+	return true
 }
 
 // StartTickLoop runs the 20 TPS loop in a background goroutine.

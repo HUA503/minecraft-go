@@ -3188,6 +3188,15 @@ func (c *Client) PlaceBlockInFront() bool {
 	if inventory.IsIronTrapdoorItem(selected.ItemID) {
 		placedBlockID = inventory.IronTrapdoorPlacementState(c.camera.Yaw, res.FaceY, localHitY)
 	}
+	if inventory.IsPressurePlateItem(selected.ItemID) {
+		if res.FaceY != -1 {
+			return false
+		}
+		placedBlockID, _ = inventory.PressurePlatePlacementState(selected.ItemID)
+	}
+	if buttonState, isButton := inventory.ButtonPlacementState(selected.ItemID, res.FaceX, res.FaceY, res.FaceZ); isButton {
+		placedBlockID = buttonState
+	}
 	if stackCandle {
 		// The engine adds one matching candle to the clicked cluster.
 	} else if mergeSlab {
@@ -3299,6 +3308,22 @@ func (c *Client) UpdateRightClick(isRightDown bool, dt float64) {
 		return
 	}
 	if isRightDown && c.isLocal && c.placeCooldown <= 0 && c.hasTarget {
+		if inventory.IsButtonBlock(c.engine.GetBlockIfLoaded(c.targetedPos.X, c.targetedPos.Y, c.targetedPos.Z)) {
+			if c.engine.PressButton(c.targetedPos) {
+				c.RebuildAffectedMeshes(c.targetedPos)
+				blockID := c.engine.GetBlock(c.targetedPos.X, c.targetedPos.Y, c.targetedPos.Z)
+				if c.conn != nil {
+					_ = c.sendPacket(&protocol.BlockUpdatePacket{X: c.targetedPos.X, Y: c.targetedPos.Y, Z: c.targetedPos.Z, BlockID: blockID})
+				}
+				soundName := "minecraft:block.wooden_button.click_on"
+				if itemID, _, _, ok := inventory.ButtonStateProperties(blockID); ok && (itemID == inventory.ItemStoneButton || itemID == inventory.ItemPolishedBlackstoneButton) {
+					soundName = "minecraft:block.stone_button.click_on"
+				}
+				sound.PlayHardwareFeedback(soundName)
+				c.placeCooldown = 0.3
+			}
+			return
+		}
 		if _, _, open, _, _, isDoor := inventory.WoodDoorStateProperties(c.engine.GetBlockIfLoaded(c.targetedPos.X, c.targetedPos.Y, c.targetedPos.Z)); isDoor {
 			if c.engine.SetWoodDoorOpen(c.targetedPos, !open) {
 				c.RebuildAffectedMeshes(c.targetedPos)
