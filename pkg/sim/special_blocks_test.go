@@ -94,6 +94,23 @@ func TestJava263SpecialCubeMiningDrops(t *testing.T) {
 	}
 }
 
+func TestJava263IronBarsRequirePickaxeForDrops(t *testing.T) {
+	eng := NewEngine()
+	player := eng.AddPlayer("Miner", [16]byte{43}, Vec3{X: 0, Y: 64, Z: 0})
+	if player == nil {
+		t.Fatal("expected initialized mining player")
+	}
+	pos := world.BlockPos{X: 3, Y: 64, Z: 0}
+	eng.SetBlock(pos.X, pos.Y, pos.Z, inventory.ItemIronBars)
+	if drop, _ := eng.BreakBlockWithTool(player.ID, pos, inventory.ItemAir); drop != inventory.ItemAir {
+		t.Fatalf("hand-mined iron bars drop = %d, want none", drop)
+	}
+	eng.SetBlock(pos.X, pos.Y, pos.Z, inventory.ItemIronBars)
+	if drop, harvested := eng.BreakBlockWithTool(player.ID, pos, inventory.ItemWoodenPickaxe); drop != inventory.ItemIronBars || !harvested {
+		t.Fatalf("pickaxe-mined iron bars drop = %d, harvested=%t; want iron bars", drop, harvested)
+	}
+}
+
 func TestJava263LiveCoralRandomTick(t *testing.T) {
 	t.Run("water keeps coral alive", func(t *testing.T) {
 		eng := NewEngine()

@@ -199,8 +199,8 @@ func BlockCollisionBoxesAt(blockID, x, y, z int32, getBlock func(int32, int32, i
 	if boxes, ok := ButtonModelBoxes(blockID); ok {
 		return boxes, true
 	}
-	if IsGlassPaneBlock(blockID) {
-		return GlassPaneBoxesAt(x, y, z, getBlock), true
+	if IsPaneBlock(blockID) {
+		return PaneBoxesAt(x, y, z, getBlock), true
 	}
 	if itemID, count, _, ok := CandleStateProperties(blockID); ok {
 		return CandleBoxes(itemID, count), true
@@ -280,9 +280,9 @@ func CandleBoxes(itemID int32, count int) []BlockBox {
 	return boxes
 }
 
-// GlassPaneBoxesAt returns the pane's center post and connected arms. The
+// PaneBoxesAt returns a pane's center post and connected arms. The
 // 2-pixel-wide arms use the same footprint for rendering and player collision.
-func GlassPaneBoxesAt(x, y, z int32, getBlock func(int32, int32, int32) int32) []BlockBox {
+func PaneBoxesAt(x, y, z int32, getBlock func(int32, int32, int32) int32) []BlockBox {
 	const min = float32(7.0 / 16.0)
 	const max = float32(9.0 / 16.0)
 	boxes := []BlockBox{{MinX: min, MinY: 0, MinZ: min, MaxX: max, MaxY: 1, MaxZ: max}}
@@ -308,6 +308,11 @@ func GlassPaneBoxesAt(x, y, z int32, getBlock func(int32, int32, int32) int32) [
 		boxes = append(boxes, BlockBox{MinX: min, MinY: 0, MinZ: max, MaxX: max, MaxY: 1, MaxZ: 1})
 	}
 	return boxes
+}
+
+// GlassPaneBoxesAt is retained for callers specifically handling glass panes.
+func GlassPaneBoxesAt(x, y, z int32, getBlock func(int32, int32, int32) int32) []BlockBox {
+	return PaneBoxesAt(x, y, z, getBlock)
 }
 
 // SlabItemForBlockState resolves a placed slab state to its inventory item.

@@ -1304,8 +1304,8 @@ func TestCreativeTabsIncludeVanillaCrossCategoryItems(t *testing.T) {
 		}
 		seen[item.ID] = struct{}{}
 	}
-	if all := CreativeCatalog(CreativeAll); len(all) != 971 {
-		t.Fatalf("canonical Search tab contains %d items after adding doors and trapdoors, want 971", len(all))
+	if all := CreativeCatalog(CreativeAll); len(all) != 972 {
+		t.Fatalf("canonical Search tab contains %d items after adding doors and trapdoors, want 972", len(all))
 	}
 }
 
@@ -1441,8 +1441,8 @@ func TestJava263GlassPanesHaveCatalogShapesAndRecipes(t *testing.T) {
 		"light_gray", "cyan", "purple", "blue", "brown", "green", "red", "black",
 	}
 	catalog := CreativeCatalog(CreativeAll)
-	if len(catalog) != 971 {
-		t.Fatalf("all-items catalog contains %d entries after adding doors and trapdoors, want 971", len(catalog))
+	if len(catalog) != 972 {
+		t.Fatalf("all-items catalog contains %d entries after adding doors and trapdoors, want 972", len(catalog))
 	}
 	crafting := NewCraftingManager()
 	checkPane := func(id int32, name, texture string, glassID int32) {
@@ -1486,6 +1486,39 @@ func TestJava263GlassPanesHaveCatalogShapesAndRecipes(t *testing.T) {
 	}
 }
 
+func TestJava263IronBarsHaveCatalogRecipeConnectedShapeAndMiningRule(t *testing.T) {
+	definition, ok := ExtendedBlockByID(ItemIronBars)
+	if !ok || definition.Name != "minecraft:iron_bars" || definition.TextureSide != "iron_bars" || definition.Hardness != 5 || !definition.RequiresHarvestTool || definition.HarvestTool != ToolPickaxe || definition.DropRuntimeID != ItemIronBars {
+		t.Fatalf("iron bars definition = %+v, found=%t", definition, ok)
+	}
+	if !IsPlaceableBlock(ItemIronBars) || !IsPaneBlock(ItemIronBars) || IsGlassPaneBlock(ItemIronBars) || GetMaxStackSize(ItemIronBars) != 64 {
+		t.Fatal("iron bars should be a stackable placeable pane with iron-bar material behavior")
+	}
+	if got := SearchCreativeCatalog(CreativeBlocks, "minecraft:iron_bars"); len(got) != 1 || got[0].ID != ItemIronBars {
+		t.Fatalf("iron bars creative lookup = %+v", got)
+	}
+	grid := []int32{
+		ItemIronIngot, ItemIronIngot, ItemAir,
+		ItemIronIngot, ItemIronIngot, ItemAir,
+		ItemIronIngot, ItemIronIngot, ItemAir,
+	}
+	if got, matched := NewCraftingManager().MatchCrafting(grid, 3); !matched || got != (ItemStack{ItemID: ItemIronBars, Count: 16}) {
+		t.Fatalf("iron bars recipe = %+v, matched=%t; want 16 bars", got, matched)
+	}
+	connected := PaneBoxesAt(0, 0, 0, func(x, y, z int32) int32 {
+		if x == -1 || x == 1 || z == -1 || z == 1 {
+			return ItemIronBars
+		}
+		return 0
+	})
+	if len(connected) != 5 {
+		t.Fatalf("iron bars with four adjacent iron bars have %d outline boxes, want 5", len(connected))
+	}
+	if !CanHarvestBlock(ItemWoodenPickaxe, ItemIronBars) || CanHarvestBlock(ItemAir, ItemIronBars) {
+		t.Fatal("iron bars should require a pickaxe to drop")
+	}
+}
+
 func TestJava263CandleCatalogCraftingAndShape(t *testing.T) {
 	colors := []struct {
 		name  string
@@ -1497,8 +1530,8 @@ func TestJava263CandleCatalogCraftingAndShape(t *testing.T) {
 		{"brown", ItemBrownDye}, {"green", ItemGreenDye}, {"red", ItemRedDye}, {"black", ItemBlackDye},
 	}
 	catalog := CreativeCatalog(CreativeAll)
-	if len(catalog) != 971 {
-		t.Fatalf("all-items catalog contains %d entries after adding doors and trapdoors, want 971", len(catalog))
+	if len(catalog) != 972 {
+		t.Fatalf("all-items catalog contains %d entries after adding doors and trapdoors, want 972", len(catalog))
 	}
 	crafting := NewCraftingManager()
 	plain, ok := ExtendedBlockByID(17133)
@@ -1606,8 +1639,8 @@ func TestJava263WoolAndConcreteStairItemsAndStates(t *testing.T) {
 			}
 		}
 	}
-	if len(catalog) != 971 {
-		t.Fatalf("all-items search catalog length = %d, want 971", len(catalog))
+	if len(catalog) != 972 {
+		t.Fatalf("all-items search catalog length = %d, want 972", len(catalog))
 	}
 	whiteWoolCount := 0
 	for _, item := range catalog {

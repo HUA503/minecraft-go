@@ -601,6 +601,13 @@ func glassPaneBlockDefinitions() []ExtendedBlockDefinition {
 		})
 		extendedBlockDisplayNames[name] = color.name + "色染色玻璃板"
 	}
+	definitions = append(definitions, ExtendedBlockDefinition{
+		RuntimeID: ItemIronBars, Name: "minecraft:iron_bars",
+		TextureTop: "iron_bars", TextureBottom: "iron_bars", TextureSide: "iron_bars",
+		Category: CreativeBlocks, Hardness: 5, HarvestTool: ToolPickaxe,
+		RequiresHarvestTool: true, DropRuntimeID: ItemIronBars,
+	})
+	extendedBlockDisplayNames["minecraft:iron_bars"] = "铁栏杆"
 	return definitions
 }
 
@@ -612,6 +619,15 @@ func IsGlassPaneBlock(runtimeID int32) bool {
 	}
 	return definition.Name == "minecraft:glass_pane" ||
 		(len(definition.Name) >= len("_stained_glass_pane") && definition.Name[len(definition.Name)-len("_stained_glass_pane"):] == "_stained_glass_pane")
+}
+
+// IsIronBarsBlock reports whether a runtime ID is the iron bars block.
+func IsIronBarsBlock(runtimeID int32) bool { return runtimeID == ItemIronBars }
+
+// IsPaneBlock includes glass panes and iron bars, which share a connected
+// center-post footprint while retaining separate material and render behavior.
+func IsPaneBlock(runtimeID int32) bool {
+	return IsGlassPaneBlock(runtimeID) || IsIronBarsBlock(runtimeID)
 }
 
 func candleBlockDefinitions() []ExtendedBlockDefinition {

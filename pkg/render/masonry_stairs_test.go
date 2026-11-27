@@ -142,3 +142,49 @@ func TestJava263ReinforcedDeepslateUsesOfficialCubeTextures(t *testing.T) {
 	}
 	t.Fatal("reinforced deepslate produced no block mesh")
 }
+
+func TestJava263IronBarsUseOfficialTextureAndConnectedPaneMesh(t *testing.T) {
+	definition, ok := inventory.ExtendedBlockByID(inventory.ItemIronBars)
+	if !ok || !inventory.IsPaneBlock(definition.RuntimeID) || inventory.IsGlassPaneBlock(definition.RuntimeID) {
+		t.Fatalf("iron bars pane definition = %+v, found=%t", definition, ok)
+	}
+	if _, ok := GetOfficialTexture("block", "iron_bars"); !ok {
+		t.Fatal("missing official iron bars texture")
+	}
+	if icon, ok := GetOfficialItemSprite(inventory.ItemIronBars); !ok {
+		t.Fatal("iron bars item sprite was not generated from the official block model")
+	} else {
+		visible := 0
+		for _, row := range icon {
+			for _, pixel := range row {
+				if pixel>>24 != 0 {
+					visible++
+				}
+			}
+		}
+		if visible < 8 {
+			t.Fatalf("iron bars item icon has only %d visible pixels", visible)
+		}
+	}
+	if IsOpaqueCube(inventory.ItemIronBars) || IsTranslucentBlock(inventory.ItemIronBars) {
+		t.Fatal("iron bars should render as a cutout pane in the opaque pass")
+	}
+	blocks := map[[3]int32]int32{
+		{8, 5, 8}: inventory.ItemIronBars,
+		{9, 5, 8}: inventory.ItemIronBars,
+	}
+	mesh := BuildSectionMesh(func(x, y, z int32) int32 { return blocks[[3]int32{x, y, z}] }, 0, 0, 0)
+	found := false
+	for _, vertex := range mesh.Vertices {
+		if vertex.BlockID == inventory.ItemIronBars {
+			found = true
+			if vertex.X < 8 || vertex.X > 10 || vertex.Y < 5 || vertex.Y > 6 || vertex.Z < 8 || vertex.Z > 9 {
+				t.Errorf("iron bars mesh vertex outside pane bounds: %+v", vertex)
+				break
+			}
+		}
+	}
+	if !found {
+		t.Fatal("iron bars produced no connected mesh")
+	}
+}

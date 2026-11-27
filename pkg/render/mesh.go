@@ -166,9 +166,9 @@ func BuildSectionMesh(getBlock func(x, y, z int32) int32, originX, originY, orig
 					addBlockBoxesMesh(mesh, originX+x, originY+y, originZ+z, blockID, boxes, getBlock)
 					continue
 				}
-				if inventory.IsGlassPaneBlock(blockID) {
-					boxes := inventory.GlassPaneBoxesAt(originX+x, originY+y, originZ+z, getBlock)
-					addGlassPaneMesh(mesh, originX+x, originY+y, originZ+z, blockID, boxes, getBlock)
+				if inventory.IsPaneBlock(blockID) {
+					boxes := inventory.PaneBoxesAt(originX+x, originY+y, originZ+z, getBlock)
+					addPaneMesh(mesh, originX+x, originY+y, originZ+z, blockID, boxes, getBlock)
 					continue
 				}
 				if boxes, ok := inventory.BlockCollisionBoxes(blockID); ok && !IsOpaqueCube(blockID) {
@@ -206,7 +206,7 @@ func BuildSectionMesh(getBlock func(x, y, z int32) int32, originX, originY, orig
 	return mesh
 }
 
-func addGlassPaneMesh(mesh *Mesh, x, y, z, blockID int32, boxes []inventory.BlockBox, getBlock func(int32, int32, int32) int32) {
+func addPaneMesh(mesh *Mesh, x, y, z, blockID int32, boxes []inventory.BlockBox, getBlock func(int32, int32, int32) int32) {
 	for boxIndex, box := range boxes {
 		for face, offset := range NeighborOffsets {
 			if glassPaneBoxesShareFace(boxIndex, face, boxes) {
@@ -228,7 +228,7 @@ func addGlassPaneMesh(mesh *Mesh, x, y, z, blockID int32, boxes []inventory.Bloc
 			case 5:
 				touchesBoundary = box.MinZ <= 0
 			}
-			if touchesBoundary && (IsOpaqueCube(neighbor) || inventory.IsGlassPaneBlock(neighbor)) {
+			if touchesBoundary && (IsOpaqueCube(neighbor) || inventory.IsPaneBlock(neighbor)) {
 				continue
 			}
 			base := len(mesh.Vertices)

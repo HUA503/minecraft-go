@@ -311,7 +311,7 @@ func GetOfficialTexture(category, name string) ([16][16]uint32, bool) {
 func GetOfficialItemSprite(itemID int32) ([16][16]uint32, bool) {
 	// Panes have no standalone item PNG in the vanilla atlas: the client derives
 	// their icon from the pane block model and its official pane texture.
-	if inventory.IsGlassPaneBlock(itemID) {
+	if inventory.IsPaneBlock(itemID) {
 		return RenderIsometricBlock16x16(itemID), true
 	}
 	texName := GetOfficialItemTextureName(itemID)
