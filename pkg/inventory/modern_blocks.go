@@ -145,6 +145,7 @@ func additionalSpecialCubeDefinitions() []ExtendedBlockDefinition {
 		{14219, "ochre_froglight", "赭黄蛙明灯", "ochre_froglight_top", "ochre_froglight_top", "ochre_froglight_side", CreativeNatural, 0.3, ToolNone, false, 0, 14219, 1, 1},
 		{14220, "verdant_froglight", "青翠蛙明灯", "verdant_froglight_top", "verdant_froglight_top", "verdant_froglight_side", CreativeNatural, 0.3, ToolNone, false, 0, 14220, 1, 1},
 		{14221, "pearlescent_froglight", "珠光蛙明灯", "pearlescent_froglight_top", "pearlescent_froglight_top", "pearlescent_froglight_side", CreativeNatural, 0.3, ToolNone, false, 0, 14221, 1, 1},
+		{14223, "gilded_blackstone", "镶金黑石", "gilded_blackstone", "gilded_blackstone", "gilded_blackstone", CreativeBlocks, 1.5, ToolPickaxe, true, 0, ItemGoldNugget, 2, 5},
 	}
 	definitions := make([]ExtendedBlockDefinition, 0, len(blocks))
 	for _, block := range blocks {

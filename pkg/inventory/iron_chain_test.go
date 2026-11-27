@@ -61,8 +61,8 @@ func TestJava263IronChainCatalogRecipeStateAndCollision(t *testing.T) {
 	if CanHarvestBlock(ItemAir, ItemIronChain) || !CanHarvestBlock(ItemWoodenPickaxe, ItemIronChain) {
 		t.Fatal("iron chain harvest rule should require a pickaxe")
 	}
-	if got := len(CreativeCatalog(CreativeAll)); got != 975 {
-		t.Fatalf("all-items catalog count=%d, want 975", got)
+	if got := len(CreativeCatalog(CreativeAll)); got != 976 {
+		t.Fatalf("all-items catalog count=%d, want 976", got)
 	}
 }
 

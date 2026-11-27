@@ -50,6 +50,25 @@ func TestJava263SpecialCubeMiningDrops(t *testing.T) {
 	if got < 2 || got > 6 {
 		t.Fatalf("nether gold ore yielded %d nuggets, want 2..6", got)
 	}
+	eng.ItemDrops = make(map[int32]*ItemDrop)
+	eng.SetBlock(pos.X, pos.Y, pos.Z, 14223) // Gilded blackstone requires a pickaxe and drops 2–5 nuggets.
+	if drop, _ := eng.BreakBlockWithTool(player.ID, pos, inventory.ItemAir); drop != inventory.ItemAir {
+		t.Fatalf("hand-mined gilded blackstone drop = %d, want no drop", drop)
+	}
+	player.Inventory.Slots[0] = inventory.ItemStack{ItemID: inventory.ItemWoodenPickaxe, Count: 1}
+	eng.SetBlock(pos.X, pos.Y, pos.Z, 14223)
+	if drop, harvested := eng.BreakBlockWithTool(player.ID, pos, inventory.ItemWoodenPickaxe); drop != inventory.ItemGoldNugget || !harvested {
+		t.Fatalf("pickaxe-mined gilded blackstone drop = %d, want gold nuggets", drop)
+	}
+	got = 0
+	for _, drop := range eng.GetItemDrops() {
+		if drop.ItemID == inventory.ItemGoldNugget {
+			got += drop.Count
+		}
+	}
+	if got < 2 || got > 5 {
+		t.Fatalf("gilded blackstone yielded %d nuggets, want 2..5", got)
+	}
 
 	for _, block := range []struct {
 		id   int32
