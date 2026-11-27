@@ -102,6 +102,7 @@ func buildExtendedBlockDefinitions() []ExtendedBlockDefinition {
 	definitions = append(definitions, woodDoorBlockDefinitions()...)
 	definitions = append(definitions, woodTrapdoorBlockDefinitions()...)
 	definitions = append(definitions, ironTrapdoorDefinition())
+	definitions = append(definitions, ironChainDefinition())
 	definitions = append(definitions, ControlBlockDefinitions()...)
 	definitions = append(definitions, masonryWallBlockDefinitions()...)
 	definitions = append(definitions, cushionBlockDefinitions()...)
@@ -628,6 +629,11 @@ func IsIronBarsBlock(runtimeID int32) bool { return runtimeID == ItemIronBars }
 // center-post footprint while retaining separate material and render behavior.
 func IsPaneBlock(runtimeID int32) bool {
 	return IsGlassPaneBlock(runtimeID) || IsIronBarsBlock(runtimeID)
+}
+
+func IsIronChainBlock(runtimeID int32) bool {
+	_, ok := IronChainStateProperties(runtimeID)
+	return ok
 }
 
 func candleBlockDefinitions() []ExtendedBlockDefinition {

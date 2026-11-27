@@ -111,6 +111,26 @@ func TestJava263IronBarsRequirePickaxeForDrops(t *testing.T) {
 	}
 }
 
+func TestJava263IronChainAxisStateDropsCanonicalItem(t *testing.T) {
+	eng := NewEngine()
+	player := eng.AddPlayer("Chain miner", [16]byte{44}, Vec3{X: 0, Y: 64, Z: 0})
+	if player == nil {
+		t.Fatal("expected initialized mining player")
+	}
+	for axis := 0; axis < 3; axis++ {
+		state, ok := inventory.IronChainBlockState(axis)
+		if !ok {
+			t.Fatalf("axis %d has no iron-chain state", axis)
+		}
+		pos := world.BlockPos{X: int32(3 + axis*2), Y: 64, Z: 0}
+		eng.SetBlock(pos.X, pos.Y, pos.Z, state)
+		drop, harvested := eng.BreakBlockWithTool(player.ID, pos, inventory.ItemWoodenPickaxe)
+		if drop != inventory.ItemIronChain || !harvested {
+			t.Errorf("axis %d chain state %d drop=%d harvested=%v, want canonical iron-chain item", axis, state, drop, harvested)
+		}
+	}
+}
+
 func TestJava263LiveCoralRandomTick(t *testing.T) {
 	t.Run("water keeps coral alive", func(t *testing.T) {
 		eng := NewEngine()

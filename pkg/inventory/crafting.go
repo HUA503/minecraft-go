@@ -703,6 +703,7 @@ func (cm *CraftingManager) registerDefaults() {
 		Recipe{Width: 3, Height: 3, Pattern: []int32{ItemCopperNugget, ItemCopperNugget, ItemCopperNugget, ItemCopperNugget, ItemCopperNugget, ItemCopperNugget, ItemCopperNugget, ItemCopperNugget, ItemCopperNugget}, Output: ItemStack{ItemID: ItemCopperIngot, Count: 1}},
 		Recipe{Width: 1, Height: 1, Pattern: []int32{ItemIronIngot}, Output: ItemStack{ItemID: ItemIronNugget, Count: 9}},
 		Recipe{Width: 3, Height: 3, Pattern: []int32{ItemIronNugget, ItemIronNugget, ItemIronNugget, ItemIronNugget, ItemIronNugget, ItemIronNugget, ItemIronNugget, ItemIronNugget, ItemIronNugget}, Output: ItemStack{ItemID: ItemIronIngot, Count: 1}},
+		Recipe{Width: 1, Height: 3, Pattern: []int32{ItemIronNugget, ItemIronIngot, ItemIronNugget}, Output: ItemStack{ItemID: ItemIronChain, Count: 1}},
 		Recipe{Width: 1, Height: 2, Pattern: []int32{ItemCharcoal, ItemStick}, Output: ItemStack{ItemID: ItemTorch, Count: 4}},
 		Recipe{Width: 2, Height: 3, Pattern: []int32{ItemIronIngot, ItemIronIngot, ItemIronIngot, ItemIronIngot, ItemIronIngot, ItemIronIngot}, Output: ItemStack{ItemID: ItemIronBars, Count: 16}},
 		Recipe{Width: 1, Height: 1, Pattern: []int32{ItemSugarCane}, Output: ItemStack{ItemID: ItemSugar, Count: 1}},

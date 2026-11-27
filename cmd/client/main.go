@@ -3188,6 +3188,9 @@ func (c *Client) PlaceBlockInFront() bool {
 	if inventory.IsIronTrapdoorItem(selected.ItemID) {
 		placedBlockID = inventory.IronTrapdoorPlacementState(c.camera.Yaw, res.FaceY, localHitY)
 	}
+	if chainState, isChain := inventory.IronChainPlacementState(selected.ItemID, res.FaceX, res.FaceY, res.FaceZ); isChain {
+		placedBlockID = chainState
+	}
 	if inventory.IsPressurePlateItem(selected.ItemID) {
 		if res.FaceY != -1 {
 			return false

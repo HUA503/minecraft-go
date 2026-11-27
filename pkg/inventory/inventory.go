@@ -51,6 +51,7 @@ const (
 	ItemBread          int32 = 297
 	ItemIronBlock      int32 = 42
 	ItemIronBars       int32 = 19501
+	ItemIronChain      int32 = 19502
 	ItemGoldBlock      int32 = 41
 	ItemDiamondBlock   int32 = 57
 	ItemChest          int32 = 54

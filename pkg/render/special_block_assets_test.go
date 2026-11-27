@@ -45,3 +45,36 @@ func TestJava263SpecialCubeItemsHaveVanillaSprites(t *testing.T) {
 		}
 	}
 }
+
+func TestJava263IronChainHasOfficialSpriteAndAxisMeshes(t *testing.T) {
+	if got := GetOfficialItemTextureName(inventory.ItemIronChain); got != "iron_chain" {
+		t.Fatalf("iron chain texture = %q, want iron_chain", got)
+	}
+	if sprite, ok := GetOfficialItemSprite(inventory.ItemIronChain); !ok || sprite == ([16][16]uint32{}) {
+		t.Fatal("iron chain has no visible official item sprite")
+	}
+	if Textures[inventory.ItemIronChain] == nil {
+		t.Fatal("iron chain block texture is not registered")
+	}
+	for axis := 0; axis < 3; axis++ {
+		state, ok := inventory.IronChainBlockState(axis)
+		if !ok {
+			t.Fatalf("axis %d has no block state", axis)
+		}
+		mesh := BuildSectionMesh(func(x, y, z int32) int32 {
+			if x == 0 && y == 0 && z == 0 {
+				return state
+			}
+			return 0
+		}, 0, 0, 0)
+		if len(mesh.Vertices) != 24 {
+			t.Errorf("axis %d mesh has %d vertices, want one six-face narrow model", axis, len(mesh.Vertices))
+		}
+		for _, vertex := range mesh.Vertices {
+			if vertex.BlockID != inventory.ItemIronChain {
+				t.Errorf("axis %d mesh texture block id=%d, want %d", axis, vertex.BlockID, inventory.ItemIronChain)
+				break
+			}
+		}
+	}
+}

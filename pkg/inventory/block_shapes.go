@@ -193,6 +193,9 @@ func BlockCollisionBoxes(blockID int32) ([]BlockBox, bool) {
 // BlockCollisionBoxesAt resolves neighbor-dependent block outlines (currently
 // stair corners) at a world position. A nil callback gives the straight shape.
 func BlockCollisionBoxesAt(blockID, x, y, z int32, getBlock func(int32, int32, int32) int32) ([]BlockBox, bool) {
+	if boxes, ok := IronChainModelBoxes(blockID); ok {
+		return boxes, true
+	}
 	if boxes, ok := PressurePlateModelBoxes(blockID); ok {
 		return boxes, true
 	}
@@ -442,6 +445,9 @@ func SlabMergeState(existingBlockID, itemID, faceY int32, localHitY float64) (in
 // BlockItemForState returns the placeable item represented by a runtime block
 // state, leaving ordinary block IDs unchanged.
 func BlockItemForState(blockID int32) int32 {
+	if _, ok := IronChainStateProperties(blockID); ok {
+		return ItemIronChain
+	}
 	if itemID, _, ok := PressurePlateStateProperties(blockID); ok {
 		return itemID
 	}
