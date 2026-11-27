@@ -27,8 +27,8 @@ func TestJava263ColoredCarpetsCatalogRecipesDropsAndShape(t *testing.T) {
 	if carpetCount != 16 {
 		t.Fatalf("colored carpet definitions = %d, want 16", carpetCount)
 	}
-	if got := len(CreativeCatalog(CreativeAll)); got != 1013 {
-		t.Fatalf("all-items creative catalog = %d, want 1013", got)
+	if got := len(CreativeCatalog(CreativeAll)); got != 1015 {
+		t.Fatalf("all-items creative catalog = %d, want 1015", got)
 	}
 
 	manager := NewCraftingManager()

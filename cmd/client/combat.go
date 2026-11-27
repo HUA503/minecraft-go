@@ -1,6 +1,28 @@
 package main
 
-import "github.com/HUA503/minecraft-go/pkg/inventory"
+import (
+	"math"
+
+	"github.com/HUA503/minecraft-go/pkg/inventory"
+)
+
+// maceSmashBonus applies Java's Mace smash falloff to whole fallen blocks:
+// the first 3 add 4 damage each, the next 5 add 2, and later blocks add 1.
+// A smash only happens once the player has fallen more than 1.5 blocks.
+func maceSmashBonus(fallDistance float32, onGround bool) float32 {
+	if onGround || fallDistance <= 1.5 {
+		return 0
+	}
+	blocks := int(math.Floor(float64(fallDistance)))
+	bonus := min(blocks, 3) * 4
+	if blocks > 3 {
+		bonus += min(blocks-3, 5) * 2
+	}
+	if blocks > 8 {
+		bonus += blocks - 8
+	}
+	return float32(bonus)
+}
 
 // applyAttackItemDurability applies the Java weapon component's default cost of
 // one durability point after a successful entity hit. Creative mode never

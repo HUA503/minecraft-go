@@ -372,7 +372,7 @@ func (e *Engine) GetMobs() []MobEntity {
 	return res
 }
 
-func (e *Engine) AttackMobInFront(origin, look Vec3, reach float64, damage float32) (int32, bool, bool) {
+func (e *Engine) AttackMobInFront(origin, look Vec3, reach float64, damage float32) (int32, bool, bool, Vec3) {
 	e.mobMu.Lock()
 	defer e.mobMu.Unlock()
 	e.mu.Lock()
@@ -391,7 +391,7 @@ func (e *Engine) AttackMobInFront(origin, look Vec3, reach float64, damage float
 				dot := dir.X*look.X + dir.Y*look.Y + dir.Z*look.Z
 				if dot > 0.70 {
 					e.attackEndCrystalLocked(crystal.ID)
-					return crystal.ID, true, true
+					return crystal.ID, true, true, crystal.Position
 				}
 			}
 		}
@@ -404,7 +404,7 @@ func (e *Engine) AttackMobInFront(origin, look Vec3, reach float64, damage float
 				dot := dir.X*look.X + dir.Y*look.Y + dir.Z*look.Z
 				if dot > 0.55 {
 					killed := e.damageEnderDragonLocked(damage)
-					return -999, killed, true
+					return -999, killed, true, e.EnderDragon.Position
 				}
 			}
 		}
@@ -433,11 +433,12 @@ func (e *Engine) AttackMobInFront(origin, look Vec3, reach float64, damage float
 	}
 
 	if closestMob == nil {
-		return 0, false, false
+		return 0, false, false, Vec3{}
 	}
 	if closestMob.HurtTime > 5 {
-		return closestMob.ID, false, false
+		return closestMob.ID, false, false, closestMob.Position
 	}
+	targetPosition := closestMob.Position
 
 	closestMob.Health -= damage
 	closestMob.HurtTime = 10
@@ -466,7 +467,38 @@ func (e *Engine) AttackMobInFront(origin, look Vec3, reach float64, damage float
 		delete(e.Mobs, closestMob.ID)
 	}
 
-	return closestMob.ID, killed, true
+	return closestMob.ID, killed, true, targetPosition
+}
+
+// ApplyMaceSmashKnockback launches nearby living mobs away from the struck
+// mob. The primary target is excluded; the ordinary melee hit already applies
+// its own knockback to that mob.
+func (e *Engine) ApplyMaceSmashKnockback(targetMobID int32, center Vec3, radius, strength float64) {
+	e.mobMu.Lock()
+	defer e.mobMu.Unlock()
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if radius <= 0 || strength <= 0 {
+		return
+	}
+	for id, mob := range e.Mobs {
+		if id == targetMobID || !mob.IsAlive {
+			continue
+		}
+		dx := mob.Position.X - center.X
+		dz := mob.Position.Z - center.Z
+		distance := math.Hypot(dx, dz)
+		if distance > radius {
+			continue
+		}
+		if distance < 0.01 {
+			dx, dz, distance = 1, 0, 1
+		}
+		falloff := 1 - distance/radius
+		mob.Velocity.X += dx / distance * strength * falloff
+		mob.Velocity.Z += dz / distance * strength * falloff
+		mob.Velocity.Y = math.Max(mob.Velocity.Y, strength*0.5*falloff)
+	}
 }
 
 // SetStorage configures an optional world SaveManager for persistence.

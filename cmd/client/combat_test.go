@@ -6,6 +6,26 @@ import (
 	"github.com/HUA503/minecraft-go/pkg/inventory"
 )
 
+func TestMaceSmashBonusThresholdAndFallResetInputs(t *testing.T) {
+	for _, tc := range []struct {
+		fall     float32
+		grounded bool
+		want     float32
+	}{
+		{1.5, false, 0},
+		{1.49, false, 0},
+		{1.6, false, 4},
+		{3.9, false, 12},
+		{4.9, false, 14},
+		{9.9, false, 23},
+		{8, true, 0},
+	} {
+		if got := maceSmashBonus(tc.fall, tc.grounded); got != tc.want {
+			t.Errorf("maceSmashBonus(%.2f, %t) = %.2f, want %.2f", tc.fall, tc.grounded, got, tc.want)
+		}
+	}
+}
+
 func TestAttackDurabilityForWeaponsAndTools(t *testing.T) {
 	tests := []struct {
 		name       string

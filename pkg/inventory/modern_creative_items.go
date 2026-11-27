@@ -39,6 +39,9 @@ const (
 	ItemGlisteringMelon    int32 = 16125
 	ItemMagmaCream         int32 = 16126
 	ItemTurtleHelmet       int32 = 16127
+	ItemBreezeRod          int32 = 16113
+	ItemMace               int32 = 16216
+	ItemHeavyCore          int32 = 16217
 	ItemWhiteDye           int32 = 17000
 	ItemOrangeDye          int32 = 17001
 	ItemMagentaDye         int32 = 17002
@@ -86,7 +89,7 @@ var modernCreativeItemDefinitions = [...]ModernCreativeItemDefinition{
 	{16110, "minecraft:prismarine_crystals", "\u6d77\u6676\u7802\u7c92", "prismarine_crystals", CreativeMaterials, 64},
 	{16111, "minecraft:heart_of_the_sea", "\u6d77\u6d0b\u4e4b\u5fc3", "heart_of_the_sea", CreativeMaterials, 64},
 	{16112, "minecraft:fire_charge", "\u706b\u7130\u5f39", "fire_charge", CreativeMaterials, 64},
-	{16113, "minecraft:breeze_rod", "\u65cb\u98ce\u68d2", "breeze_rod", CreativeMaterials, 64},
+	{ItemBreezeRod, "minecraft:breeze_rod", "\u65cb\u98ce\u68d2", "breeze_rod", CreativeMaterials, 64},
 	{16114, "minecraft:nether_star", "\u4e0b\u754c\u4e4b\u661f", "nether_star", CreativeMaterials, 64},
 	{16115, "minecraft:shulker_shell", "\u6f5c\u5f71\u58f3", "shulker_shell", CreativeMaterials, 64},
 	{16116, "minecraft:popped_chorus_fruit", "\u7206\u88c2\u7d2b\u9882\u679c", "popped_chorus_fruit", CreativeMaterials, 64},
@@ -157,6 +160,8 @@ var modernCreativeItemDefinitions = [...]ModernCreativeItemDefinition{
 	{16181, "minecraft:experience_bottle", "\u9644\u9b54\u4e4b\u74f6", "experience_bottle", CreativeMaterials, 64},
 	{16182, "minecraft:trial_key", "\u8bd5\u70bc\u94a5\u5319", "trial_key", CreativeMaterials, 64},
 	{16183, "minecraft:ominous_trial_key", "\u4e0d\u7965\u8bd5\u70bc\u94a5\u5319", "ominous_trial_key", CreativeMaterials, 64},
+	{ItemHeavyCore, "minecraft:heavy_core", "\u91cd\u578b\u6838\u5fc3", "heavy_core", CreativeMaterials, 64},
+	{ItemMace, "minecraft:mace", "\u91cd\u9524", "mace", CreativeCombat, 1},
 	{ItemWhiteDye, "minecraft:white_dye", "\u767d\u8272\u67d3\u6599", "white_dye", CreativeMaterials, 64},
 	{ItemOrangeDye, "minecraft:orange_dye", "\u6a59\u8272\u67d3\u6599", "orange_dye", CreativeMaterials, 64},
 	{ItemMagentaDye, "minecraft:magenta_dye", "\u54c1\u7ea2\u8272\u67d3\u6599", "magenta_dye", CreativeMaterials, 64},

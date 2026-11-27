@@ -66,6 +66,24 @@ func TestTickNaturalMobSpawnDoesNotDeadlock(t *testing.T) {
 	}
 }
 
+func TestMaceSmashKnocksBackNearbyMobs(t *testing.T) {
+	eng := NewEngine()
+	target := eng.SpawnMob(MobZombie, Vec3{X: 4, Y: 64, Z: 4})
+	nearby := eng.SpawnMob(MobCow, Vec3{X: 5, Y: 64, Z: 4})
+	far := eng.SpawnMob(MobPig, Vec3{X: 12, Y: 64, Z: 4})
+
+	eng.ApplyMaceSmashKnockback(target.ID, target.Position, 4, 1.2)
+	if nearby.Velocity.X <= 0 || nearby.Velocity.Y <= 0 {
+		t.Fatalf("nearby mob was not launched away from mace target: velocity=%+v", nearby.Velocity)
+	}
+	if far.Velocity != (Vec3{}) {
+		t.Fatalf("far mob was affected by mace smash: velocity=%+v", far.Velocity)
+	}
+	if target.Velocity != (Vec3{}) {
+		t.Fatalf("primary target received area knockback in addition to hit knockback: velocity=%+v", target.Velocity)
+	}
+}
+
 func TestPoplarSaplingRandomTickGrowth(t *testing.T) {
 	eng := NewEngine()
 	for chunkX := int32(-1); chunkX <= 1; chunkX++ {
@@ -1616,7 +1634,7 @@ func TestMobHurtFlashDecay(t *testing.T) {
 	// Test AttackMobInFront
 	camPos := Vec3{X: zombie.Position.X - 1.5, Y: zombie.Position.Y + 0.9, Z: zombie.Position.Z}
 	look := Vec3{X: 1, Y: 0, Z: 0}
-	mobID, killed, hit := eng.AttackMobInFront(camPos, look, 3.0, 4.0)
+	mobID, killed, hit, _ := eng.AttackMobInFront(camPos, look, 3.0, 4.0)
 	if !hit || killed || mobID != zombie.ID {
 		t.Fatalf("expected hit on zombie, got hit=%v killed=%v mobID=%d", hit, killed, mobID)
 	}

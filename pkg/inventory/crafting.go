@@ -28,6 +28,13 @@ func (cm *CraftingManager) registerDefaults() {
 		Output:  ItemStack{ItemID: ItemBoneMeal, Count: 3},
 	})
 
+	// Mace: the Heavy Core and Breeze Rod occupy opposite corners.
+	cm.Recipes = append(cm.Recipes, Recipe{
+		Width: 2, Height: 2,
+		Pattern: []int32{ItemAir, ItemHeavyCore, ItemBreezeRod, ItemAir},
+		Output:  ItemStack{ItemID: ItemMace, Count: 1},
+	})
+
 	// 1. Oak Log -> 4 Oak Planks (1x1)
 	cm.Recipes = append(cm.Recipes, Recipe{
 		Width:   1,

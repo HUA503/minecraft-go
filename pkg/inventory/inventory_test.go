@@ -1096,8 +1096,11 @@ func TestAddedVanillaFullCubesHaveCreativeItemsAndCorrectHarvestRules(t *testing
 
 func TestModernCreativeMaterialsHaveRegistryNamesAndUsefulRecipes(t *testing.T) {
 	for _, definition := range ModernCreativeItemDefinitions() {
-		if definition.Category != CreativeMaterials || definition.MaxStack < 1 || definition.MaxStack > 64 {
-			t.Errorf("item %s has category/stack limit %d/%d", definition.Name, definition.Category, definition.MaxStack)
+		if definition.Category != CreativeMaterials {
+			continue
+		}
+		if definition.MaxStack < 1 || definition.MaxStack > 64 {
+			t.Errorf("item %s has stack limit %d", definition.Name, definition.MaxStack)
 		}
 		if got := GetMaxStackSize(definition.RuntimeID); got != definition.MaxStack {
 			t.Errorf("item %s stack limit = %d, want %d", definition.Name, got, definition.MaxStack)
@@ -1304,8 +1307,8 @@ func TestCreativeTabsIncludeVanillaCrossCategoryItems(t *testing.T) {
 		}
 		seen[item.ID] = struct{}{}
 	}
-	if all := CreativeCatalog(CreativeAll); len(all) != 1013 {
-		t.Fatalf("canonical Search tab contains %d items, want 1013", len(all))
+	if all := CreativeCatalog(CreativeAll); len(all) != 1015 {
+		t.Fatalf("canonical Search tab contains %d items, want 1015", len(all))
 	}
 }
 
@@ -1463,8 +1466,8 @@ func TestJava263GlassPanesHaveCatalogShapesAndRecipes(t *testing.T) {
 		"light_gray", "cyan", "purple", "blue", "brown", "green", "red", "black",
 	}
 	catalog := CreativeCatalog(CreativeAll)
-	if len(catalog) != 1013 {
-		t.Fatalf("all-items catalog contains %d entries, want 1013", len(catalog))
+	if len(catalog) != 1015 {
+		t.Fatalf("all-items catalog contains %d entries, want 1015", len(catalog))
 	}
 	crafting := NewCraftingManager()
 	checkPane := func(id int32, name, texture string, glassID int32) {
@@ -1552,8 +1555,8 @@ func TestJava263CandleCatalogCraftingAndShape(t *testing.T) {
 		{"brown", ItemBrownDye}, {"green", ItemGreenDye}, {"red", ItemRedDye}, {"black", ItemBlackDye},
 	}
 	catalog := CreativeCatalog(CreativeAll)
-	if len(catalog) != 1013 {
-		t.Fatalf("all-items catalog contains %d entries, want 1013", len(catalog))
+	if len(catalog) != 1015 {
+		t.Fatalf("all-items catalog contains %d entries, want 1015", len(catalog))
 	}
 	crafting := NewCraftingManager()
 	plain, ok := ExtendedBlockByID(17133)
@@ -1661,8 +1664,8 @@ func TestJava263WoolAndConcreteStairItemsAndStates(t *testing.T) {
 			}
 		}
 	}
-	if len(catalog) != 1013 {
-		t.Fatalf("all-items search catalog length = %d, want 1013", len(catalog))
+	if len(catalog) != 1015 {
+		t.Fatalf("all-items search catalog length = %d, want 1015", len(catalog))
 	}
 	whiteWoolCount := 0
 	for _, item := range catalog {

@@ -4829,18 +4829,29 @@ func (c *Client) AttackMob() bool {
 		return false
 	}
 	dmg := float32(1.0) // Bare fist base damage
-	if sel := c.player.Inventory.GetSelectedItem(); !sel.IsEmpty() {
+	sel := c.player.Inventory.GetSelectedItem()
+	if !sel.IsEmpty() {
 		if props, ok := inventory.GetToolProperties(sel.ItemID); ok {
 			dmg = props.AttackDamage
 		}
+	}
+	smashBonus := float32(0)
+	if sel.ItemID == inventory.ItemMace {
+		smashBonus = maceSmashBonus(c.player.FallDistance, c.player.OnGround)
+		dmg += smashBonus
 	}
 
 	camPos := sim.Vec3{X: c.camera.X, Y: c.camera.Y, Z: c.camera.Z}
 	lx, ly, lz := c.camera.GetLookVector()
 	look := sim.Vec3{X: lx, Y: ly, Z: lz}
 
-	mobID, killed, hit := c.engine.AttackMobInFront(camPos, look, 3.5, dmg)
+	mobID, killed, hit, mobPosition := c.engine.AttackMobInFront(camPos, look, 3.5, dmg)
 	if hit {
+		if smashBonus > 0 {
+			c.player.FallDistance = 0
+			c.player.Velocity.Y = 0
+			c.engine.ApplyMaceSmashKnockback(mobID, mobPosition, 4.0, 1.2)
+		}
 		applyAttackItemDurability(c.player.Inventory, c.isCreative)
 		c.isSwinging = true
 		c.swingProgress = 0.0
