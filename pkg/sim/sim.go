@@ -877,6 +877,7 @@ func (e *Engine) BreakBlockWithTool(playerID int32, pos world.BlockPos, toolID i
 	if !e.SetBlockChecked(pos.X, pos.Y, pos.Z, 0) {
 		return 0, false
 	}
+	e.removeWoodDoorOtherHalf(pos, origBlock)
 	if origBlock == 61 || origBlock == 62 {
 		e.mu.Lock()
 		if f, ok := e.Furnaces[pos]; ok && f != nil {
@@ -1000,6 +1001,7 @@ func (e *Engine) BreakBlock(playerID int32, pos world.BlockPos) int32 {
 	if !e.SetBlockChecked(pos.X, pos.Y, pos.Z, 0) {
 		return 0
 	}
+	e.removeWoodDoorOtherHalf(pos, origBlock)
 	// Java 26.3 cushions are destroyed when their supporting block is broken.
 	// Remove the unsupported block and return its item to the player as well.
 	if pos.Y < world.MaxWorldY {
@@ -1126,6 +1128,32 @@ func (e *Engine) rollBlockDropCount(blockID int32) int {
 // PlaceBlock places a block if it does not intersect the player's bounding box.
 func (e *Engine) PlaceBlock(playerID int32, pos world.BlockPos, blockID int32) bool {
 	existing := e.GetBlock(pos.X, pos.Y, pos.Z)
+	if itemID, facing, _, hinge, upper, isDoor := inventory.WoodDoorStateProperties(blockID); isDoor {
+		if upper || pos.Y <= 0 || !inventory.IsReplaceableBlock(existing) || !IsSolidBlock(e.GetBlock(pos.X, pos.Y-1, pos.Z)) {
+			return false
+		}
+		upperPos := world.BlockPos{X: pos.X, Y: pos.Y + 1, Z: pos.Z}
+		if !world.ValidBlockCoordinates(upperPos.X, upperPos.Y, upperPos.Z) || !inventory.IsReplaceableBlock(e.GetBlock(upperPos.X, upperPos.Y, upperPos.Z)) {
+			return false
+		}
+		lowerState := inventory.WoodDoorBlockState(itemID, facing, false, hinge, false)
+		upperState := inventory.WoodDoorBlockState(itemID, facing, false, hinge, true)
+		if e.placementIntersectsPlayer(doorPosState{pos: pos, state: lowerState}) || e.placementIntersectsPlayer(doorPosState{pos: upperPos, state: upperState}) {
+			return false
+		}
+		if !e.SetBlockChecked(pos.X, pos.Y, pos.Z, lowerState) {
+			return false
+		}
+		if !e.SetBlockChecked(upperPos.X, upperPos.Y, upperPos.Z, upperState) {
+			_ = e.SetBlockChecked(pos.X, pos.Y, pos.Z, 0)
+			return false
+		}
+		e.consumePlacedBlockItem(playerID, itemID)
+		return true
+	}
+	if inventory.IsWoodDoorItem(blockID) {
+		return false
+	}
 	if inventory.IsCandleItem(blockID) {
 		if existingItem, count, lit, ok := inventory.CandleStateProperties(existing); ok && existingItem == blockID && count < 4 {
 			state := inventory.CandleBlockState(existingItem, count+1, lit)
@@ -1191,6 +1219,32 @@ func (e *Engine) PlaceBlock(playerID int32, pos world.BlockPos, blockID int32) b
 	return true
 }
 
+type doorPosState struct {
+	pos   world.BlockPos
+	state int32
+}
+
+func (e *Engine) placementIntersectsPlayer(candidate doorPosState) bool {
+	if !IsSolidBlock(candidate.state) {
+		return false
+	}
+	boxes := BlockCollisionAABBsAt(candidate.state, candidate.pos.X, candidate.pos.Y, candidate.pos.Z, e.GetBlock)
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	for _, player := range e.Players {
+		if !player.IsAlive {
+			continue
+		}
+		playerBox := NewPlayerAABB(player.Position)
+		for _, box := range boxes {
+			if PlacementIntersects(playerBox, box) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // SetCandleLit changes the lit state of a placed candle cluster.
 func (e *Engine) SetCandleLit(pos world.BlockPos, lit bool) bool {
 	itemID, count, currentLit, ok := inventory.CandleStateProperties(e.GetBlock(pos.X, pos.Y, pos.Z))
@@ -1206,6 +1260,62 @@ func (e *Engine) SetFenceGateOpen(pos world.BlockPos, open bool) bool {
 		return false
 	}
 	return e.SetBlockChecked(pos.X, pos.Y, pos.Z, inventory.FenceGateBlockState(itemID, facing, open, inWall))
+}
+
+func (e *Engine) SetWoodDoorOpen(pos world.BlockPos, open bool) bool {
+	state := e.GetBlock(pos.X, pos.Y, pos.Z)
+	itemID, facing, currentOpen, hinge, upper, ok := inventory.WoodDoorStateProperties(state)
+	if !ok || currentOpen == open {
+		return false
+	}
+	lowerPos, upperPos := pos, pos
+	if upper {
+		lowerPos.Y--
+	} else {
+		upperPos.Y++
+	}
+	lowerState := e.GetBlock(lowerPos.X, lowerPos.Y, lowerPos.Z)
+	upperState := e.GetBlock(upperPos.X, upperPos.Y, upperPos.Z)
+	if lowerID, lowerFacing, _, lowerHinge, lowerUpper, valid := inventory.WoodDoorStateProperties(lowerState); !valid || lowerID != itemID || lowerFacing != facing || lowerHinge != hinge || lowerUpper {
+		return false
+	}
+	if upperID, upperFacing, _, upperHinge, upperHalf, valid := inventory.WoodDoorStateProperties(upperState); !valid || upperID != itemID || upperFacing != facing || upperHinge != hinge || !upperHalf {
+		return false
+	}
+	if !e.SetBlockChecked(lowerPos.X, lowerPos.Y, lowerPos.Z, inventory.WoodDoorBlockState(itemID, facing, open, hinge, false)) {
+		return false
+	}
+	if !e.SetBlockChecked(upperPos.X, upperPos.Y, upperPos.Z, inventory.WoodDoorBlockState(itemID, facing, open, hinge, true)) {
+		_ = e.SetBlockChecked(lowerPos.X, lowerPos.Y, lowerPos.Z, lowerState)
+		return false
+	}
+	return true
+}
+
+func (e *Engine) removeWoodDoorOtherHalf(pos world.BlockPos, brokenState int32) {
+	itemID, facing, _, hinge, upper, ok := inventory.WoodDoorStateProperties(brokenState)
+	if !ok {
+		return
+	}
+	otherPos := pos
+	if upper {
+		otherPos.Y--
+	} else {
+		otherPos.Y++
+	}
+	otherState := e.GetBlock(otherPos.X, otherPos.Y, otherPos.Z)
+	otherItem, otherFacing, _, otherHinge, otherUpper, valid := inventory.WoodDoorStateProperties(otherState)
+	if valid && otherItem == itemID && otherFacing == facing && otherHinge == hinge && otherUpper != upper {
+		_ = e.SetBlockChecked(otherPos.X, otherPos.Y, otherPos.Z, 0)
+	}
+}
+
+func (e *Engine) SetWoodTrapdoorOpen(pos world.BlockPos, open bool) bool {
+	itemID, facing, currentOpen, top, ok := inventory.WoodTrapdoorStateProperties(e.GetBlock(pos.X, pos.Y, pos.Z))
+	if !ok || currentOpen == open {
+		return false
+	}
+	return e.SetBlockChecked(pos.X, pos.Y, pos.Z, inventory.WoodTrapdoorBlockState(itemID, facing, open, top))
 }
 
 func (e *Engine) consumePlacedBlockItem(playerID int32, itemID int32) {

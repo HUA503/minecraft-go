@@ -991,6 +991,23 @@ func initOfficialBlockTextures() {
 			}
 		}
 	}
+	for _, door := range inventory.ModernWoodDoorItemDefinitions() {
+		loadBlock(door.RuntimeID, door.TextureTop, door.TextureBottom, door.TextureSide)
+		for facing := 0; facing < 4; facing++ {
+			for _, open := range []bool{false, true} {
+				for _, hinge := range []bool{false, true} {
+					for _, upper := range []bool{false, true} {
+						stateID := inventory.WoodDoorBlockState(door.RuntimeID, facing, open, hinge, upper)
+						texture := door.TextureBottom
+						if upper {
+							texture = door.TextureTop
+						}
+						loadBlock(stateID, texture, texture, texture)
+					}
+				}
+			}
+		}
+	}
 	loadSingle(35, "white_wool")
 	loadSingle(43, "stone")
 	loadBlock(44, "smooth_stone", "smooth_stone", "smooth_stone_slab_side")

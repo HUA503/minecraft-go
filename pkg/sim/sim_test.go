@@ -844,6 +844,62 @@ func TestWoodFenceGatePlacementToggleCollisionAndDrop(t *testing.T) {
 	}
 }
 
+func TestWoodDoorAndTrapdoorPlacementToggleAndDrop(t *testing.T) {
+	eng := NewEngine()
+	player := eng.AddPlayer("Steve", [16]byte{92}, Vec3{X: 10.5, Y: 64, Z: 10.5})
+	doorItem := inventory.FirstWoodDoorItem + 2
+	doorPos := world.BlockPos{X: 14, Y: 64, Z: 10}
+	eng.SetBlock(doorPos.X, doorPos.Y-1, doorPos.Z, inventory.ItemStone)
+	doorState, ok := inventory.WoodDoorPlacementState(doorItem, 90)
+	if !ok {
+		t.Fatal("could not create wood door placement state")
+	}
+	player.Inventory.Slots[0] = inventory.ItemStack{ItemID: doorItem, Count: 1}
+	if !eng.PlaceBlock(player.ID, doorPos, doorState) {
+		t.Fatal("could not place two-block wood door")
+	}
+	lower := eng.GetBlock(doorPos.X, doorPos.Y, doorPos.Z)
+	upper := eng.GetBlock(doorPos.X, doorPos.Y+1, doorPos.Z)
+	if _, _, _, _, isUpper, valid := inventory.WoodDoorStateProperties(lower); !valid || isUpper {
+		t.Fatalf("lower door half state %d is invalid or marked upper", lower)
+	}
+	if id, _, _, _, isUpper, valid := inventory.WoodDoorStateProperties(upper); !valid || id != doorItem || !isUpper {
+		t.Fatalf("upper door half state %d is invalid", upper)
+	}
+	if !eng.SetWoodDoorOpen(doorPos, true) {
+		t.Fatal("could not open paired door")
+	}
+	for _, state := range []int32{eng.GetBlock(doorPos.X, doorPos.Y, doorPos.Z), eng.GetBlock(doorPos.X, doorPos.Y+1, doorPos.Z)} {
+		_, _, open, _, _, valid := inventory.WoodDoorStateProperties(state)
+		if !valid || !open {
+			t.Fatalf("paired door state %d did not open", state)
+		}
+	}
+	if got := eng.BreakBlock(player.ID, world.BlockPos{X: doorPos.X, Y: doorPos.Y + 1, Z: doorPos.Z}); got != doorItem {
+		t.Fatalf("breaking upper door half dropped %d, want %d", got, doorItem)
+	}
+	if eng.GetBlock(doorPos.X, doorPos.Y, doorPos.Z) != inventory.ItemAir {
+		t.Fatal("lower door half remained after breaking the upper half")
+	}
+
+	trapdoorItem := inventory.FirstWoodTrapdoorItem + 4
+	trapdoorPos := world.BlockPos{X: 16, Y: 64, Z: 10}
+	trapdoorState := inventory.WoodTrapdoorBlockState(trapdoorItem, 0, false, false)
+	player.Inventory.Slots[1] = inventory.ItemStack{ItemID: trapdoorItem, Count: 1}
+	if !eng.PlaceBlock(player.ID, trapdoorPos, trapdoorState) {
+		t.Fatal("could not place wood trapdoor")
+	}
+	if !eng.SetWoodTrapdoorOpen(trapdoorPos, true) {
+		t.Fatal("could not open wood trapdoor")
+	}
+	if _, _, open, _, valid := inventory.WoodTrapdoorStateProperties(eng.GetBlock(trapdoorPos.X, trapdoorPos.Y, trapdoorPos.Z)); !valid || !open {
+		t.Fatal("trapdoor open state was not saved")
+	}
+	if got := eng.BreakBlock(player.ID, trapdoorPos); got != trapdoorItem {
+		t.Fatalf("breaking trapdoor dropped %d, want %d", got, trapdoorItem)
+	}
+}
+
 func TestBoneMealGrowsRedShrubAndConsumesOnlyInSurvival(t *testing.T) {
 	for _, gameMode := range []int{0, 1} {
 		eng := NewEngine()

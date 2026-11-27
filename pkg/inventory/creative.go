@@ -44,17 +44,37 @@ func CreativeCatalog(category CreativeCategory) []CreativeItem {
 	}
 	items := make([]CreativeItem, 0, len(creativeCatalog)+len(extendedBlockDefinitions)+len(spawnEggDefinitions))
 	items = append(items, creativeCatalog...)
+	itemIDs := make(map[int32]struct{}, len(creativeCatalog)+len(extendedBlockDefinitions)+len(spawnEggDefinitions))
+	for _, item := range creativeCatalog {
+		itemIDs[item.ID] = struct{}{}
+	}
 	for _, definition := range extendedBlockDefinitions {
+		if _, exists := itemIDs[definition.RuntimeID]; exists {
+			continue
+		}
 		items = append(items, CreativeItem{ID: definition.RuntimeID, Name: extendedBlockDisplayNames[definition.Name], Category: definition.Category})
+		itemIDs[definition.RuntimeID] = struct{}{}
 	}
 	for _, definition := range spawnEggDefinitions {
+		if _, exists := itemIDs[definition.RuntimeID]; exists {
+			continue
+		}
 		items = append(items, CreativeItem{ID: definition.RuntimeID, Name: definition.DisplayName, Category: CreativeSpawnEggs})
+		itemIDs[definition.RuntimeID] = struct{}{}
 	}
 	for _, definition := range java263FoodItems {
+		if _, exists := itemIDs[definition.RuntimeID]; exists {
+			continue
+		}
 		items = append(items, CreativeItem{ID: definition.RuntimeID, Name: definition.DisplayName, Category: CreativeFood})
+		itemIDs[definition.RuntimeID] = struct{}{}
 	}
 	for _, definition := range modernCreativeItemDefinitions {
+		if _, exists := itemIDs[definition.RuntimeID]; exists {
+			continue
+		}
 		items = append(items, CreativeItem{ID: definition.RuntimeID, Name: definition.Display, Category: definition.Category})
+		itemIDs[definition.RuntimeID] = struct{}{}
 	}
 	if category != CreativeAll {
 		filtered := make([]CreativeItem, 0, len(items))
@@ -319,7 +339,7 @@ var creativeCatalog = []CreativeItem{
 	{280, "木棍", CreativeMaterials}, {331, "红石粉", CreativeRedstone}, {352, "骨头", CreativeMaterials}, {351, "骨粉", CreativeMaterials}, {288, "羽毛", CreativeMaterials},
 	{289, "火药", CreativeMaterials}, {287, "线", CreativeMaterials}, {334, "皮革", CreativeMaterials}, {318, "燧石", CreativeMaterials}, {295, "小麦种子", CreativeMaterials}, {296, "小麦", CreativeMaterials},
 	{322, "金苹果", CreativeFood}, {325, "铁桶", CreativeTools}, {326, "水桶", CreativeTools}, {327, "熔岩桶", CreativeTools}, {346, "钓鱼竿", CreativeTools},
-	{332, "雪球", CreativeTools}, {344, "鸡蛋", CreativeTools}, {368, "末影珍珠", CreativeTools}, {324, "橡木门", CreativeFunctional},
+	{332, "雪球", CreativeTools}, {344, "鸡蛋", CreativeTools}, {368, "末影珍珠", CreativeTools}, {324, "橡木门", CreativeBlocks},
 	{330, "铁门", CreativeFunctional}, {336, "砖", CreativeMaterials}, {337, "黏土球", CreativeMaterials}, {340, "书", CreativeTools}, {345, "指南针", CreativeTools}, {371, "金粒", CreativeMaterials}, {375, "蜘蛛眼", CreativeFood}, {381, "末影之眼", CreativeTools}, {406, "下界石英", CreativeMaterials},
 	{328, "矿车", CreativeFunctional}, {333, "橡木船", CreativeFunctional}, {342, "运输矿车", CreativeFunctional}, {343, "熔炉矿车", CreativeFunctional},
 

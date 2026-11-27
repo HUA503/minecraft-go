@@ -98,6 +98,8 @@ func buildExtendedBlockDefinitions() []ExtendedBlockDefinition {
 	definitions = append(definitions, masonryStairBlockDefinitions()...)
 	definitions = append(definitions, woodFenceBlockDefinitions()...)
 	definitions = append(definitions, woodFenceGateBlockDefinitions()...)
+	definitions = append(definitions, woodDoorBlockDefinitions()...)
+	definitions = append(definitions, woodTrapdoorBlockDefinitions()...)
 	definitions = append(definitions, masonryWallBlockDefinitions()...)
 	definitions = append(definitions, cushionBlockDefinitions()...)
 	return definitions
@@ -667,6 +669,9 @@ func CandleStateProperties(stateID int32) (itemID int32, count int, lit bool, ok
 // BlockTextureForState preserves candle lighting in render texture lookup.
 func BlockTextureForState(blockID int32) int32 {
 	if _, _, _, ok := CandleStateProperties(blockID); ok {
+		return blockID
+	}
+	if _, _, _, _, _, ok := WoodDoorStateProperties(blockID); ok {
 		return blockID
 	}
 	return BlockItemForState(blockID)

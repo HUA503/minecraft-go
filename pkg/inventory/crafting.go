@@ -634,6 +634,26 @@ func (cm *CraftingManager) registerDefaults() {
 			Output:  ItemStack{ItemID: gate.ItemID, Count: 1},
 		})
 	}
+	for index, door := range woodDoorDefinitions {
+		var planksID int32
+		if block, ok := ExtendedBlockByName(door.Source); ok {
+			planksID = block.RuntimeID
+		} else {
+			for _, item := range CreativeCatalog(CreativeAll) {
+				if creativeItemRegistryName(item.ID) == door.Source {
+					planksID = item.ID
+					break
+				}
+			}
+		}
+		if planksID == 0 {
+			continue
+		}
+		cm.Recipes = append(cm.Recipes,
+			Recipe{Width: 2, Height: 3, Pattern: []int32{planksID, planksID, planksID, planksID, planksID, planksID}, Output: ItemStack{ItemID: door.ItemID, Count: 3}},
+			Recipe{Width: 3, Height: 2, Pattern: []int32{planksID, planksID, planksID, planksID, planksID, planksID}, Output: ItemStack{ItemID: woodTrapdoorDefinitions[index].ItemID, Count: 2}},
+		)
+	}
 	for _, wall := range masonryWallDefinitions {
 		var sourceID int32
 		for _, item := range CreativeCatalog(CreativeAll) {

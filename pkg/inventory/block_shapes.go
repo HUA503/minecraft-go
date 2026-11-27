@@ -211,6 +211,12 @@ func BlockCollisionBoxesAt(blockID, x, y, z int32, getBlock func(int32, int32, i
 	if boxes, ok := FenceGateModelBoxes(blockID); ok {
 		return boxes, true
 	}
+	if boxes, ok := WoodDoorModelBoxes(blockID); ok {
+		return boxes, true
+	}
+	if boxes, ok := WoodTrapdoorModelBoxes(blockID); ok {
+		return boxes, true
+	}
 	if boxes, ok := MasonryWallCollisionBoxesAt(blockID, x, y, z, getBlock); ok {
 		return boxes, true
 	}
@@ -425,6 +431,12 @@ func SlabMergeState(existingBlockID, itemID, faceY int32, localHitY float64) (in
 // BlockItemForState returns the placeable item represented by a runtime block
 // state, leaving ordinary block IDs unchanged.
 func BlockItemForState(blockID int32) int32 {
+	if itemID, _, _, _, _, ok := WoodDoorStateProperties(blockID); ok {
+		return itemID
+	}
+	if itemID, _, _, _, ok := WoodTrapdoorStateProperties(blockID); ok {
+		return itemID
+	}
 	if itemID, _, _, _, ok := FenceGateStateProperties(blockID); ok {
 		return itemID
 	}
