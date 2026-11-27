@@ -21,6 +21,15 @@ const (
 	creativeHotbarY = 112
 )
 
+var creativeArmorSlotPositions = [...][2]int{
+	{106, 27}, // boots
+	{52, 27},  // leggings
+	{106, 0},  // chestplate
+	{52, 0},   // helmet
+}
+
+var creativeOffhandSlotPosition = [2]int{34, 18}
+
 // creativeGUIOrigin follows AbstractContainerScreen's 195x136 image bounds.
 // Top and bottom tab rows extend beyond those bounds by their vanilla sprite sizes.
 func creativeGUIOrigin(w, h int) (scale, px, py int) {
@@ -179,16 +188,22 @@ func (fb *Framebuffer) DrawCreativeInventoryGUI(inv *inventory.PlayerInventory, 
 	invX, invY := px+9*scale, py+creativeHotbarY*scale
 	hoveredInventoryName := ""
 	if category == inventory.CreativeInventory {
-		previewX := px + 81*scale
+		previewX := px + 88*scale
 		previewTop := py + 8*scale
 		drawCreativePlayerPreview(fb, inv, previewX, previewTop, scale, mouseX, mouseY)
 		for slot := 0; slot < 4; slot++ {
-			x := px + (54+(slot/2)*54)*scale
-			y := py + (6+(slot%2)*27)*scale
+			position := creativeArmorSlotPositions[slot]
+			x := px + position[0]*scale
+			y := py + position[1]*scale
 			name := drawCreativeArmorSlot(fb, inv, slot, x, y, scale, mouseX, mouseY)
 			if name != "" {
 				hoveredInventoryName = name
 			}
+		}
+		offhandX := px + creativeOffhandSlotPosition[0]*scale
+		offhandY := py + creativeOffhandSlotPosition[1]*scale
+		if name := drawCreativeOffhandSlot(fb, inv, offhandX, offhandY, scale, mouseX, mouseY); name != "" {
+			hoveredInventoryName = name
 		}
 		for slot := 9; slot < 36; slot++ {
 			col, row := (slot-9)%9, (slot-9)/9
@@ -227,6 +242,25 @@ func (fb *Framebuffer) DrawCreativeInventoryGUI(inv *inventory.PlayerInventory, 
 			fb.DrawNumberScaled(mouseX+8*scale, mouseY+3*scale, cursor.Count, 0xFFFFFFFF, scale)
 		}
 	}
+}
+
+func drawCreativeOffhandSlot(fb *Framebuffer, inv *inventory.PlayerInventory, x, y, scale, mouseX, mouseY int) string {
+	if inv == nil || scale <= 0 {
+		return ""
+	}
+	item := inv.Offhand
+	if !item.IsEmpty() {
+		fb.DrawItemIconScaled(x+scale, y+scale, item.ItemID, scale)
+		if item.Count > 1 {
+			fb.DrawNumberScaled(x+11*scale, y+11*scale, item.Count, 0xFFFFFFFF, scale)
+		}
+		drawCreativeDurabilityBar(fb, item, x, y, scale)
+	}
+	if mouseX >= x && mouseX < x+18*scale && mouseY >= y && mouseY < y+18*scale && !item.IsEmpty() {
+		fb.DrawRect(x+scale, y+scale, 16*scale, 16*scale, 0x50FFFFFF)
+		return inventory.CreativeItemDisplayName(item.ItemID)
+	}
+	return ""
 }
 
 type creativePreviewFace struct {
@@ -922,11 +956,16 @@ func HitTestCreativeInventory(w, h int, category inventory.CreativeCategory, que
 	}
 	if category == inventory.CreativeInventory {
 		for slot := 0; slot < 4; slot++ {
-			sx := px + (54+(slot/2)*54)*scale
-			sy := py + (6+(slot%2)*27)*scale
+			position := creativeArmorSlotPositions[slot]
+			sx := px + position[0]*scale
+			sy := py + position[1]*scale
 			if mouseX >= sx && mouseX < sx+18*scale && mouseY >= sy && mouseY < sy+18*scale {
 				return GUISlotHit{Type: SlotCreativeArmor, Index: slot}
 			}
+		}
+		sx, sy := px+creativeOffhandSlotPosition[0]*scale, py+creativeOffhandSlotPosition[1]*scale
+		if mouseX >= sx && mouseX < sx+18*scale && mouseY >= sy && mouseY < sy+18*scale {
+			return GUISlotHit{Type: SlotOffhand, Index: 0}
 		}
 		for slot := 9; slot < 36; slot++ {
 			col, row := (slot-9)%9, (slot-9)/9
@@ -935,7 +974,7 @@ func HitTestCreativeInventory(w, h int, category inventory.CreativeCategory, que
 				return GUISlotHit{Type: SlotInventory, Index: slot}
 			}
 		}
-		sx, sy := px+173*scale, py+112*scale
+		sx, sy = px+173*scale, py+112*scale
 		if mouseX >= sx && mouseX < sx+18*scale && mouseY >= sy && mouseY < sy+18*scale {
 			return GUISlotHit{Type: SlotCreativeTrash, Index: 0}
 		}

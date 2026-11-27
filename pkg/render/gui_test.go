@@ -216,6 +216,33 @@ func TestCreativeTabsMatchJava263VanillaRows(t *testing.T) {
 	}
 }
 
+func TestCreativeInventoryEquipmentSlotsMatchOfficialPanel(t *testing.T) {
+	const width, height = 400, 300
+	scale, px, py := creativeGUIOrigin(width, height)
+	wantArmorPositions := [...][2]int{{106, 27}, {52, 27}, {106, 0}, {52, 0}}
+	for index, position := range wantArmorPositions {
+		x := px + (position[0]+8)*scale
+		y := py + (position[1]+8)*scale
+		hit := HitTestCreativeInventory(width, height, inventory.CreativeInventory, "", 0, x, y)
+		if hit.Type != SlotCreativeArmor || hit.Index != index {
+			t.Errorf("official armor slot at %v hit = %+v, want armor slot %d", position, hit, index)
+		}
+	}
+	offhandX := px + (creativeOffhandSlotPosition[0]+8)*scale
+	offhandY := py + (creativeOffhandSlotPosition[1]+8)*scale
+	if hit := HitTestCreativeInventory(width, height, inventory.CreativeInventory, "", 0, offhandX, offhandY); hit.Type != SlotOffhand || hit.Index != 0 {
+		t.Fatalf("official offhand slot hit = %+v, want SlotOffhand", hit)
+	}
+
+	inv := inventory.NewPlayerInventory()
+	inv.Offhand = inventory.ItemStack{ItemID: inventory.ItemDiamond, Count: 1}
+	fb := NewFramebuffer(width, height)
+	x, y := px+creativeOffhandSlotPosition[0]*scale, py+creativeOffhandSlotPosition[1]*scale
+	if name := drawCreativeOffhandSlot(fb, inv, x, y, scale, x+2*scale, y+2*scale); name != "钻石" {
+		t.Fatalf("offhand hover label = %q, want diamond display name", name)
+	}
+}
+
 func TestCreativeTabIconsUseJava263ReferenceItems(t *testing.T) {
 	for _, tc := range []struct {
 		category  inventory.CreativeCategory
@@ -644,7 +671,7 @@ func TestCreativeSpecialTabsRenderAndHitPlayerInventory(t *testing.T) {
 	if hit.Type != SlotInventory || hit.Index != 9 {
 		t.Fatalf("first main inventory slot hit = %+v, want slot 9", hit)
 	}
-	hit = HitTestCreativeInventory(width, height, inventory.CreativeInventory, "", 0, px+55*scale, py+7*scale)
+	hit = HitTestCreativeInventory(width, height, inventory.CreativeInventory, "", 0, px+(creativeArmorSlotPositions[0][0]+8)*scale, py+(creativeArmorSlotPositions[0][1]+8)*scale)
 	if hit.Type != SlotCreativeArmor || hit.Index != 0 {
 		t.Fatalf("boots armor slot hit = %+v", hit)
 	}

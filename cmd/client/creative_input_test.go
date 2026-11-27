@@ -66,6 +66,41 @@ func TestCreativeHotbarNumberKeyRejectsInvalidTargets(t *testing.T) {
 	}
 }
 
+func TestCreativeOffhandSlotUsesCreativeClickSemantics(t *testing.T) {
+	t.Run("split", func(t *testing.T) {
+		inv := inventory.NewPlayerInventory()
+		cursor := inventory.ItemStack{}
+		inv.Offhand = inventory.ItemStack{ItemID: inventory.ItemDiamond, Count: 12}
+		if !applyCreativeOffhandClick(inv, &cursor, 2, false) || cursor != (inventory.ItemStack{ItemID: inventory.ItemDiamond, Count: 6}) || inv.Offhand.Count != 6 {
+			t.Fatalf("right click offhand: cursor=%+v offhand=%+v", cursor, inv.Offhand)
+		}
+	})
+	t.Run("swap", func(t *testing.T) {
+		inv := inventory.NewPlayerInventory()
+		cursor := inventory.ItemStack{ItemID: inventory.ItemStone, Count: 2}
+		inv.Offhand = inventory.ItemStack{ItemID: inventory.ItemDiamond, Count: 6}
+		if !applyCreativeOffhandClick(inv, &cursor, 1, false) || cursor != (inventory.ItemStack{ItemID: inventory.ItemDiamond, Count: 6}) || inv.Offhand != (inventory.ItemStack{ItemID: inventory.ItemStone, Count: 2}) {
+			t.Fatalf("left click offhand: cursor=%+v offhand=%+v", cursor, inv.Offhand)
+		}
+	})
+	t.Run("middle-click copy", func(t *testing.T) {
+		inv := inventory.NewPlayerInventory()
+		cursor := inventory.ItemStack{}
+		inv.Offhand = inventory.ItemStack{ItemID: inventory.ItemDiamond, Count: 6}
+		if !applyCreativeOffhandClick(inv, &cursor, 3, false) || cursor.Count != inventory.GetMaxStackSize(inventory.ItemDiamond) {
+			t.Fatalf("middle click did not copy max stack: cursor=%+v", cursor)
+		}
+	})
+	t.Run("shift transfer", func(t *testing.T) {
+		inv := inventory.NewPlayerInventory()
+		cursor := inventory.ItemStack{}
+		inv.Offhand = inventory.ItemStack{ItemID: inventory.ItemDiamond, Count: 6}
+		if !applyCreativeOffhandClick(inv, &cursor, 1, true) || inv.Slots[0] != (inventory.ItemStack{ItemID: inventory.ItemDiamond, Count: 6}) || !inv.Offhand.IsEmpty() {
+			t.Fatalf("shift-click did not quick-transfer offhand: slot=%+v offhand=%+v", inv.Slots[0], inv.Offhand)
+		}
+	})
+}
+
 func TestCreativeCursorDragLeftDistributesEvenly(t *testing.T) {
 	inv := inventory.NewPlayerInventory()
 	cursor := inventory.ItemStack{ItemID: inventory.ItemStone, Count: 12}

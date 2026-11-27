@@ -6119,6 +6119,8 @@ func runGraphicalWindow(c *Client, w, h int) {
 						}
 						c.syncPlayerArmorProtection()
 					}
+				case render.SlotOffhand:
+					applyCreativeOffhandClick(c.player.Inventory, &c.cursorItem, btn, wnd.IsKeyDown(0x10))
 				case render.SlotNone:
 					if btn == 1 || btn == 2 {
 						c.cursorItem = inventory.ItemStack{}

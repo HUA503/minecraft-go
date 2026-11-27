@@ -185,6 +185,38 @@ func applyCreativeHotbarKey(inv *inventory.PlayerInventory, hit render.GUISlotHi
 	}
 }
 
+// applyCreativeOffhandClick uses the same creative cursor rules as a player
+// slot and supports shift-click transfer back into the main inventory.
+func applyCreativeOffhandClick(inv *inventory.PlayerInventory, cursor *inventory.ItemStack, button int, shift bool) bool {
+	if inv == nil || cursor == nil {
+		return false
+	}
+	slot := &inv.Offhand
+	oldSlot, oldCursor := *slot, *cursor
+	switch button {
+	case 1:
+		if shift && !slot.IsEmpty() {
+			for index := range inv.Slots {
+				if inv.Slots[index].IsEmpty() {
+					inv.Slots[index], *slot = *slot, inventory.ItemStack{}
+					break
+				}
+			}
+		} else {
+			inventory.HandleSlotLeftClick(cursor, slot)
+		}
+	case 2:
+		inventory.HandleSlotRightClick(cursor, slot)
+	case 3:
+		if !slot.IsEmpty() {
+			*cursor = inventory.CreativeItemStack(slot.ItemID, 3)
+		}
+	default:
+		return false
+	}
+	return *slot != oldSlot || *cursor != oldCursor
+}
+
 // distributeCreativeCursor applies the vanilla creative quick-craft modes:
 // left-drag divides the cursor stack evenly; right-drag places one per slot.
 func distributeCreativeCursor(inv *inventory.PlayerInventory, cursor *inventory.ItemStack, targets []int, button int) int {
