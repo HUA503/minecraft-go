@@ -87,6 +87,11 @@ func TestJava263SpecialCubeMiningDrops(t *testing.T) {
 			t.Fatalf("hand-mined %s drop = %d, harvested=%v; want %d", block.name, drop, harvested, block.wantDrop)
 		}
 	}
+
+	eng.SetBlock(pos.X, pos.Y, pos.Z, 14222) // Reinforced deepslate takes a long time and drops nothing.
+	if drop, harvested := eng.BreakBlockWithTool(player.ID, pos, inventory.ItemAir); drop != inventory.ItemAir || !harvested {
+		t.Fatalf("reinforced deepslate mining result = drop %d, harvested %v; want no drop after successful break", drop, harvested)
+	}
 }
 
 func TestJava263LiveCoralRandomTick(t *testing.T) {

@@ -106,3 +106,39 @@ func TestJava263NetherBrickFenceTextureIconAndMesh(t *testing.T) {
 		t.Fatal("nether brick fence produced no mesh")
 	}
 }
+
+func TestJava263ReinforcedDeepslateUsesOfficialCubeTextures(t *testing.T) {
+	definition, ok := inventory.ExtendedBlockByName("minecraft:reinforced_deepslate")
+	if !ok || definition.RuntimeID != 14222 || !definition.DropsNothing || definition.Hardness != 55 {
+		t.Fatalf("reinforced deepslate definition = %+v, ok=%t", definition, ok)
+	}
+	for _, name := range []string{definition.TextureTop, definition.TextureBottom, definition.TextureSide} {
+		if _, ok := GetOfficialTexture("block", name); !ok {
+			t.Errorf("missing official reinforced deepslate texture %q", name)
+		}
+	}
+	icon := RenderIsometricBlock16x16(definition.RuntimeID)
+	visible := 0
+	for _, row := range icon {
+		for _, pixel := range row {
+			if pixel>>24 != 0 {
+				visible++
+			}
+		}
+	}
+	if visible < 20 {
+		t.Fatalf("reinforced deepslate icon has only %d visible pixels", visible)
+	}
+	mesh := BuildSectionMesh(func(x, y, z int32) int32 {
+		if x == 4 && y == 5 && z == 6 {
+			return definition.RuntimeID
+		}
+		return 0
+	}, 0, 0, 0)
+	for _, vertex := range mesh.Vertices {
+		if vertex.BlockID == definition.RuntimeID {
+			return
+		}
+	}
+	t.Fatal("reinforced deepslate produced no block mesh")
+}

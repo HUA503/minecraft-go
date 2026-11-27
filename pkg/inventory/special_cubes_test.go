@@ -34,6 +34,7 @@ func TestSpecialCubeItemsAreCreativelyAvailableAndMineCorrectly(t *testing.T) {
 		{"ochre_froglight", 14219, 14219, 1, 1, CreativeNatural, 0.3, 0},
 		{"verdant_froglight", 14220, 14220, 1, 1, CreativeNatural, 0.3, 0},
 		{"pearlescent_froglight", 14221, 14221, 1, 1, CreativeNatural, 0.3, 0},
+		{"reinforced_deepslate", 14222, 0, 0, 0, CreativeBlocks, 55, 0},
 	}
 	all := CreativeCatalog(CreativeAll)
 	for _, test := range cases {
@@ -44,6 +45,9 @@ func TestSpecialCubeItemsAreCreativelyAvailableAndMineCorrectly(t *testing.T) {
 			}
 			if block.RuntimeID != test.id || block.DropRuntimeID != test.drop || block.Hardness != test.hardness || block.RequiredHarvestLevel != test.requiredTier {
 				t.Fatalf("block definition = %+v", block)
+			}
+			if test.name == "reinforced_deepslate" && !block.DropsNothing {
+				t.Fatal("reinforced deepslate must not drop an item when mined")
 			}
 			if min, max := BlockDropCountRange(test.id); min != test.min || max != test.max {
 				t.Fatalf("drop range = %d..%d, want %d..%d", min, max, test.min, test.max)

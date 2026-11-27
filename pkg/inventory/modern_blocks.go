@@ -157,6 +157,13 @@ func additionalSpecialCubeDefinitions() []ExtendedBlockDefinition {
 		})
 		extendedBlockDisplayNames[name] = block.display
 	}
+	name := "minecraft:reinforced_deepslate"
+	definitions = append(definitions, ExtendedBlockDefinition{
+		RuntimeID: 14222, Name: name,
+		TextureTop: "reinforced_deepslate_top", TextureBottom: "reinforced_deepslate_bottom", TextureSide: "reinforced_deepslate_side",
+		Category: CreativeBlocks, Hardness: 55, DropsNothing: true,
+	})
+	extendedBlockDisplayNames[name] = "强化深板岩"
 	return definitions
 }
 
@@ -736,8 +743,13 @@ func ExtendedBlockByName(name string) (ExtendedBlockDefinition, bool) {
 
 // BlockDropCountRange returns the base quantity range before enchantment bonuses.
 func BlockDropCountRange(blockID int32) (int, int) {
-	if definition, ok := ExtendedBlockByID(blockID); ok && definition.DropCountMin > 0 && definition.DropCountMax >= definition.DropCountMin {
-		return definition.DropCountMin, definition.DropCountMax
+	if definition, ok := ExtendedBlockByID(blockID); ok {
+		if definition.DropsNothing {
+			return 0, 0
+		}
+		if definition.DropCountMin > 0 && definition.DropCountMax >= definition.DropCountMin {
+			return definition.DropCountMin, definition.DropCountMax
+		}
 	}
 	if IsDoubleSlabState(blockID) {
 		return 2, 2
