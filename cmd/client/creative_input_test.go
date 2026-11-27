@@ -34,6 +34,20 @@ func TestCreativeSearchSelectionEditing(t *testing.T) {
 	})
 }
 
+func TestCreativeSearchClipboardPasteReplacesSelection(t *testing.T) {
+	query, cursor, anchor, changed := replaceCreativeSearchSelection("stone", 4, 1, "brick", 64)
+	if !changed || query != "sbricke" || cursor != 6 || anchor != 6 {
+		t.Fatalf("pasted selection = %q, %d, %d, %v; want %q, 6, 6, true", query, cursor, anchor, changed, "sbricke")
+	}
+}
+
+func TestCreativeSearchClipboardPasteSanitizesAndRespectsLimit(t *testing.T) {
+	query, cursor, anchor, changed := replaceCreativeSearchSelection("ab", 2, 1, "中\n文ABC", 4)
+	if !changed || query != "a中文A" || cursor != 4 || anchor != 4 {
+		t.Fatalf("sanitized limited paste = %q, %d, %d, %v; want %q, 4, 4, true", query, cursor, anchor, changed, "a中文A")
+	}
+}
+
 func TestNewClientDefaultsCreativeInventoryToSearch(t *testing.T) {
 	client := NewClient("", "test", false, 320, 240)
 	if client.creativeTab != inventory.CreativeAll {

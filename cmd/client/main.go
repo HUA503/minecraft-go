@@ -5638,10 +5638,36 @@ func runGraphicalWindow(c *Client, w, h int) {
 			return
 		}
 		if c.isCreative && c.showInventoryGUI && c.creativeSearchActive {
-			if wnd.IsKeyDown(0x11) && vkCode == 0x41 { // Ctrl+A
-				c.creativeSearchAnchor = 0
-				c.creativeSearchCursor = len([]rune(c.creativeSearch))
-				return
+			if wnd.IsKeyDown(0x11) {
+				switch vkCode {
+				case 0x41: // Ctrl+A
+					c.creativeSearchAnchor = 0
+					c.creativeSearchCursor = len([]rune(c.creativeSearch))
+					return
+				case 0x43: // Ctrl+C
+					start, end := min(c.creativeSearchCursor, c.creativeSearchAnchor), max(c.creativeSearchCursor, c.creativeSearchAnchor)
+					runes := []rune(c.creativeSearch)
+					if start != end {
+						render.WriteClipboardText(string(runes[start:end]))
+					}
+					return
+				case 0x58: // Ctrl+X
+					start, end := min(c.creativeSearchCursor, c.creativeSearchAnchor), max(c.creativeSearchCursor, c.creativeSearchAnchor)
+					runes := []rune(c.creativeSearch)
+					if start != end && render.WriteClipboardText(string(runes[start:end])) {
+						c.creativeSearch, c.creativeSearchCursor, c.creativeSearchAnchor, _ = replaceCreativeSearchSelection(c.creativeSearch, c.creativeSearchCursor, c.creativeSearchAnchor, "", 64)
+						c.creativeScrollRow = 0
+					}
+					return
+				case 0x56: // Ctrl+V
+					if paste, ok := render.ReadClipboardText(); ok {
+						if query, cursor, anchor, changed := replaceCreativeSearchSelection(c.creativeSearch, c.creativeSearchCursor, c.creativeSearchAnchor, paste, 64); changed {
+							c.creativeSearch, c.creativeSearchCursor, c.creativeSearchAnchor = query, cursor, anchor
+							c.creativeScrollRow = 0
+						}
+					}
+					return
+				}
 			}
 			if query, cursor, anchor, handled := editCreativeSearchKey(c.creativeSearch, c.creativeSearchCursor, c.creativeSearchAnchor, vkCode, wnd.IsKeyDown(0x10)); handled {
 				if query != c.creativeSearch {

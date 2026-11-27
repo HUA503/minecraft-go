@@ -1,6 +1,8 @@
 package main
 
 import (
+	"unicode"
+
 	"github.com/HUA503/minecraft-go/pkg/inventory"
 	"github.com/HUA503/minecraft-go/pkg/render"
 )
@@ -64,6 +66,28 @@ func insertCreativeSearchRune(query string, cursor, anchor int, ch rune, maxRune
 	runes = append(runes[:start], append([]rune{ch}, runes[end:]...)...)
 	cursor = start + 1
 	return string(runes), cursor, cursor, true
+}
+
+func replaceCreativeSearchSelection(query string, cursor, anchor int, replacement string, maxRunes int) (string, int, int, bool) {
+	runes := []rune(query)
+	cursor = max(0, min(cursor, len(runes)))
+	anchor = max(0, min(anchor, len(runes)))
+	start, end := min(cursor, anchor), max(cursor, anchor)
+	insert := make([]rune, 0, len([]rune(replacement)))
+	for _, ch := range replacement {
+		if !unicode.IsControl(ch) {
+			insert = append(insert, ch)
+		}
+	}
+	if len(runes)-(end-start)+len(insert) > maxRunes {
+		insert = insert[:max(0, maxRunes-(len(runes)-(end-start)))]
+	}
+	updated := make([]rune, 0, len(runes)-(end-start)+len(insert))
+	updated = append(updated, runes[:start]...)
+	updated = append(updated, insert...)
+	updated = append(updated, runes[end:]...)
+	newCursor := start + len(insert)
+	return string(updated), newCursor, newCursor, string(updated) != query
 }
 
 // scrollCreativeCatalog converts Win32 wheel deltas (120 units per notch) into

@@ -4,6 +4,12 @@ package render
 
 import "fmt"
 
+// ReadClipboardText is unavailable when the native window backend is unavailable.
+func ReadClipboardText() (string, bool) { return "", false }
+
+// WriteClipboardText is unavailable when the native window backend is unavailable.
+func WriteClipboardText(string) bool { return false }
+
 // Window represents a window stub on non-Windows platforms.
 type Window struct {
 	Closed         bool

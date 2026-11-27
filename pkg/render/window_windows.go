@@ -52,7 +52,78 @@ var (
 	procGetSystemMetrics              = user32.NewProc("GetSystemMetrics")
 	procMonitorFromWindow             = user32.NewProc("MonitorFromWindow")
 	procGetMonitorInfoW               = user32.NewProc("GetMonitorInfoW")
+	procOpenClipboard                 = user32.NewProc("OpenClipboard")
+	procCloseClipboard                = user32.NewProc("CloseClipboard")
+	procEmptyClipboard                = user32.NewProc("EmptyClipboard")
+	procGetClipboardData              = user32.NewProc("GetClipboardData")
+	procSetClipboardData              = user32.NewProc("SetClipboardData")
+	procGlobalAlloc                   = kernel32.NewProc("GlobalAlloc")
+	procGlobalLock                    = kernel32.NewProc("GlobalLock")
+	procGlobalUnlock                  = kernel32.NewProc("GlobalUnlock")
+	procGlobalSize                    = kernel32.NewProc("GlobalSize")
+	procGlobalFree                    = kernel32.NewProc("GlobalFree")
 )
+
+const (
+	globalMoveable       = 0x0002
+	clipboardUnicodeText = 13
+)
+
+// ReadClipboardText reads CF_UNICODETEXT from the Windows clipboard.
+func ReadClipboardText() (string, bool) {
+	if ok, _, _ := procOpenClipboard.Call(0); ok == 0 {
+		return "", false
+	}
+	defer procCloseClipboard.Call()
+	handle, _, _ := procGetClipboardData.Call(clipboardUnicodeText)
+	if handle == 0 {
+		return "", false
+	}
+	ptr, _, _ := procGlobalLock.Call(handle)
+	if ptr == 0 {
+		return "", false
+	}
+	defer procGlobalUnlock.Call(handle)
+	size, _, _ := procGlobalSize.Call(handle)
+	if size < 2 {
+		return "", true
+	}
+	units := min(int(size/2), 1<<20)
+	text := syscall.UTF16ToString(unsafe.Slice((*uint16)(unsafe.Pointer(ptr)), units))
+	return text, true
+}
+
+// WriteClipboardText replaces the Windows clipboard contents with CF_UNICODETEXT.
+func WriteClipboardText(text string) bool {
+	encoded, err := syscall.UTF16FromString(text)
+	if err != nil {
+		return false
+	}
+	if ok, _, _ := procOpenClipboard.Call(0); ok == 0 {
+		return false
+	}
+	defer procCloseClipboard.Call()
+	if ok, _, _ := procEmptyClipboard.Call(); ok == 0 {
+		return false
+	}
+	bytes := uintptr(len(encoded) * 2)
+	handle, _, _ := procGlobalAlloc.Call(globalMoveable, bytes)
+	if handle == 0 {
+		return false
+	}
+	ptr, _, _ := procGlobalLock.Call(handle)
+	if ptr == 0 {
+		procGlobalFree.Call(handle)
+		return false
+	}
+	copy(unsafe.Slice((*uint16)(unsafe.Pointer(ptr)), len(encoded)), encoded)
+	procGlobalUnlock.Call(handle)
+	if result, _, _ := procSetClipboardData.Call(clipboardUnicodeText, handle); result == 0 {
+		procGlobalFree.Call(handle)
+		return false
+	}
+	return true
+}
 
 type MONITORINFO struct {
 	CbSize    uint32
