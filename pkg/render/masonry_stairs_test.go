@@ -66,3 +66,43 @@ func TestJava263WoodFenceTexturesIconsAndMesh(t *testing.T) {
 		}
 	}
 }
+
+func TestJava263NetherBrickFenceTextureIconAndMesh(t *testing.T) {
+	definition, ok := inventory.ExtendedBlockByID(inventory.ItemNetherBrickFence)
+	if !ok {
+		t.Fatal("nether brick fence is not registered as a block")
+	}
+	if _, ok := GetOfficialTexture("block", definition.TextureSide); !ok {
+		t.Fatalf("missing official fence texture %q", definition.TextureSide)
+	}
+	icon := GetItemSprite16x16(inventory.ItemNetherBrickFence)
+	visible := 0
+	for _, row := range icon {
+		for _, pixel := range row {
+			if pixel>>24 != 0 {
+				visible++
+			}
+		}
+	}
+	if visible < 8 {
+		t.Fatalf("nether brick fence icon has only %d visible pixels", visible)
+	}
+	blocks := map[[3]int32]int32{
+		{8, 5, 8}: inventory.ItemNetherBrickFence,
+		{9, 5, 8}: inventory.ItemOakPlanks,
+	}
+	mesh := BuildSectionMesh(func(x, y, z int32) int32 { return blocks[[3]int32{x, y, z}] }, 0, 0, 0)
+	found := false
+	for _, vertex := range mesh.Vertices {
+		if vertex.BlockID == inventory.ItemNetherBrickFence {
+			found = true
+			if vertex.X < 8 || vertex.X > 9 || vertex.Y < 5 || vertex.Y > 6.5 || vertex.Z < 8 || vertex.Z > 9 {
+				t.Errorf("nether brick fence mesh vertex outside fence bounds: %+v", vertex)
+				break
+			}
+		}
+	}
+	if !found {
+		t.Fatal("nether brick fence produced no mesh")
+	}
+}

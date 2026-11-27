@@ -211,7 +211,7 @@ func BlockCollisionBoxesAt(blockID, x, y, z int32, getBlock func(int32, int32, i
 	if IsCushionBlock(blockID) {
 		return cushionVisualBox, true
 	}
-	if boxes, ok := WoodFenceCollisionBoxesAt(blockID, x, y, z, getBlock); ok {
+	if boxes, ok := FenceCollisionBoxesAt(blockID, x, y, z, getBlock); ok {
 		return boxes, true
 	}
 	if boxes, ok := FenceGateModelBoxes(blockID); ok {

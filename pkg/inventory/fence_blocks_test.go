@@ -47,3 +47,30 @@ func TestJava263WoodFencesCatalogRecipesAndConnectedShapes(t *testing.T) {
 		}
 	}
 }
+
+func TestJava263NetherBrickFenceCatalogRecipeAndConnectedShape(t *testing.T) {
+	definition, ok := ExtendedBlockByID(ItemNetherBrickFence)
+	if !ok || definition.Name != "minecraft:nether_brick_fence" || definition.DropRuntimeID != ItemNetherBrickFence {
+		t.Fatalf("nether brick fence block definition = %+v, ok=%t", definition, ok)
+	}
+	if matches := SearchCreativeCatalog(CreativeBlocks, "minecraft:nether_brick_fence"); len(matches) != 1 || matches[0].ID != ItemNetherBrickFence {
+		t.Fatalf("nether brick fence catalog lookup = %+v", matches)
+	}
+	netherBricks := int32(112)
+	grid := []int32{
+		netherBricks, ItemNetherBrick, netherBricks,
+		netherBricks, ItemNetherBrick, netherBricks,
+		0, 0, 0,
+	}
+	crafted, ok := NewCraftingManager().MatchCrafting(grid, 3)
+	if !ok || crafted.ItemID != ItemNetherBrickFence || crafted.Count != 6 {
+		t.Fatalf("nether brick fence recipe = %+v, matched=%t", crafted, ok)
+	}
+	blocks := map[[3]int32]int32{{0, 0, 0}: ItemNetherBrickFence, {1, 0, 0}: netherBricks}
+	boxes, ok := FenceCollisionBoxesAt(ItemNetherBrickFence, 0, 0, 0, func(x, y, z int32) int32 {
+		return blocks[[3]int32{x, y, z}]
+	})
+	if !ok || !IsFenceBlock(ItemNetherBrickFence) || IsWoodFenceBlock(ItemNetherBrickFence) || len(boxes) != 3 {
+		t.Fatalf("nether brick fence collision boxes = %+v, ok=%t; want post and two connected rails", boxes, ok)
+	}
+}

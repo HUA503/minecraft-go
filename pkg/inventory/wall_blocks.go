@@ -100,7 +100,7 @@ func wallConnectsTo(blockID int32) bool {
 	if IsMasonryWallBlock(blockID) {
 		return true
 	}
-	if blockID == 0 || IsWoodFenceBlock(blockID) || IsCushionBlock(blockID) || IsExtendedFoliage(blockID) {
+	if blockID == 0 || IsFenceBlock(blockID) || IsCushionBlock(blockID) || IsExtendedFoliage(blockID) {
 		return false
 	}
 	if boxes, ok := BlockCollisionBoxes(blockID); ok {

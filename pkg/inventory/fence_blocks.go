@@ -1,8 +1,9 @@
 package inventory
 
 const (
-	FirstWoodFenceItem int32 = 18600
-	WoodFenceCount           = 13
+	FirstWoodFenceItem   int32 = 18600
+	WoodFenceCount             = 13
+	ItemNetherBrickFence int32 = 19500
 )
 
 type woodFenceDefinition struct {
@@ -44,6 +45,16 @@ func woodFenceBlockDefinitions() []ExtendedBlockDefinition {
 	return definitions
 }
 
+func netherBrickFenceBlockDefinition() ExtendedBlockDefinition {
+	name := "minecraft:nether_brick_fence"
+	extendedBlockDisplayNames[name] = "下界砖栅栏"
+	return ExtendedBlockDefinition{
+		RuntimeID: ItemNetherBrickFence, Name: name,
+		TextureTop: "nether_bricks", TextureBottom: "nether_bricks", TextureSide: "nether_bricks",
+		Category: CreativeBlocks, Hardness: 2, HarvestTool: ToolPickaxe, DropRuntimeID: ItemNetherBrickFence,
+	}
+}
+
 // ModernWoodFenceItemDefinitions returns Java 26.3's thirteen wood fences.
 func ModernWoodFenceItemDefinitions() []ExtendedBlockDefinition {
 	return append([]ExtendedBlockDefinition(nil), woodFenceBlockDefinitions()...)
@@ -54,11 +65,16 @@ func IsWoodFenceBlock(blockID int32) bool {
 	return blockID >= FirstWoodFenceItem && blockID < FirstWoodFenceItem+WoodFenceCount
 }
 
-// WoodFenceCollisionBoxesAt returns the post and connected horizontal rails.
+// IsFenceBlock reports whether blockID is any placeable fence block.
+func IsFenceBlock(blockID int32) bool {
+	return IsWoodFenceBlock(blockID) || blockID == ItemNetherBrickFence
+}
+
+// FenceCollisionBoxesAt returns the post and connected horizontal rails.
 // Neighbors are evaluated on demand so placement and removal update the outline
 // without storing redundant connection bits in world data.
-func WoodFenceCollisionBoxesAt(blockID, x, y, z int32, getBlock func(int32, int32, int32) int32) ([]BlockBox, bool) {
-	if !IsWoodFenceBlock(blockID) {
+func FenceCollisionBoxesAt(blockID, x, y, z int32, getBlock func(int32, int32, int32) int32) ([]BlockBox, bool) {
+	if !IsFenceBlock(blockID) {
 		return nil, false
 	}
 	boxes := []BlockBox{{MinX: .375, MinY: 0, MinZ: .375, MaxX: .625, MaxY: 1.5, MaxZ: .625}}
@@ -86,11 +102,17 @@ func WoodFenceCollisionBoxesAt(blockID, x, y, z int32, getBlock func(int32, int3
 	return boxes, true
 }
 
+// WoodFenceCollisionBoxesAt is kept for callers that specifically handle wood
+// fence items; the returned shape routine also supports non-wood fences.
+func WoodFenceCollisionBoxesAt(blockID, x, y, z int32, getBlock func(int32, int32, int32) int32) ([]BlockBox, bool) {
+	return FenceCollisionBoxesAt(blockID, x, y, z, getBlock)
+}
+
 func fenceConnectsTo(blockID int32) bool {
 	if blockID == 0 || IsCushionBlock(blockID) || IsExtendedFoliage(blockID) {
 		return false
 	}
-	if IsWoodFenceBlock(blockID) || IsWoodFenceGateBlock(blockID) {
+	if IsFenceBlock(blockID) || IsWoodFenceGateBlock(blockID) {
 		return true
 	}
 	if boxes, ok := BlockCollisionBoxes(blockID); ok {

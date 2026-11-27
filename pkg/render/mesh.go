@@ -151,8 +151,8 @@ func BuildSectionMesh(getBlock func(x, y, z int32) int32, originX, originY, orig
 					addStairBlockMesh(mesh, originX+x, originY+y, originZ+z, blockID, getBlock)
 					continue
 				}
-				if inventory.IsWoodFenceBlock(blockID) {
-					boxes, _ := inventory.WoodFenceCollisionBoxesAt(blockID, originX+x, originY+y, originZ+z, getBlock)
+				if inventory.IsFenceBlock(blockID) {
+					boxes, _ := inventory.FenceCollisionBoxesAt(blockID, originX+x, originY+y, originZ+z, getBlock)
 					addBlockBoxesMesh(mesh, originX+x, originY+y, originZ+z, blockID, boxes, getBlock)
 					continue
 				}
@@ -287,7 +287,7 @@ func addBlockBoxesMesh(mesh *Mesh, x, y, z, blockID int32, boxes []inventory.Blo
 			if IsOpaqueCube(neighbor) {
 				continue
 			}
-			if inventory.IsWoodFenceBlock(neighbor) && (face == 0 || face == 1 || face == 4 || face == 5) {
+			if inventory.IsFenceBlock(neighbor) && (face == 0 || face == 1 || face == 4 || face == 5) {
 				continue
 			}
 			base := len(mesh.Vertices)

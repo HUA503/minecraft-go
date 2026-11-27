@@ -97,6 +97,7 @@ func buildExtendedBlockDefinitions() []ExtendedBlockDefinition {
 	definitions = append(definitions, masonrySlabBlockDefinitions()...)
 	definitions = append(definitions, masonryStairBlockDefinitions()...)
 	definitions = append(definitions, woodFenceBlockDefinitions()...)
+	definitions = append(definitions, netherBrickFenceBlockDefinition())
 	definitions = append(definitions, woodFenceGateBlockDefinitions()...)
 	definitions = append(definitions, woodDoorBlockDefinitions()...)
 	definitions = append(definitions, woodTrapdoorBlockDefinitions()...)

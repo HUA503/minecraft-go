@@ -613,6 +613,14 @@ func (cm *CraftingManager) registerDefaults() {
 			Output:  ItemStack{ItemID: fence.ItemID, Count: 3},
 		})
 	}
+	cm.Recipes = append(cm.Recipes, Recipe{
+		Width: 3, Height: 2,
+		Pattern: []int32{
+			112, ItemNetherBrick, 112,
+			112, ItemNetherBrick, 112,
+		},
+		Output: ItemStack{ItemID: ItemNetherBrickFence, Count: 6},
+	})
 	for _, gate := range woodFenceGateDefinitions {
 		var planksID int32
 		if block, ok := ExtendedBlockByName(gate.Source); ok {
