@@ -187,14 +187,15 @@ func (fb *Framebuffer) DrawCreativeInventoryGUIWithSearchState(inv *inventory.Pl
 	if category == inventory.CreativeAll {
 		searchLabel := "搜索物品"
 		if query != "" {
-			searchLabel = query
+			searchLabel = string([]rune(query)[CreativeSearchDisplayStart(query, searchCursor, 80):])
 		}
 		searchCursor = max(0, min(searchCursor, len([]rune(query))))
 		searchAnchor = max(0, min(searchAnchor, len([]rune(query))))
-		selectionStart, selectionEnd := min(searchCursor, searchAnchor), max(searchCursor, searchAnchor)
+		displayStart := CreativeSearchDisplayStart(query, searchCursor, 80)
+		selectionStart, selectionEnd := max(min(searchCursor, searchAnchor), displayStart), max(searchCursor, searchAnchor)
 		if selectionStart < selectionEnd {
-			selectionX := px + (83+creativeSearchTextAdvance(query, selectionStart))*scale
-			selectionRight := px + (83+creativeSearchTextAdvance(query, selectionEnd))*scale
+			selectionX := px + (83+creativeSearchTextAdvance(query, selectionStart)-creativeSearchTextAdvance(query, displayStart))*scale
+			selectionRight := px + (83+creativeSearchTextAdvance(query, selectionEnd)-creativeSearchTextAdvance(query, displayStart))*scale
 			selectionX = max(selectionX, px+83*scale)
 			selectionRight = min(selectionRight, px+162*scale)
 			if selectionRight > selectionX {
@@ -203,7 +204,7 @@ func (fb *Framebuffer) DrawCreativeInventoryGUIWithSearchState(inv *inventory.Pl
 		}
 		drawCreativeSearchText(fb, px+82*scale, py+6*scale, searchLabel, 0xFF404040, scale, 80*scale)
 		if searchFocused && time.Now().UnixMilli()/500%2 == 0 {
-			caretX := px + (83+creativeSearchTextAdvance(query, searchCursor))*scale
+			caretX := px + (83+creativeSearchTextAdvance(query, searchCursor)-creativeSearchTextAdvance(query, displayStart))*scale
 			caretX = min(caretX, px+161*scale)
 			fb.DrawRect(caretX, py+6*scale, scale, 9*scale, 0xFF333333)
 		}
@@ -287,17 +288,43 @@ func creativeSearchTextAdvance(text string, cursor int) int {
 	return width
 }
 
+// CreativeSearchDisplayStart returns the first rune kept visible before the caret.
+func CreativeSearchDisplayStart(query string, cursor, maxWidth int) int {
+	runes := []rune(query)
+	cursor = max(0, min(cursor, len(runes)))
+	if maxWidth <= 0 {
+		return cursor
+	}
+	width, start := 0, cursor
+	for start > 0 {
+		glyphWidth := 6
+		if runes[start-1] > 0x7f {
+			glyphWidth = 9
+		}
+		if width+glyphWidth > maxWidth {
+			break
+		}
+		width += glyphWidth
+		start--
+	}
+	return start
+}
+
 // CreativeSearchCursorAt maps a click inside the search field to the nearest rune boundary.
-func CreativeSearchCursorAt(w, h int, query string, mouseX int) int {
+func CreativeSearchCursorAt(w, h int, query string, mouseX int, cursorState ...int) int {
 	scale, px, _ := creativeGUIOrigin(w, h)
 	if scale <= 0 {
 		return 0
 	}
 	localX := (mouseX - (px + 83*scale)) / scale
-	if localX <= 0 {
-		return 0
+	visibleStart := 0
+	if len(cursorState) > 0 {
+		visibleStart = CreativeSearchDisplayStart(query, cursorState[0], 80)
 	}
-	runes := []rune(query)
+	if localX <= 0 {
+		return visibleStart
+	}
+	runes := []rune(query)[visibleStart:]
 	advance := 0
 	for index, ch := range runes {
 		width := 6
@@ -305,11 +332,11 @@ func CreativeSearchCursorAt(w, h int, query string, mouseX int) int {
 			width = 9
 		}
 		if localX < advance+width/2 {
-			return index
+			return visibleStart + index
 		}
 		advance += width
 	}
-	return len(runes)
+	return visibleStart + len(runes)
 }
 
 func drawCreativeOffhandSlot(fb *Framebuffer, inv *inventory.PlayerInventory, x, y, scale, mouseX, mouseY int) string {

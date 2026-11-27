@@ -208,6 +208,34 @@ func TestCreativeSearchCursorAtPointerUsesRuneBoundaries(t *testing.T) {
 	}
 }
 
+func TestCreativeSearchDisplayStartKeepsCaretVisible(t *testing.T) {
+	for _, tc := range []struct {
+		query string
+		caret int
+		want  int
+	}{
+		{"abcdefghijklmnopqrstuvwxyz", 20, 7},
+		{"短い検索語", 5, 0},
+		{"abcdefghijklmnop", 16, 3},
+	} {
+		if got := CreativeSearchDisplayStart(tc.query, tc.caret, 80); got != tc.want {
+			t.Errorf("display start for %q at caret %d = %d, want %d", tc.query, tc.caret, got, tc.want)
+		}
+	}
+}
+
+func TestCreativeSearchCursorAtPointerAccountsForHorizontalScroll(t *testing.T) {
+	width, height := 640, 480
+	scale, panelX, _ := creativeGUIOrigin(width, height)
+	query := "abcdefghijklmnopqrstuvwxyz"
+	if got := CreativeSearchCursorAt(width, height, query, panelX+82*scale, 20); got != 7 {
+		t.Fatalf("click at left of scrolled query = %d, want visible start 7", got)
+	}
+	if got := CreativeSearchCursorAt(width, height, query, panelX+83*scale+5*scale, 20); got != 8 {
+		t.Fatalf("click after first visible rune = %d, want 8", got)
+	}
+}
+
 func TestCreativeTabsMatchJava263VanillaRows(t *testing.T) {
 	for _, tc := range []struct {
 		category inventory.CreativeCategory

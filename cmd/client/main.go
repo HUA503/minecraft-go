@@ -5766,7 +5766,7 @@ func runGraphicalWindow(c *Client, w, h int) {
 				c.creativeSearchDragging = false
 			} else {
 				mx, _ := wnd.GetCursorClientPos(c.framebuf.Width, c.framebuf.Height)
-				c.creativeSearchCursor = render.CreativeSearchCursorAt(c.framebuf.Width, c.framebuf.Height, c.creativeSearch, mx)
+				c.creativeSearchCursor = render.CreativeSearchCursorAt(c.framebuf.Width, c.framebuf.Height, c.creativeSearch, mx, c.creativeSearchCursor)
 			}
 		}
 		if c.creativeDrag.Active {
@@ -6036,7 +6036,7 @@ func runGraphicalWindow(c *Client, w, h int) {
 				switch hit.Type {
 				case render.SlotCreativeSearch:
 					c.creativeSearchActive = true
-					c.creativeSearchCursor = render.CreativeSearchCursorAt(c.framebuf.Width, c.framebuf.Height, c.creativeSearch, mx)
+					c.creativeSearchCursor = render.CreativeSearchCursorAt(c.framebuf.Width, c.framebuf.Height, c.creativeSearch, mx, c.creativeSearchCursor)
 					c.creativeSearchAnchor = c.creativeSearchCursor
 					c.creativeSearchDragging = btn == 1
 				case render.SlotCreativeTab:
