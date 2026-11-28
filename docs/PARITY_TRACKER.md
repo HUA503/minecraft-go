@@ -25,16 +25,16 @@ The table counts references in the official category lists that have no matching
 | Category | Java 26.3 entries | Unmapped references |
 |---|---:|---:|
 | Building Blocks | 387 | 0 |
-| Colored Blocks | 162 | 4 |
-| Natural | 254 | 69 |
-| Functional | 149 | 103 |
-| Redstone | 67 | 37 |
+| Colored Blocks | 162 | 12 |
+| Natural | 254 | 86 |
+| Functional | 149 | 107 |
+| Redstone | 67 | 39 |
 | Tools & Utilities | 118 | 73 |
 | Combat | 78 | 19 |
 | Food & Drinks | 45 | 3 |
 | Ingredients | 151 | 0 |
 | Spawn Eggs | 89 | 79 |
-| **Total references** | **1,500** | **387** |
+| **Total references** | **1,500** | **418** |
 
 ## UI and runtime gaps
 
