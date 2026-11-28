@@ -30,9 +30,9 @@ func drawTitlePanorama(fb *Framebuffer) {
 		titlePanoramaFrameCache.frame != frame || len(titlePanoramaFrameCache.pixels) != fb.Width*fb.Height {
 		faces, ok := loadTitlePanoramaFaces()
 		if ok {
-			// Face 0 points toward +X; offset toward its camp clearing rather than
-			// centering the tree trunk that fills the middle of that cube face.
-			titlePanoramaFrameCache.pixels = projectTitlePanorama(fb.Width, fb.Height, faces, -math.Pi/2+0.54+float64(frame)*(2*math.Pi/180), -0.12)
+			// Java's CubeMap starts with a 180 degree X rotation, adds a fixed 10
+			// degree X tilt, then slowly spins around Y at 0.1 degrees per tick.
+			titlePanoramaFrameCache.pixels = projectTitlePanorama(fb.Width, fb.Height, faces, float64(frame)*2)
 		} else {
 			titlePanoramaFrameCache.pixels = titlePanoramaFallback(fb.Width, fb.Height)
 		}
@@ -61,22 +61,24 @@ func loadTitlePanoramaFaces() ([6]*RawImage, bool) {
 	return faces, true
 }
 
-func projectTitlePanorama(width, height int, faces [6]*RawImage, yaw, pitch float64) []uint32 {
+func projectTitlePanorama(width, height int, faces [6]*RawImage, spinDegrees float64) []uint32 {
 	pixels := make([]uint32, width*height)
 	aspect := float64(width) / float64(height)
 	tanHalfFOV := math.Tan(85 * math.Pi / 360) // Match CubeMap's 85 degree perspective FOV.
-	sinYaw, cosYaw := math.Sin(yaw), math.Cos(yaw)
-	sinPitch, cosPitch := math.Sin(pitch), math.Cos(pitch)
-	forwardX, forwardY, forwardZ := -sinYaw*cosPitch, sinPitch, -cosYaw*cosPitch
-	rightX, rightZ := cosYaw, -sinYaw
-	upX, upY, upZ := sinYaw*sinPitch, cosPitch, cosYaw*sinPitch
+	rotationX := -190 * math.Pi / 180          // Inverse of vanilla's Rx(180°) followed by Rx(10°).
+	rotationY := math.Mod(spinDegrees, 360) * math.Pi / 180
+	sinX, cosX := math.Sin(rotationX), math.Cos(rotationX)
+	sinY, cosY := math.Sin(rotationY), math.Cos(rotationY)
 	for y := 0; y < height; y++ {
 		planeY := (1 - 2*(float64(y)+0.5)/float64(height)) * tanHalfFOV
 		for x := 0; x < width; x++ {
 			planeX := (2*(float64(x)+0.5)/float64(width) - 1) * tanHalfFOV * aspect
-			dirX := forwardX + planeX*rightX + planeY*upX
-			dirY := forwardY + planeY*upY
-			dirZ := forwardZ + planeX*rightZ + planeY*upZ
+			// The cube shader emits the original vertex position as its cubemap
+			// direction, so screen rays must be transformed by the inverse model
+			// rotation to match CubeMap.render exactly.
+			dirX := cosY*planeX + sinY*(sinX*planeY-cosX)
+			dirY := cosX*planeY + sinX
+			dirZ := -sinY*planeX + cosY*(sinX*planeY-cosX)
 			pixels[y*width+x] = sampleTitleCubemap(faces, dirX, dirY, dirZ) | 0xFF000000
 		}
 	}

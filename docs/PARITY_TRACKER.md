@@ -39,7 +39,7 @@ The table counts references in the official category lists that have no matching
 
 ## UI and runtime gaps
 
-- The title screen now uses the official Java 26.3 logo, edition mark, normal/hover button textures, and six 1024x1024 panorama faces fetched from the release asset index. The JAR's 1x1 placeholders are bypassed in favor of the official asset-index textures. Panorama projection and slow rotation are implemented, but the vanilla cubemap face transforms, post-processing blur/dark gradients, layout details, and screenshot parity still need direct comparison. Online/Realms and Options buttons plus language/accessibility controls remain missing.
+- The title screen now uses the official Java 26.3 logo, edition mark, normal/hover button textures, and six 1024x1024 panorama faces fetched from the release asset index. The projection now follows the 26.3 renderer's 85-degree FOV, 190-degree X transform, and 2-degree-per-second Y spin. Cubemap row/face orientation and full screenshot parity still need direct comparison. Online/Realms and Options buttons plus language/accessibility controls remain missing.
 - Creative inventory panel, representative tab textures, status-effect panel and icons use Java 26.3 assets; tab positions and hit regions have source-level checks. A full Java-client screenshot comparison at matching resolution and UI scale has not been completed, so pixel parity is unverified.
 - Search/catalog counts, mouse behavior, tooltips, scrolling, player preview, other inventory screens, fonts and UI scaling still need visual and interaction comparison against 26.3.
 - Rendering, items and blocks still have the tab-mapping gaps above; registered items are not necessarily behavior-complete.
