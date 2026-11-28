@@ -36,6 +36,7 @@ func TestAttackDurabilityForWeaponsAndTools(t *testing.T) {
 		wantItemID int32
 	}{
 		{"sword loses one durability", inventory.ItemNetheriteSword, 12, 13, false, inventory.ItemNetheriteSword},
+		{"spear loses one durability", inventory.ItemDiamondSpear, 12, 13, false, inventory.ItemDiamondSpear},
 		{"axe loses two durability", inventory.ItemNetheriteAxe, 12, 14, false, inventory.ItemNetheriteAxe},
 		{"sword breaks on final point", inventory.ItemNetheriteSword, 2030, 0, true, inventory.ItemAir},
 		{"axe breaks on last two points", inventory.ItemNetheriteAxe, 2029, 0, true, inventory.ItemAir},

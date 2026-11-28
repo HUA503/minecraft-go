@@ -10,6 +10,7 @@ const (
 	ToolShovel
 	ToolSword
 	ToolHoe
+	ToolSpear
 )
 
 // ToolTier defines the material quality and capabilities.
@@ -59,6 +60,13 @@ var ToolRegistry = map[int32]ToolProperties{
 	ItemNetheriteShovel:  {Type: ToolShovel, Tier: TierNetherite, MaxDurability: 2031, MiningSpeed: 9.0, HarvestLevel: 3, AttackDamage: 6.5},
 	ItemNetheriteHoe:     {Type: ToolHoe, Tier: TierNetherite, MaxDurability: 2031, MiningSpeed: 9.0, HarvestLevel: 3, AttackDamage: 1.0},
 	ItemMace:             {Type: ToolSword, Tier: TierIron, MaxDurability: 500, MiningSpeed: 1.0, HarvestLevel: 0, AttackDamage: 5.0},
+	ItemWoodenSpear:      {Type: ToolSpear, Tier: TierWood, MaxDurability: 59, MiningSpeed: 1.0, HarvestLevel: 0, AttackDamage: 1.0},
+	ItemStoneSpear:       {Type: ToolSpear, Tier: TierStone, MaxDurability: 131, MiningSpeed: 1.0, HarvestLevel: 0, AttackDamage: 2.0},
+	ItemCopperSpear:      {Type: ToolSpear, Tier: TierCopper, MaxDurability: 190, MiningSpeed: 1.0, HarvestLevel: 0, AttackDamage: 2.0},
+	ItemIronSpear:        {Type: ToolSpear, Tier: TierIron, MaxDurability: 250, MiningSpeed: 1.0, HarvestLevel: 0, AttackDamage: 3.0},
+	ItemGoldenSpear:      {Type: ToolSpear, Tier: TierGold, MaxDurability: 32, MiningSpeed: 1.0, HarvestLevel: 0, AttackDamage: 1.0},
+	ItemDiamondSpear:     {Type: ToolSpear, Tier: TierDiamond, MaxDurability: 1561, MiningSpeed: 1.0, HarvestLevel: 0, AttackDamage: 4.0},
+	ItemNetheriteSpear:   {Type: ToolSpear, Tier: TierNetherite, MaxDurability: 2031, MiningSpeed: 1.0, HarvestLevel: 0, AttackDamage: 5.0},
 
 	// Axes (ID: 271 Wood, 275 Stone, 258 Iron, 279 Diamond, 286 Gold)
 	271:           {Type: ToolAxe, Tier: TierWood, MaxDurability: 59, MiningSpeed: 2.0, HarvestLevel: 0, AttackDamage: 7.0},

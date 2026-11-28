@@ -185,6 +185,9 @@ type Client struct {
 	hasMiningBlock         bool
 	swingProgress          float64 // 0.0 to 1.0
 	isSwinging             bool
+	spearNextAttack        time.Time
+	spearChargeStarted     time.Time
+	spearChargeItem        int32
 	lastHitSoundTime       time.Time
 	placeCooldown          float64
 	particles              []render.Particle
@@ -2685,6 +2688,23 @@ func (c *Client) UpdateMining(isLeftMouseDown bool, dt float64) {
 	}
 	c.particles = activeParticles
 
+	// A spear's primary action is a jab, not block mining. Keep the arm swing
+	// animation but clear any block-breaking state while the spear is selected.
+	selected := c.player.Inventory.GetSelectedItem()
+	if _, isSpear := inventory.GetSpearProperties(selected.ItemID); isSpear {
+		c.breakProgress = 0
+		c.hasMiningBlock = false
+		c.isMining = false
+		if !isLeftMouseDown && c.isSwinging {
+			c.swingProgress += dt * 4.0
+			if c.swingProgress >= 1.0 {
+				c.isSwinging = false
+				c.swingProgress = 0
+			}
+		}
+		return
+	}
+
 	// Arm swing animation decay when not actively mining
 	if !isLeftMouseDown {
 		c.breakProgress = 0.0
@@ -3301,6 +3321,9 @@ func (c *Client) PlaceBlockInFront() bool {
 // UpdateRightClick handles eating food and placing blocks/interacting with blocks.
 func (c *Client) UpdateRightClick(isRightDown bool, dt float64) {
 	if c.player == nil || c.engine == nil || c.player.Inventory == nil {
+		return
+	}
+	if c.updateSpearCharge(isRightDown) {
 		return
 	}
 	if isRightDown && c.isLocal && c.placeCooldown <= 0 && c.hasTarget {
@@ -4884,6 +4907,51 @@ func (c *Client) AttackMob() bool {
 	}
 	dmg := float32(1.0) // Bare fist base damage
 	sel := c.player.Inventory.GetSelectedItem()
+	if spear, ok := inventory.GetSpearProperties(sel.ItemID); ok {
+		if c.camera == nil {
+			return false
+		}
+		now := time.Now()
+		if now.Before(c.spearNextAttack) {
+			return false
+		}
+		c.spearNextAttack = now.Add(time.Duration(spear.JabCooldownTicks) * time.Second / 20)
+		if tool, ok := inventory.GetToolProperties(sel.ItemID); ok {
+			dmg = tool.AttackDamage
+		}
+		camPos := sim.Vec3{X: c.camera.X, Y: c.camera.Y, Z: c.camera.Z}
+		lx, ly, lz := c.camera.GetLookVector()
+		look := sim.Vec3{X: lx, Y: ly, Z: lz}
+		maxReach := spear.MaxAttackReach
+		if c.isCreative {
+			maxReach = spear.CreativeMaxReach
+		}
+		hits := c.engine.AttackMobsAlongRay(camPos, look, spear.MinAttackReach, maxReach, spear.HitboxMargin, dmg)
+		if len(hits) == 0 {
+			return false
+		}
+		applyAttackItemDurability(c.player.Inventory, c.isCreative)
+		c.isSwinging = true
+		c.swingProgress = 0
+		for _, hit := range hits {
+			sound.PlayHardwareFeedback("minecraft:entity.generic.hurt")
+			for i := 0; i < 6; i++ {
+				c.particles = append(c.particles, render.Particle{
+					X:     hit.Position.X + (randFloat()-0.5)*0.45,
+					Y:     hit.Position.Y + 0.9 + randFloat()*0.45,
+					Z:     hit.Position.Z + (randFloat()-0.5)*0.45,
+					Vx:    (randFloat() - 0.5) * 1.2,
+					Vy:    randFloat()*1.2 + 0.2,
+					Vz:    (randFloat() - 0.5) * 1.2,
+					Color: 0xFFFF2222, Life: 0.25, MaxLife: 0.25,
+				})
+			}
+			if hit.Killed {
+				sound.PlayHardwareFeedback("minecraft:entity.generic.death")
+			}
+		}
+		return true
+	}
 	if !sel.IsEmpty() {
 		if props, ok := inventory.GetToolProperties(sel.ItemID); ok {
 			dmg = props.AttackDamage

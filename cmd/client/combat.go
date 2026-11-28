@@ -2,9 +2,92 @@ package main
 
 import (
 	"math"
+	"time"
 
 	"github.com/HUA503/minecraft-go/pkg/inventory"
+	"github.com/HUA503/minecraft-go/pkg/render"
+	"github.com/HUA503/minecraft-go/pkg/sim"
+	"github.com/HUA503/minecraft-go/pkg/sound"
 )
+
+// updateSpearCharge owns secondary-button spear input. Returning true prevents
+// the same button press from placing blocks or interacting with containers.
+func (c *Client) updateSpearCharge(isRightDown bool) bool {
+	selected := c.player.Inventory.GetSelectedItem()
+	properties, selectedIsSpear := inventory.GetSpearProperties(selected.ItemID)
+	if !selectedIsSpear {
+		if c.spearChargeItem != 0 {
+			c.spearChargeItem = 0
+			c.spearChargeStarted = time.Time{}
+			return true
+		}
+		return false
+	}
+	if !c.isLocal {
+		return true
+	}
+
+	if isRightDown {
+		if c.spearChargeItem == 0 {
+			c.spearChargeItem = selected.ItemID
+			c.spearChargeStarted = time.Now()
+		}
+		return true
+	}
+	if c.spearChargeItem == 0 {
+		return true
+	}
+
+	started := c.spearChargeStarted
+	chargedItem := c.spearChargeItem
+	c.spearChargeItem = 0
+	c.spearChargeStarted = time.Time{}
+	if chargedItem != selected.ItemID || started.IsZero() {
+		return true
+	}
+	if c.camera == nil {
+		return true
+	}
+
+	elapsedTicks := int(time.Since(started) / (time.Second / 20))
+	if elapsedTicks < properties.ChargeDelayTicks {
+		return true
+	}
+	elapsedAfterDelay := elapsedTicks - properties.ChargeDelayTicks
+	if c.isCreative {
+		properties.MaxAttackReach = properties.CreativeMaxReach
+	}
+	lx, ly, lz := c.camera.GetLookVector()
+	hits := c.engine.AttackMobsWithSpearCharge(
+		sim.Vec3{X: c.camera.X, Y: c.camera.Y, Z: c.camera.Z},
+		sim.Vec3{X: lx, Y: ly, Z: lz},
+		sim.Vec3{X: float64(c.player.Velocity.X), Y: float64(c.player.Velocity.Y), Z: float64(c.player.Velocity.Z)},
+		properties, elapsedAfterDelay,
+	)
+	if len(hits) > 0 {
+		applyAttackItemDurability(c.player.Inventory, c.isCreative)
+		c.isSwinging = true
+		c.swingProgress = 0
+		for _, hit := range hits {
+			sound.PlayHardwareFeedback("minecraft:entity.generic.hurt")
+			for i := 0; i < 8; i++ {
+				c.particles = append(c.particles, render.Particle{
+					X:     hit.Position.X + (randFloat()-0.5)*0.5,
+					Y:     hit.Position.Y + 0.9 + randFloat()*0.45,
+					Z:     hit.Position.Z + (randFloat()-0.5)*0.5,
+					Vx:    (randFloat() - 0.5) * 1.6,
+					Vy:    randFloat()*1.5 + 0.2,
+					Vz:    (randFloat() - 0.5) * 1.6,
+					Color: 0xFFFF2222, Life: 0.3, MaxLife: 0.3,
+				})
+			}
+			if hit.Killed {
+				sound.PlayHardwareFeedback("minecraft:entity.generic.death")
+			}
+		}
+	}
+	return true
+}
 
 // maceSmashBonus applies Java's Mace smash falloff to whole fallen blocks:
 // the first 3 add 4 damage each, the next 5 add 2, and later blocks add 1.
@@ -41,7 +124,7 @@ func applyAttackItemDurability(inv *inventory.PlayerInventory, creative bool) bo
 	}
 	damage := 0
 	switch properties.Type {
-	case inventory.ToolSword:
+	case inventory.ToolSword, inventory.ToolSpear:
 		damage = 1
 	case inventory.ToolPickaxe, inventory.ToolAxe, inventory.ToolShovel, inventory.ToolHoe:
 		damage = 2

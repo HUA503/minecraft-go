@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"sync"
 	"time"
 
@@ -468,6 +469,127 @@ func (e *Engine) AttackMobInFront(origin, look Vec3, reach float64, damage float
 	}
 
 	return closestMob.ID, killed, true, targetPosition
+}
+
+// MobAttackResult describes one entity hit by a piercing melee attack.
+type MobAttackResult struct {
+	ID       int32
+	Position Vec3
+	Killed   bool
+}
+
+// AttackMobsAlongRay applies one piercing melee attack to each hittable mob
+// intersecting the ray segment. The target center is approximated by the
+// existing mob combat center, with hitboxMargin expanding its horizontal hitbox.
+func (e *Engine) AttackMobsAlongRay(origin, look Vec3, minReach, maxReach, hitboxMargin float64, damage float32) []MobAttackResult {
+	return e.attackMobsAlongRay(origin, look, minReach, maxReach, hitboxMargin, func(*MobEntity) (float32, float64, bool) {
+		return damage, 0.25, damage > 0
+	})
+}
+
+// AttackMobsWithSpearCharge resolves the released kinetic spear charge using
+// the Java item-component thresholds. elapsedTicks is measured after the
+// material-specific charge delay.
+func (e *Engine) AttackMobsWithSpearCharge(origin, look, attackerVelocity Vec3, properties inventory.SpearProperties, elapsedTicks int) []MobAttackResult {
+	if elapsedTicks < 0 || elapsedTicks > properties.DamageWindowTicks {
+		return nil
+	}
+	look = look.Normalize()
+	return e.attackMobsAlongRay(origin, look, properties.MinAttackReach, properties.MaxAttackReach, properties.HitboxMargin, func(mob *MobEntity) (float32, float64, bool) {
+		relativeSpeed := (attackerVelocity.X-mob.Velocity.X)*look.X +
+			(attackerVelocity.Y-mob.Velocity.Y)*look.Y +
+			(attackerVelocity.Z-mob.Velocity.Z)*look.Z
+		if relativeSpeed < float64(properties.DamageMinRelativeSpeed) {
+			return 0, 0, false
+		}
+		damage := float32(math.Floor(relativeSpeed * float64(properties.ChargeDamageMultiplier)))
+		if damage <= 0 {
+			return 0, 0, false
+		}
+		attackerSpeed := attackerVelocity.X*look.X + attackerVelocity.Y*look.Y + attackerVelocity.Z*look.Z
+		knockback := 0.0
+		if elapsedTicks <= properties.KnockbackWindowTicks && attackerSpeed >= float64(properties.KnockbackMinSpeed) {
+			knockback = 0.25
+		}
+		return damage, knockback, true
+	})
+}
+
+func (e *Engine) attackMobsAlongRay(origin, look Vec3, minReach, maxReach, hitboxMargin float64, damageFor func(*MobEntity) (float32, float64, bool)) []MobAttackResult {
+	if maxReach <= minReach || hitboxMargin < 0 || damageFor == nil {
+		return nil
+	}
+	look = look.Normalize()
+	if look.Length() == 0 {
+		return nil
+	}
+
+	type candidate struct {
+		mob     *MobEntity
+		forward float64
+	}
+	e.mobMu.Lock()
+	defer e.mobMu.Unlock()
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	candidates := make([]candidate, 0, len(e.Mobs))
+	for _, mob := range e.Mobs {
+		if mob == nil || !mob.IsAlive {
+			continue
+		}
+		toCenter := mob.Position.Add(Vec3{Y: 0.9}).Sub(origin)
+		forward := toCenter.X*look.X + toCenter.Y*look.Y + toCenter.Z*look.Z
+		if forward < minReach || forward > maxReach {
+			continue
+		}
+		perpendicular := toCenter.Sub(look.Scale(forward))
+		if perpendicular.Length() <= 0.3+hitboxMargin {
+			candidates = append(candidates, candidate{mob: mob, forward: forward})
+		}
+	}
+	sort.Slice(candidates, func(i, j int) bool {
+		if candidates[i].forward == candidates[j].forward {
+			return candidates[i].mob.ID < candidates[j].mob.ID
+		}
+		return candidates[i].forward < candidates[j].forward
+	})
+
+	results := make([]MobAttackResult, 0, len(candidates))
+	for _, target := range candidates {
+		mob := target.mob
+		if mob.HurtTime > 5 {
+			continue
+		}
+		damage, knockbackStrength, shouldDamage := damageFor(mob)
+		if !shouldDamage || damage <= 0 {
+			continue
+		}
+		mob.Health -= damage
+		mob.HurtTime = 10
+		mob.LastHurtTime = time.Now()
+		if knockbackStrength > 0 {
+			knockback := look.Scale(knockbackStrength)
+			knockback.Y = 0.12
+			mob.Velocity = mob.Velocity.Add(knockback)
+		}
+		killed := mob.Health <= 0
+		if killed {
+			mob.Health = 0
+			mob.IsAlive = false
+			for _, stack := range mob.DeathDrops() {
+				e.nextItemDropID++
+				e.ItemDrops[e.nextItemDropID] = &ItemDrop{
+					ID: e.nextItemDropID, ItemID: stack.ItemID, Count: stack.Count,
+					Position: mob.Position.Add(Vec3{Y: 0.5}),
+					Velocity: Vec3{Y: 0.15}, PickupDelay: 0.2,
+				}
+			}
+			delete(e.Mobs, mob.ID)
+		}
+		results = append(results, MobAttackResult{ID: mob.ID, Position: mob.Position, Killed: killed})
+	}
+	return results
 }
 
 // ApplyMaceSmashKnockback launches nearby living mobs away from the struck
