@@ -2360,6 +2360,7 @@ func (e *Engine) Tick() {
 			continue
 		}
 		e.tickPlayerStatusEffectsLocked(p)
+		e.tickPlayerContactEffectsLocked(p)
 
 		// In Creative mode (GameMode == 1), health, hunger, saturation remain pristine
 		if p.HurtTimer > 0 {
@@ -2482,6 +2483,27 @@ func (e *Engine) Tick() {
 	// Tick mob AI and behaviors outside the mutex
 	for _, m := range activeMobs {
 		m.TickMob(e)
+	}
+}
+
+// tickPlayerContactEffectsLocked applies block-contact status effects using the
+// player's current collision box. It runs while Engine.mu is held.
+func (e *Engine) tickPlayerContactEffectsLocked(player *PlayerEntity) {
+	if player == nil || !player.IsAlive || activeEffectIndex(player, inventory.EffectWither) >= 0 {
+		return
+	}
+	box := NewPlayerAABB(player.Position)
+	minX, minY, minZ := int32(math.Floor(box.Min.X)), int32(math.Floor(box.Min.Y)), int32(math.Floor(box.Min.Z))
+	maxX, maxY, maxZ := int32(math.Ceil(box.Max.X)), int32(math.Ceil(box.Max.Y)), int32(math.Ceil(box.Max.Z))
+	for y := minY; y < maxY; y++ {
+		for z := minZ; z < maxZ; z++ {
+			for x := minX; x < maxX; x++ {
+				if e.getBlockLocked(x, y, z) == inventory.ItemWitherRose {
+					e.addPlayerEffectLocked(player, inventory.FoodStatusEffect{ID: inventory.EffectWither, DurationTicks: 41})
+					return
+				}
+			}
+		}
 	}
 }
 

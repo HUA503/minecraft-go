@@ -7,11 +7,11 @@ import (
 )
 
 func TestSmallFlowerCreativeIconsAndCrossedQuads(t *testing.T) {
-	ids := make([]int32, 0, inventory.LastSmallFlower-inventory.FirstSmallFlower+3)
+	ids := make([]int32, 0, inventory.LastSmallFlower-inventory.FirstSmallFlower+4)
 	for id := inventory.FirstSmallFlower; id <= inventory.LastSmallFlower; id++ {
 		ids = append(ids, id)
 	}
-	ids = append(ids, inventory.ItemDandelion, inventory.ItemPoppy)
+	ids = append(ids, inventory.ItemDandelion, inventory.ItemPoppy, inventory.ItemWitherRose)
 	for _, id := range ids {
 		if _, ok := GetOfficialItemSprite(id); !ok {
 			t.Errorf("official small flower icon is missing for block %d", id)

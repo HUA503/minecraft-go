@@ -41,6 +41,7 @@ const (
 	LastSmallFlower        int32 = FirstSmallFlower + 9
 	ItemDandelion          int32 = 16321
 	ItemPoppy              int32 = 16322
+	ItemWitherRose         int32 = 16323
 	FirstTallFlower        int32 = LastSmallFlower + 1
 	LastTallFlower         int32 = FirstTallFlower + 3
 	TallFlowerStateBase    int32 = 52000
@@ -169,7 +170,7 @@ func smallFlowerBlockDefinitions() []ExtendedBlockDefinition {
 		id      int32
 		name    string
 		display string
-	}{{ItemDandelion, "dandelion", "蒲公英"}, {ItemPoppy, "poppy", "虞美人"}} {
+	}{{ItemDandelion, "dandelion", "蒲公英"}, {ItemPoppy, "poppy", "虞美人"}, {ItemWitherRose, "wither_rose", "凋灵玫瑰"}} {
 		name := "minecraft:" + flower.name
 		definitions = append(definitions, ExtendedBlockDefinition{
 			RuntimeID: flower.id, Name: name, TextureTop: flower.name, TextureBottom: flower.name,
@@ -1212,7 +1213,8 @@ func IsFlowerPlantBlock(blockID int32) bool {
 
 // IsSmallFlower reports whether runtimeID is one of the single-block vanilla flowers.
 func IsSmallFlower(runtimeID int32) bool {
-	return runtimeID >= FirstSmallFlower && runtimeID <= LastSmallFlower || runtimeID == ItemDandelion || runtimeID == ItemPoppy
+	return runtimeID >= FirstSmallFlower && runtimeID <= LastSmallFlower ||
+		runtimeID == ItemDandelion || runtimeID == ItemPoppy || runtimeID == ItemWitherRose
 }
 
 func IsTallFlowerItem(itemID int32) bool {

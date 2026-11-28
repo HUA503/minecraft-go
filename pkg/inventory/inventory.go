@@ -226,6 +226,7 @@ type FoodStatusEffect struct {
 const (
 	EffectHunger         = "minecraft:hunger"
 	EffectPoison         = "minecraft:poison"
+	EffectWither         = "minecraft:wither"
 	EffectRegeneration   = "minecraft:regeneration"
 	EffectResistance     = "minecraft:resistance"
 	EffectFireResistance = "minecraft:fire_resistance"

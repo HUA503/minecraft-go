@@ -48,3 +48,21 @@ func TestBreakingFlowerSupportDropsFlower(t *testing.T) {
 		t.Fatalf("support break returned %d flower items, want 1", flowerCount)
 	}
 }
+
+func TestWitherRoseContactAppliesWitherAndDamagesPlayer(t *testing.T) {
+	engine := NewEngine()
+	player := engine.AddPlayer("wither-rose-test", [16]byte{}, Vec3{X: 0.5, Y: 64, Z: 0.5})
+	if player == nil {
+		t.Fatal("failed to add player")
+	}
+	engine.SetBlock(0, 63, 0, inventory.ItemGrass)
+	engine.SetBlock(0, 64, 0, inventory.ItemWitherRose)
+	engine.Tick()
+	if activeEffectIndex(player, inventory.EffectWither) < 0 {
+		t.Fatal("touching a wither rose did not apply the wither effect")
+	}
+	engine.Tick()
+	if player.Health != 19 {
+		t.Fatalf("withering damage left player at %.1f health, want 19", player.Health)
+	}
+}

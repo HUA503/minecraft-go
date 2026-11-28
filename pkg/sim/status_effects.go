@@ -94,6 +94,11 @@ func (e *Engine) tickPlayerStatusEffectsLocked(player *PlayerEntity) {
 			if effect.DurationTicks > 0 && effect.DurationTicks%interval == 0 && player.Health > 1 {
 				e.applyPlayerDamageLocked(player, min(float32(1), player.Health-1), "magic")
 			}
+		case inventory.EffectWither:
+			interval = max(1, 40>>effect.Amplifier)
+			if effect.DurationTicks > 0 && effect.DurationTicks%interval == 0 {
+				e.applyPlayerDamageLocked(player, 1, "wither")
+			}
 		case inventory.EffectRegeneration:
 			interval = max(1, 50>>effect.Amplifier)
 			if effect.DurationTicks > 0 && effect.DurationTicks%interval == 0 && player.Health < 20 {
