@@ -4,11 +4,12 @@ import "strings"
 
 // Recipe defines a craftable output from an input grid.
 type Recipe struct {
-	Width     int
-	Height    int
-	Pattern   []int32
-	Shapeless bool
-	Output    ItemStack
+	Width          int
+	Height         int
+	Pattern        []int32
+	Shapeless      bool
+	RemainderItems map[int32]int32
+	Output         ItemStack
 }
 
 // CraftingManager holds known recipes and matches crafting grids.
@@ -35,11 +36,16 @@ func (cm *CraftingManager) registerDefaults() {
 		Pattern: []int32{ItemBakedPotato, ItemCookedRabbit, ItemModernBowl, ItemCarrot, ItemShelfMushroom},
 		Output:  ItemStack{ItemID: ItemRabbitStew, Count: 1},
 	})
-	cm.Recipes = append(cm.Recipes, Recipe{
-		Width: 2, Height: 2, Shapeless: true,
-		Pattern: []int32{ItemBrownMushroom, ItemRedMushroom, 281},
-		Output:  ItemStack{ItemID: ItemMushroomStew, Count: 1},
-	})
+	mushrooms := []int32{ItemBrownMushroom, ItemRedMushroom, ItemShelfMushroom}
+	for i, first := range mushrooms {
+		for _, second := range mushrooms[i:] {
+			cm.Recipes = append(cm.Recipes, Recipe{
+				Width: 2, Height: 2, Shapeless: true,
+				Pattern: []int32{first, second, ItemModernBowl}, RemainderItems: map[int32]int32{ItemModernBowl: ItemModernBowl},
+				Output: ItemStack{ItemID: ItemMushroomStew, Count: 1},
+			})
+		}
+	}
 
 	// Mace: the Heavy Core and Breeze Rod occupy opposite corners.
 	cm.Recipes = append(cm.Recipes, Recipe{
@@ -984,33 +990,44 @@ func (cm *CraftingManager) registerDyeRecipes() {
 
 // MatchCrafting finds matching recipe for grid (gridSize = 2 for 2x2, 3 for 3x3).
 func (cm *CraftingManager) MatchCrafting(grid []int32, gridSize int) (ItemStack, bool) {
+	output, _, ok := cm.MatchCraftingWithRemainders(grid, gridSize)
+	return output, ok
+}
+
+// MatchCraftingWithRemainders returns the matching output and one container
+// remainder item per occupied input slot, in grid order.
+func (cm *CraftingManager) MatchCraftingWithRemainders(grid []int32, gridSize int) (ItemStack, []int32, bool) {
 	if cm == nil || (gridSize != 2 && gridSize != 3) || len(grid) != gridSize*gridSize {
-		return ItemStack{}, false
+		return ItemStack{}, nil, false
 	}
-	for _, recipe := range cm.Recipes {
+	match := func(recipe Recipe) bool {
 		if recipe.Shapeless {
-			if matchShapeless(grid, recipe.Pattern) {
-				return recipe.Output, true
-			}
-			continue
+			return matchShapeless(grid, recipe.Pattern)
 		}
 		if recipe.Width > gridSize || recipe.Height > gridSize {
-			continue
+			return false
 		}
-
-		// Try matching recipe at all (ox, oy) offsets in grid
-		maxOX := gridSize - recipe.Width
-		maxOY := gridSize - recipe.Height
-
+		maxOX, maxOY := gridSize-recipe.Width, gridSize-recipe.Height
 		for ox := 0; ox <= maxOX; ox++ {
 			for oy := 0; oy <= maxOY; oy++ {
 				if matchAtOffset(grid, gridSize, recipe, ox, oy, false) || matchAtOffset(grid, gridSize, recipe, ox, oy, true) {
-					return recipe.Output, true
+					return true
 				}
 			}
 		}
+		return false
 	}
-	return ItemStack{}, false
+	for _, recipe := range cm.Recipes {
+		if !match(recipe) {
+			continue
+		}
+		remainders := make([]int32, len(grid))
+		for i, itemID := range grid {
+			remainders[i] = recipe.RemainderItems[itemID]
+		}
+		return recipe.Output, remainders, true
+	}
+	return ItemStack{}, nil, false
 }
 
 func matchShapeless(grid, inputs []int32) bool {

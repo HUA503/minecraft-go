@@ -335,6 +335,27 @@ func handleSlotRightClick(cursor *inventory.ItemStack, slot *inventory.ItemStack
 	inventory.HandleSlotRightClick(cursor, slot)
 }
 
+func consumeCraftingInput(slot *inventory.ItemStack, remainderID int32) int32 {
+	if slot == nil || slot.IsEmpty() {
+		return 0
+	}
+	inputID := slot.ItemID
+	slot.Count--
+	if remainderID == inputID && remainderID != 0 {
+		slot.Count++
+		return 0
+	}
+	if slot.Count <= 0 {
+		if remainderID == 0 {
+			*slot = inventory.ItemStack{}
+		} else {
+			*slot = inventory.ItemStack{ItemID: remainderID, Count: 1}
+		}
+		return 0
+	}
+	return remainderID
+}
+
 func (c *Client) updateCraftResult() {
 	if c.craftingMgr == nil {
 		return
@@ -6375,6 +6396,19 @@ func runGraphicalWindow(c *Client, w, h int) {
 							canCraft = true
 						}
 						if canCraft {
+							gridSize := 4
+							gridWidth := 2
+							if c.isCraftingTableOpen {
+								gridSize = 9
+								gridWidth = 3
+							}
+							grid := make([]int32, gridSize)
+							for i := range grid {
+								if !c.craftGrid[i].IsEmpty() {
+									grid[i] = c.craftGrid[i].ItemID
+								}
+							}
+							_, remainders, matched := c.craftingMgr.MatchCraftingWithRemainders(grid, gridWidth)
 							craftedItemID := c.craftResult.ItemID
 							if c.cursorItem.IsEmpty() {
 								c.cursorItem = c.craftResult
@@ -6383,15 +6417,17 @@ func runGraphicalWindow(c *Client, w, h int) {
 							}
 							c.recordObtainedItem(craftedItemID)
 							sound.PlayHardwareFeedback("minecraft:item.craft")
-							gridSize := 4
-							if c.isCraftingTableOpen {
-								gridSize = 9
-							}
 							for i := 0; i < gridSize; i++ {
 								if c.craftGrid[i].Count > 0 {
-									c.craftGrid[i].Count--
-									if c.craftGrid[i].Count <= 0 {
-										c.craftGrid[i] = inventory.ItemStack{}
+									remainderID := int32(0)
+									if matched && i < len(remainders) {
+										remainderID = remainders[i]
+									}
+									if remainderID := consumeCraftingInput(&c.craftGrid[i], remainderID); remainderID != 0 {
+										leftover := c.player.Inventory.AddItem(remainderID, 1)
+										if leftover > 0 && c.engine != nil {
+											c.engine.SpawnItemDrop(remainderID, leftover, c.player.Position.Add(sim.Vec3{X: 0, Y: 1.0, Z: 0}), sim.Vec3{})
+										}
 									}
 								}
 							}

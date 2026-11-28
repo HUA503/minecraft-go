@@ -43,9 +43,23 @@ func TestSmallFlowerRegistryAndCreativeEntries(t *testing.T) {
 }
 
 func TestMushroomStewRecipe(t *testing.T) {
-	got, ok := NewCraftingManager().MatchCrafting([]int32{ItemBrownMushroom, ItemRedMushroom, 281, ItemAir}, 2)
-	if !ok || got != (ItemStack{ItemID: ItemMushroomStew, Count: 1}) {
-		t.Fatalf("mushroom stew recipe = %+v, matched=%v", got, ok)
+	manager := NewCraftingManager()
+	mushrooms := []int32{ItemBrownMushroom, ItemRedMushroom, ItemShelfMushroom}
+	for i, first := range mushrooms {
+		for _, second := range mushrooms[i:] {
+			grid := []int32{first, ItemModernBowl, ItemAir, second}
+			got, remainders, ok := manager.MatchCraftingWithRemainders(grid, 2)
+			if !ok || got != (ItemStack{ItemID: ItemMushroomStew, Count: 1}) {
+				t.Errorf("mushroom stew with ingredients %d/%d = %+v, matched=%v", first, second, got, ok)
+				continue
+			}
+			if len(remainders) != len(grid) || remainders[1] != ItemModernBowl {
+				t.Errorf("mushroom stew remainders = %v, want the bowl in slot 1", remainders)
+			}
+		}
+	}
+	if _, ok := manager.MatchCrafting([]int32{ItemCrimsonFungus, ItemModernBowl, ItemAir, ItemCrimsonFungus}, 2); ok {
+		t.Fatal("Nether fungus matched the mushroom stew recipe, but it is not in #minecraft:mushrooms")
 	}
 }
 
