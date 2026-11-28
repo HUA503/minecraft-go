@@ -12,6 +12,7 @@ Last checked: 2026-11-28 against the project's `vanillaCreativeTabOrder` and the
 - The creative catalog contains 1,060 entries after adding the 16 colored concrete powders.
 - Added all 16 dyed concrete-powder items with Java 26.3 textures and dye recipes. They fall through replaceable blocks in the current simulation and harden beside water into the matching concrete color.
 - Concrete-powder falling currently advances one block per game tick and does not create Java falling-block entities or preserve their full landing/drop behavior. This is functional coverage, not exact parity.
+- Powder block-tick state is rebuilt from block data when chunks load and is isolated per dimension, so save/reload or dimension switches do not silently stop or misapply pending falls. Added regression coverage for both paths.
 
 ## Direct creative-tab mapping gaps
 
@@ -36,5 +37,7 @@ The table counts references in the official category lists that have no matching
 - Creative inventory panel and representative tab textures use Java 26.3 assets; tab positions and hit regions have source-level checks. A full Java-client screenshot comparison at matching resolution and UI scale has not been completed, so pixel parity is unverified.
 - Search/catalog counts, mouse behavior, tooltips, scrolling, player preview, other inventory screens, fonts and UI scaling still need visual and interaction comparison against 26.3.
 - Rendering, items and blocks still have the tab-mapping gaps above; registered items are not necessarily behavior-complete.
-- Crash reports from actual gameplay have not all been reproduced and closed. Save recovery, renderer stability and long-session behavior remain open verification areas.
+- The local `%APPDATA%/minecraft-go/crash.log` ends at 2026-11-23 and records a 3-second client UI stall: `Engine.Tick` held the engine mutex while natural spawning called the public mutex-taking `SpawnMob`. Current tick code uses the lock-aware `spawnMobLocked`; its deadlock regression passed 100 consecutive runs. Region corruption/interrupted-commit recovery cases passed 20 consecutive runs. These checks verify the logged failure path and deterministic storage cases, not all gameplay crashes or long-session stability.
+- Go's race detector could not run in this Windows environment: `CGO_ENABLED=0`, with no `gcc` available on `PATH`. Race-level verification remains open.
+- Save recovery beyond tested region scenarios, renderer stability and long-session behavior remain open verification areas.
 - Achievements/advancements, multiplayer synchronization, complete entity ecology, world generation and protocol interoperability are not at vanilla parity.

@@ -161,7 +161,7 @@ type Engine struct {
 	DimensionStorage     [3]*world.SaveManager
 	Furnaces             map[world.BlockPos]*inventory.FurnaceBlockEntity
 	buttonReleaseAt      map[world.BlockPos]int64
-	concretePowderTicks  map[world.BlockPos]struct{}
+	concretePowderTicks  [3]map[world.BlockPos]struct{}
 	pressurePlatePowered map[world.BlockPos]struct{}
 	IsPaused             bool
 	Difficulty           int // 0: Peaceful, 1: Easy, 2: Normal, 3: Hard
@@ -191,12 +191,14 @@ func NewEngine() *Engine {
 		tickDone:             make(chan struct{}),
 		Furnaces:             make(map[world.BlockPos]*inventory.FurnaceBlockEntity),
 		buttonReleaseAt:      make(map[world.BlockPos]int64),
-		concretePowderTicks:  make(map[world.BlockPos]struct{}),
 		pressurePlatePowered: make(map[world.BlockPos]struct{}),
 	}
 	eng.DimensionWorlds[0] = eng.World
 	eng.DimensionWorlds[1] = make(map[world.ChunkPos]*world.Chunk)
 	eng.DimensionWorlds[2] = make(map[world.ChunkPos]*world.Chunk)
+	for dim := range eng.concretePowderTicks {
+		eng.concretePowderTicks[dim] = make(map[world.BlockPos]struct{})
+	}
 	return eng
 }
 
@@ -792,6 +794,7 @@ func (e *Engine) LoadChunkInDimension(dim int, cp world.ChunkPos, c *world.Chunk
 	}
 	if chunks[cp] == nil {
 		chunks[cp] = c
+		e.scheduleConcretePowderChunkLocked(dim, c)
 	}
 }
 
@@ -828,6 +831,7 @@ func (e *Engine) LoadGeneratedChunkInDimension(dim int, cp world.ChunkPos, c *wo
 		}
 		chunks[cp] = c
 	}
+	e.scheduleConcretePowderChunkLocked(dim, chunks[cp])
 }
 
 func (e *Engine) GetChunk(cp world.ChunkPos) *world.Chunk {
@@ -888,6 +892,7 @@ func (e *Engine) GetChunkInDimensionWithError(dim int, cp world.ChunkPos) (*worl
 		} else {
 			chunks[cp] = loaded
 			chunk = loaded
+			e.scheduleConcretePowderChunkLocked(dim, loaded)
 		}
 	}
 	e.mu.Unlock()
@@ -960,18 +965,17 @@ func (e *Engine) setBlockLocked(x, y, z int32, state int32) {
 		e.World[cp] = chunk
 	}
 	chunk.SetBlock(x, y, z, state)
-	if e.concretePowderTicks == nil {
-		e.concretePowderTicks = make(map[world.BlockPos]struct{})
-	}
 	pos := world.BlockPos{X: x, Y: y, Z: z}
-	delete(e.concretePowderTicks, pos)
-	if inventory.IsConcretePowderBlock(state) {
-		e.concretePowderTicks[pos] = struct{}{}
-	}
-	for _, offset := range [6][3]int32{{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}} {
-		neighbor := world.BlockPos{X: x + offset[0], Y: y + offset[1], Z: z + offset[2]}
-		if inventory.IsConcretePowderBlock(e.getBlockLocked(neighbor.X, neighbor.Y, neighbor.Z)) {
-			e.concretePowderTicks[neighbor] = struct{}{}
+	if dim := e.CurrentDimension; dim >= 0 && dim < len(e.concretePowderTicks) {
+		delete(e.concretePowderTicks[dim], pos)
+		if inventory.IsConcretePowderBlock(state) {
+			e.concretePowderTicks[dim][pos] = struct{}{}
+		}
+		for _, offset := range [6][3]int32{{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}} {
+			neighbor := world.BlockPos{X: x + offset[0], Y: y + offset[1], Z: z + offset[2]}
+			if inventory.IsConcretePowderBlock(e.getBlockLocked(neighbor.X, neighbor.Y, neighbor.Z)) {
+				e.concretePowderTicks[dim][neighbor] = struct{}{}
+			}
 		}
 	}
 
@@ -1015,8 +1019,18 @@ func (e *Engine) SetBlockChecked(x, y, z int32, state int32) bool {
 		}
 		e.World[cp] = chunk
 	}
-	e.setBlockLocked(x, y, z, state)
-	return e.World[cp] != nil && e.World[cp].GetBlock(x, y, z) == state
+	effectiveState := state
+	if inventory.IsConcretePowderBlock(state) {
+		pos := world.BlockPos{X: x, Y: y, Z: z}
+		oldState := e.getBlockLocked(x, y, z)
+		if oldState == 8 || oldState == 9 {
+			effectiveState, _ = inventory.ConcretePowderHardenedBlock(state)
+		} else if concreteState, touchesWater := e.concretePowderWaterContactLocked(pos, state); touchesWater {
+			effectiveState = concreteState
+		}
+	}
+	e.setBlockLocked(x, y, z, effectiveState)
+	return e.World[cp] != nil && e.World[cp].GetBlock(x, y, z) == effectiveState
 }
 
 // UnloadChunk purges a distant chunk from active simulation, saving it to disk if dirty.
