@@ -63,16 +63,17 @@ type MobEntity struct {
 	IsAlive        bool
 
 	// Dynamic authentic AI & Animation states
-	WalkDistance  float64 // Continuous walking distance for leg-swing animations
-	IsMoving      bool
-	WanderTicks   int       // Countdown for current wander or idle action
-	IsIdle        bool      // Idle/grazing vs active walking
-	TargetYaw     float32   // Target heading towards which animal smoothly steers
-	HurtTime      int       // Authentic Minecraft hurt flash timer in ticks (10 ticks = 0.5s)
-	LastHurtTime  time.Time // Real-time timestamp of damage to guarantee flash duration resets
-	BurningTicks  int       // Daylight / fire burning tick counter
-	IsAggro       bool      // Hostile aggro state (e.g. Enderman stared at)
-	TeleportTimer int       // Enderman teleport cooldown
+	WalkDistance      float64 // Continuous walking distance for leg-swing animations
+	IsMoving          bool
+	WanderTicks       int       // Countdown for current wander or idle action
+	IsIdle            bool      // Idle/grazing vs active walking
+	TargetYaw         float32   // Target heading towards which animal smoothly steers
+	HurtTime          int       // Authentic Minecraft hurt flash timer in ticks (10 ticks = 0.5s)
+	LastHurtTime      time.Time // Real-time timestamp of damage to guarantee flash duration resets
+	BurningTicks      int       // Daylight / fire burning tick counter
+	IsAggro           bool      // Hostile aggro state (e.g. Enderman stared at)
+	TeleportTimer     int       // Enderman teleport cooldown
+	WitherEffectTicks int       // Remaining ticks for wither-rose contact damage
 }
 
 // IsHurt returns whether the mob is currently in the authentic 0.5s hurt flash window.
@@ -128,6 +129,17 @@ func (m *MobEntity) TickMob(engine *Engine) {
 	}
 	if m.TeleportTimer > 0 {
 		m.TeleportTimer--
+	}
+	if m.Type != MobZombie && m.Type != MobSkeleton {
+		if m.WitherEffectTicks == 0 && mobTouchesWitherRose(engine, m) {
+			m.WitherEffectTicks = 41
+		}
+		if m.WitherEffectTicks > 0 {
+			m.WitherEffectTicks--
+			if m.WitherEffectTicks == 40 && engine.damageMobDuringTick(m, 1) {
+				return
+			}
+		}
 	}
 
 	// Daylight burning for undead (Zombie & Skeleton)
@@ -221,6 +233,34 @@ func (m *MobEntity) TickMob(engine *Engine) {
 	}
 	m.Velocity.X *= 0.546 // Air / ground drag
 	m.Velocity.Z *= 0.546
+}
+
+func mobTouchesWitherRose(engine *Engine, mob *MobEntity) bool {
+	if engine == nil || mob == nil {
+		return false
+	}
+	radius, height := 0.3, 1.8
+	if mob.Type == MobCow || mob.Type == MobPig || mob.Type == MobSheep {
+		radius, height = 0.45, 1.4
+	} else if mob.Type == MobChicken {
+		radius, height = 0.2, 0.7
+	} else if mob.Type == MobSpider {
+		radius, height = 0.7, 0.9
+	} else if mob.Type == MobEnderman {
+		radius, height = 0.3, 2.9
+	}
+	minX, minY, minZ := int32(math.Floor(mob.Position.X-radius)), int32(math.Floor(mob.Position.Y)), int32(math.Floor(mob.Position.Z-radius))
+	maxX, maxY, maxZ := int32(math.Ceil(mob.Position.X+radius)), int32(math.Ceil(mob.Position.Y+height)), int32(math.Ceil(mob.Position.Z+radius))
+	for y := minY; y < maxY; y++ {
+		for z := minZ; z < maxZ; z++ {
+			for x := minX; x < maxX; x++ {
+				if engine.GetBlock(x, y, z) == inventory.ItemWitherRose {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // hasLineOfSight tests if an unobstructed direct ray exists between two 3D points.

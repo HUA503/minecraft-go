@@ -11,7 +11,7 @@ Last checked: 2026-11-28 against the project's `vanillaCreativeTabOrder` and the
 - Added the Java 26.3 shelf mushroom in commit `b352209`: two size stages, side support/facing, bone-meal growth, stage-specific drops and the rabbit-stew recipe. Bouncing behavior and wandering-trader offers remain missing.
 - The creative catalog contains 1,063 entries after adding the 16 colored concrete powders, dandelion, poppy and wither rose.
 - Added dandelion and poppy to the Natural tab with the official block textures, item sprites, plant placement rules, instant break and self-drops. Each now crafts into its vanilla dye. Bone-meal world-generation behavior remains unimplemented.
-- Added the wither rose with its official item/block texture, plant placement and self-drop. Player contact applies Wither and deals periodic damage; mob contact effects are not yet simulated.
+- Added the wither rose with its official item/block texture, plant placement and self-drop. Contact applies Wither and periodic damage to players and modeled non-undead mobs; zombies and skeletons are immune. Other mob families and effect-icon parity remain outside current entity coverage.
 - Added all 16 dyed concrete-powder items with Java 26.3 textures and dye recipes. They fall through replaceable blocks in the current simulation and harden beside water into the matching concrete color.
 - The 16 powder colors now sort at the vanilla concrete-powder group position in Java's dye-color order instead of falling to the end of the tab.
 - Concrete-powder falling currently advances one block per game tick and does not create Java falling-block entities or preserve their full landing/drop behavior. This is functional coverage, not exact parity.

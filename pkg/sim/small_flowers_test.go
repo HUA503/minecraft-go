@@ -66,3 +66,18 @@ func TestWitherRoseContactAppliesWitherAndDamagesPlayer(t *testing.T) {
 		t.Fatalf("withering damage left player at %.1f health, want 19", player.Health)
 	}
 }
+
+func TestWitherRoseDamagesNonUndeadMobsButNotUndead(t *testing.T) {
+	engine := NewEngine()
+	engine.SetBlock(0, 63, 0, inventory.ItemGrass)
+	engine.SetBlock(0, 64, 0, inventory.ItemWitherRose)
+	cow := engine.SpawnMob(MobCow, Vec3{X: 0.5, Y: 64, Z: 0.5})
+	zombie := engine.SpawnMob(MobZombie, Vec3{X: 0.5, Y: 64, Z: 0.5})
+	engine.Tick()
+	if cow.Health != 9 {
+		t.Fatalf("cow health after touching wither rose = %.1f, want 9", cow.Health)
+	}
+	if zombie.Health != 20 {
+		t.Fatalf("undead zombie health after touching wither rose = %.1f, want 20", zombie.Health)
+	}
+}

@@ -2507,6 +2507,36 @@ func (e *Engine) tickPlayerContactEffectsLocked(player *PlayerEntity) {
 	}
 }
 
+// damageMobDuringTick updates a mob from TickMob. Engine.Tick holds mobMu while
+// mob AI runs outside Engine.mu, so only the engine state lock is acquired here.
+func (e *Engine) damageMobDuringTick(mob *MobEntity, damage float32) bool {
+	if mob == nil || damage <= 0 {
+		return false
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.Mobs[mob.ID] != mob || !mob.IsAlive || mob.HurtTime > 5 {
+		return false
+	}
+	mob.Health -= damage
+	mob.HurtTime = 10
+	mob.LastHurtTime = time.Now()
+	if mob.Health > 0 {
+		return false
+	}
+	mob.Health = 0
+	mob.IsAlive = false
+	for _, stack := range mob.DeathDrops() {
+		e.nextItemDropID++
+		e.ItemDrops[e.nextItemDropID] = &ItemDrop{
+			ID: e.nextItemDropID, ItemID: stack.ItemID, Count: stack.Count,
+			Position: mob.Position.Add(Vec3{Y: 0.5}), Velocity: Vec3{Y: 0.15}, PickupDelay: 0.2,
+		}
+	}
+	delete(e.Mobs, mob.ID)
+	return true
+}
+
 func (e *Engine) updatePressurePlatesLocked() {
 	if e.pressurePlatePowered == nil {
 		e.pressurePlatePowered = make(map[world.BlockPos]struct{})
