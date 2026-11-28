@@ -2134,6 +2134,12 @@ func (e *Engine) MovePlayer(id int32, pos Vec3, yaw, pitch float32, onGround boo
 // MovePlayerRelative handles movement inputs with authentic AABB voxel collision resolution.
 // Prevents any wall or floor clipping, and supports smooth sliding along solid voxel faces.
 func (e *Engine) MovePlayerRelative(id int32, delta Vec3, yaw, pitch float32) (Vec3, bool, bool) {
+	return e.MovePlayerRelativeWithSneaking(id, delta, yaw, pitch, false)
+}
+
+// MovePlayerRelativeWithSneaking resolves player movement and applies landing
+// mechanics that depend on the sneak key.
+func (e *Engine) MovePlayerRelativeWithSneaking(id int32, delta Vec3, yaw, pitch float32, sneaking bool) (Vec3, bool, bool) {
 	e.mu.Lock()
 	p, ok := e.Players[id]
 	if !ok || !p.IsAlive {
@@ -2159,9 +2165,15 @@ func (e *Engine) MovePlayerRelative(id int32, delta Vec3, yaw, pitch float32) (V
 	}
 	p.ClientDriven = true
 	oldPos := p.Position
+	impactVelocityY := p.Velocity.Y
 	e.mu.Unlock()
 
 	resolvedPos, ground, hitCeiling := ResolveMovementCollisionForBlocks(oldPos, delta, e.GetBlock)
+	shelfBounce := ground && !sneaking && impactVelocityY < -0.5 &&
+		shelfMushroomLandingAt(resolvedPos, e.GetBlock)
+	if shelfBounce {
+		ground = false
+	}
 
 	// Check if player is in liquid (water 8/9 or lava 10/11) before acquiring lock
 	bx := int32(math.Floor(resolvedPos.X))
@@ -2182,6 +2194,9 @@ func (e *Engine) MovePlayerRelative(id int32, delta Vec3, yaw, pitch float32) (V
 				e.DamagePlayer(id, fallDmg, "fall")
 				e.mu.Lock()
 			}
+			p.FallDistance = 0
+		} else if shelfBounce {
+			p.Velocity.Y = -impactVelocityY * 0.66
 			p.FallDistance = 0
 		} else if hitCeiling && p.Velocity.Y > 0 {
 			p.Velocity.Y = 0
@@ -2215,6 +2230,42 @@ func (e *Engine) MovePlayerRelative(id int32, delta Vec3, yaw, pitch float32) (V
 	}
 
 	return resolvedPos, ground, hitCeiling
+}
+
+func shelfMushroomLandingAt(position Vec3, getBlock func(int32, int32, int32) int32) bool {
+	if getBlock == nil {
+		return false
+	}
+	playerBox := NewPlayerAABB(position)
+	minX, maxX := int32(math.Floor(playerBox.Min.X)), int32(math.Floor(playerBox.Max.X-1e-6))
+	minZ, maxZ := int32(math.Floor(playerBox.Min.Z)), int32(math.Floor(playerBox.Max.Z-1e-6))
+	feetY := position.Y
+	baseY := int32(math.Floor(feetY))
+	for y := baseY - 1; y <= baseY; y++ {
+		for z := minZ; z <= maxZ; z++ {
+			for x := minX; x <= maxX; x++ {
+				blockID := getBlock(x, y, z)
+				_, _, _, ok := inventory.ShelfMushroomStateProperties(blockID)
+				if !ok {
+					continue
+				}
+				shapes, _ := inventory.BlockCollisionBoxesAt(blockID, x, y, z, getBlock)
+				for _, shape := range shapes {
+					top := float64(y) + float64(shape.MaxY)
+					if math.Abs(top-feetY) > 1e-3 {
+						continue
+					}
+					minBlockX, maxBlockX := float64(x)+float64(shape.MinX), float64(x)+float64(shape.MaxX)
+					minBlockZ, maxBlockZ := float64(z)+float64(shape.MinZ), float64(z)+float64(shape.MaxZ)
+					if playerBox.Max.X > minBlockX && playerBox.Min.X < maxBlockX &&
+						playerBox.Max.Z > minBlockZ && playerBox.Min.Z < maxBlockZ {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
 }
 
 // SetPaused toggles singleplayer simulation pause state.

@@ -2453,7 +2453,7 @@ func (c *Client) PhysicsStep(fwdInput, strafeInput float64, jumpRequested bool, 
 	}
 
 	delta := sim.Vec3{X: dx, Y: dy, Z: dz}
-	resolvedPos, onGround, hitCeiling := c.engine.MovePlayerRelative(c.player.ID, delta, float32(c.camera.Yaw), float32(c.camera.Pitch))
+	resolvedPos, onGround, hitCeiling := c.engine.MovePlayerRelativeWithSneaking(c.player.ID, delta, float32(c.camera.Yaw), float32(c.camera.Pitch), c.isSneaking)
 
 	c.player.OnGround = onGround
 	if onGround {

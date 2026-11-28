@@ -831,6 +831,42 @@ func TestShelfMushroomPlacementGrowthAndDrops(t *testing.T) {
 	}
 }
 
+func TestShelfMushroomLandingBouncesAndCancelsFallDamage(t *testing.T) {
+	eng := NewEngine()
+	player := eng.AddPlayer("mushroom-bounce", [16]byte{}, Vec3{X: 8.7, Y: 70, Z: 8.5})
+	if !eng.SetBlockChecked(7, 64, 8, 1) {
+		t.Fatal("failed to place shelf mushroom support")
+	}
+	if !eng.SetBlockChecked(8, 64, 8, inventory.ShelfMushroomBlockState(1, 1)) {
+		t.Fatal("failed to place large shelf mushroom")
+	}
+	player.Velocity.Y = -8
+	player.FallDistance = 8
+	position, onGround, hitCeiling := eng.MovePlayerRelativeWithSneaking(player.ID, Vec3{Y: -8}, 0, 0, false)
+	if hitCeiling || onGround || math.Abs(position.Y-64.6875) > 1e-4 {
+		t.Fatalf("shelf landing resolved to position=%+v ground=%v ceiling=%v", position, onGround, hitCeiling)
+	}
+	if math.Abs(player.Velocity.Y-5.28) > 1e-4 {
+		t.Fatalf("bounce velocity Y = %.4f, want 5.28", player.Velocity.Y)
+	}
+	if player.FallDistance != 0 || player.Health != 20 {
+		t.Fatalf("shelf bounce left fall distance %.2f and health %.1f", player.FallDistance, player.Health)
+	}
+
+	sneakEngine := NewEngine()
+	sneakingPlayer := sneakEngine.AddPlayer("mushroom-sneak", [16]byte{}, Vec3{X: 8.7, Y: 70, Z: 8.5})
+	if !sneakEngine.SetBlockChecked(7, 64, 8, 1) ||
+		!sneakEngine.SetBlockChecked(8, 64, 8, inventory.ShelfMushroomBlockState(1, 1)) {
+		t.Fatal("failed to prepare sneaking shelf landing")
+	}
+	sneakingPlayer.Velocity.Y = -8
+	sneakingPlayer.FallDistance = 8
+	_, sneakingGrounded, _ := sneakEngine.MovePlayerRelativeWithSneaking(sneakingPlayer.ID, Vec3{Y: -8}, 0, 0, true)
+	if !sneakingGrounded || sneakingPlayer.Velocity.Y != 0 || sneakingPlayer.Health != 15 {
+		t.Fatalf("sneaking landing grounded=%v velocity=%v health=%.1f, want grounded without bounce and normal fall damage", sneakingGrounded, sneakingPlayer.Velocity, sneakingPlayer.Health)
+	}
+}
+
 func TestAdditionalTreeSaplingPlacementAndShearedLeafDrop(t *testing.T) {
 	eng := NewEngine()
 	player := eng.AddPlayer("Steve", [16]byte{22}, Vec3{X: 32.5, Y: 64, Z: 32.5})
