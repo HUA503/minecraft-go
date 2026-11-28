@@ -62,6 +62,7 @@ var (
 	procGlobalUnlock                  = kernel32.NewProc("GlobalUnlock")
 	procGlobalSize                    = kernel32.NewProc("GlobalSize")
 	procGlobalFree                    = kernel32.NewProc("GlobalFree")
+	procRtlMoveMemory                 = kernel32.NewProc("RtlMoveMemory")
 )
 
 const (
@@ -89,7 +90,10 @@ func ReadClipboardText() (string, bool) {
 		return "", true
 	}
 	units := min(int(size/2), 1<<20)
-	text := syscall.UTF16ToString(unsafe.Slice((*uint16)(unsafe.Pointer(ptr)), units))
+	buffer := make([]uint16, units)
+	procRtlMoveMemory.Call(uintptr(unsafe.Pointer(unsafe.SliceData(buffer))), ptr, uintptr(units*2))
+	runtime.KeepAlive(buffer)
+	text := syscall.UTF16ToString(buffer)
 	return text, true
 }
 
@@ -116,7 +120,8 @@ func WriteClipboardText(text string) bool {
 		procGlobalFree.Call(handle)
 		return false
 	}
-	copy(unsafe.Slice((*uint16)(unsafe.Pointer(ptr)), len(encoded)), encoded)
+	procRtlMoveMemory.Call(ptr, uintptr(unsafe.Pointer(unsafe.SliceData(encoded))), uintptr(bytes))
+	runtime.KeepAlive(encoded)
 	procGlobalUnlock.Call(handle)
 	if result, _, _ := procSetClipboardData.Call(clipboardUnicodeText, handle); result == 0 {
 		procGlobalFree.Call(handle)
