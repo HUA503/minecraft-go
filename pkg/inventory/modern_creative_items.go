@@ -43,6 +43,13 @@ const (
 	ItemMace               int32 = 16216
 	ItemHeavyCore          int32 = 16217
 	ItemStrawBed           int32 = 16218
+	ItemWoodenSpear        int32 = 16219
+	ItemStoneSpear         int32 = 16220
+	ItemCopperSpear        int32 = 16221
+	ItemIronSpear          int32 = 16222
+	ItemGoldenSpear        int32 = 16223
+	ItemDiamondSpear       int32 = 16224
+	ItemNetheriteSpear     int32 = 16225
 	ItemWhiteDye           int32 = 17000
 	ItemOrangeDye          int32 = 17001
 	ItemMagentaDye         int32 = 17002
@@ -163,6 +170,13 @@ var modernCreativeItemDefinitions = [...]ModernCreativeItemDefinition{
 	{16183, "minecraft:ominous_trial_key", "\u4e0d\u7965\u8bd5\u70bc\u94a5\u5319", "ominous_trial_key", CreativeMaterials, 64},
 	{ItemHeavyCore, "minecraft:heavy_core", "\u91cd\u578b\u6838\u5fc3", "heavy_core", CreativeMaterials, 64},
 	{ItemMace, "minecraft:mace", "\u91cd\u9524", "mace", CreativeCombat, 1},
+	{ItemWoodenSpear, "minecraft:wooden_spear", "\u6728\u77db", "wooden_spear", CreativeCombat, 1},
+	{ItemStoneSpear, "minecraft:stone_spear", "\u77f3\u77db", "stone_spear", CreativeCombat, 1},
+	{ItemCopperSpear, "minecraft:copper_spear", "\u94dc\u77db", "copper_spear", CreativeCombat, 1},
+	{ItemIronSpear, "minecraft:iron_spear", "\u94c1\u77db", "iron_spear", CreativeCombat, 1},
+	{ItemGoldenSpear, "minecraft:golden_spear", "\u91d1\u77db", "golden_spear", CreativeCombat, 1},
+	{ItemDiamondSpear, "minecraft:diamond_spear", "\u94bb\u77db", "diamond_spear", CreativeCombat, 1},
+	{ItemNetheriteSpear, "minecraft:netherite_spear", "\u4e0b\u754c\u5408\u91d1\u77db", "netherite_spear", CreativeCombat, 1},
 	{ItemStrawBed, "minecraft:straw_bed", "\u7a3b\u8349\u5e8a", "straw_bed_particle", CreativeFunctional, 1},
 	{ItemWhiteDye, "minecraft:white_dye", "\u767d\u8272\u67d3\u6599", "white_dye", CreativeMaterials, 64},
 	{ItemOrangeDye, "minecraft:orange_dye", "\u6a59\u8272\u67d3\u6599", "orange_dye", CreativeMaterials, 64},
