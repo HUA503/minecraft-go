@@ -92,6 +92,7 @@ func buildExtendedBlockDefinitions() []ExtendedBlockDefinition {
 		{RuntimeID: 10100, Name: "minecraft:red_shrub", TextureTop: "red_shrub", TextureBottom: "red_shrub", TextureSide: "red_shrub", Category: CreativeNatural, Hardness: 0.1, DropRuntimeID: 10100},
 	}
 	definitions = append(definitions, modernFullCubeDefinitions()...)
+	definitions = append(definitions, strawBedBlockDefinition())
 	definitions = append(definitions, woodCubeDefinitions()...)
 	definitions = append(definitions, coloredBlockDefinitions()...)
 	definitions = append(definitions, stainedGlassBlockDefinitions()...)
@@ -1196,6 +1197,7 @@ var extendedBlockDisplayNames = map[string]string{
 	"minecraft:yellow_poplar_leaves":    "黄色杨木树叶",
 	"minecraft:poplar_sapling":          "杨木树苗",
 	"minecraft:red_shrub":               "红灌木",
+	"minecraft:straw_bed":               "稻草床",
 }
 
 func init() {

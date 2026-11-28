@@ -42,6 +42,7 @@ const (
 	ItemBreezeRod          int32 = 16113
 	ItemMace               int32 = 16216
 	ItemHeavyCore          int32 = 16217
+	ItemStrawBed           int32 = 16218
 	ItemWhiteDye           int32 = 17000
 	ItemOrangeDye          int32 = 17001
 	ItemMagentaDye         int32 = 17002
@@ -162,6 +163,7 @@ var modernCreativeItemDefinitions = [...]ModernCreativeItemDefinition{
 	{16183, "minecraft:ominous_trial_key", "\u4e0d\u7965\u8bd5\u70bc\u94a5\u5319", "ominous_trial_key", CreativeMaterials, 64},
 	{ItemHeavyCore, "minecraft:heavy_core", "\u91cd\u578b\u6838\u5fc3", "heavy_core", CreativeMaterials, 64},
 	{ItemMace, "minecraft:mace", "\u91cd\u9524", "mace", CreativeCombat, 1},
+	{ItemStrawBed, "minecraft:straw_bed", "\u7a3b\u8349\u5e8a", "straw_bed_particle", CreativeFunctional, 1},
 	{ItemWhiteDye, "minecraft:white_dye", "\u767d\u8272\u67d3\u6599", "white_dye", CreativeMaterials, 64},
 	{ItemOrangeDye, "minecraft:orange_dye", "\u6a59\u8272\u67d3\u6599", "orange_dye", CreativeMaterials, 64},
 	{ItemMagentaDye, "minecraft:magenta_dye", "\u54c1\u7ea2\u8272\u67d3\u6599", "magenta_dye", CreativeMaterials, 64},

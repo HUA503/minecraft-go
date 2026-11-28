@@ -167,6 +167,7 @@ const (
 	ItemSugarCane     int32 = 83
 	ItemPumpkin       int32 = 86
 	ItemMelon         int32 = 103
+	ItemHayBale       int32 = 170
 )
 
 // IsPlaceableBlock reports whether an item ID corresponds to a placeable voxel block.

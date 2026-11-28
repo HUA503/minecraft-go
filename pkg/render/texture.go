@@ -987,6 +987,12 @@ func initOfficialBlockTextures() {
 		upperState, _ := inventory.TallFlowerBlockState(block.RuntimeID, true)
 		loadBlock(upperState, block.TextureTop, block.TextureTop, block.TextureTop)
 	}
+	for facing := 0; facing < 4; facing++ {
+		for _, head := range []bool{false, true} {
+			state := inventory.StrawBedBlockState(inventory.ItemStrawBed, facing, head)
+			loadBlock(state, "straw_bed_particle", "straw_bed_particle", "straw_bed_particle")
+		}
+	}
 	for _, candle := range inventory.ExtendedBlockDefinitions() {
 		if !inventory.IsCandleItem(candle.RuntimeID) {
 			continue

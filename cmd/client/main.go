@@ -3115,6 +3115,7 @@ func (c *Client) MineTargetedBlock() (int32, bool) {
 	}
 	targetPos := c.targetedPos
 	blockID := c.engine.GetBlockIfLoaded(targetPos.X, targetPos.Y, targetPos.Z)
+	bedParts := strawBedPartsForBreak(c.engine, targetPos)
 	drop, ok := c.engine.BreakBlockWithTool(c.player.ID, targetPos, heldToolID)
 	c.spawnBlockDebris(targetPos, blockID, 20)
 	sound.PlayHardwareFeedback(sound.GetBlockBreakSound(blockID))
@@ -3126,6 +3127,17 @@ func (c *Client) MineTargetedBlock() (int32, bool) {
 			Z:       targetPos.Z,
 			BlockID: 0,
 		})
+	}
+	if ok {
+		for _, part := range bedParts {
+			if c.engine.GetBlockIfLoaded(part.X, part.Y, part.Z) != 0 {
+				continue
+			}
+			c.RebuildAffectedMeshes(part)
+			if c.conn != nil {
+				_ = c.sendPacket(&protocol.BlockUpdatePacket{X: part.X, Y: part.Y, Z: part.Z, BlockID: 0})
+			}
+		}
 	}
 	return drop, ok
 }
@@ -3203,6 +3215,9 @@ func (c *Client) PlaceBlockInFront() bool {
 	if buttonState, isButton := inventory.ButtonPlacementState(selected.ItemID, res.FaceX, res.FaceY, res.FaceZ); isButton {
 		placedBlockID = buttonState
 	}
+	if bedState, isStrawBed := inventory.StrawBedPlacementState(selected.ItemID, float64(c.camera.Yaw)); isStrawBed {
+		placedBlockID = bedState
+	}
 	if stackCandle {
 		// The engine adds one matching candle to the clicked cluster.
 	} else if mergeSlab {
@@ -3255,14 +3270,29 @@ func (c *Client) PlaceBlockInFront() bool {
 		c.RebuildAffectedMeshes(targetPos)
 		c.isSwinging = true
 		c.swingProgress = 0.0
+		placedState := c.engine.GetBlock(targetPos.X, targetPos.Y, targetPos.Z)
+		var bedHeadPos world.BlockPos
+		var bedHeadState int32
+		hasBedHead := false
+		if dx, dz, headState, isBed := inventory.StrawBedOtherHalf(placedState); isBed {
+			bedHeadPos = world.BlockPos{X: targetPos.X + dx, Y: targetPos.Y, Z: targetPos.Z + dz}
+			bedHeadState = headState
+			hasBedHead = true
+			c.RebuildAffectedMeshes(bedHeadPos)
+		}
 		if c.conn != nil {
-			placedState := c.engine.GetBlock(targetPos.X, targetPos.Y, targetPos.Z)
 			_ = c.sendPacket(&protocol.BlockUpdatePacket{
 				X:       targetPos.X,
 				Y:       targetPos.Y,
 				Z:       targetPos.Z,
 				BlockID: placedState,
 			})
+			if hasBedHead {
+				_ = c.sendPacket(&protocol.BlockUpdatePacket{
+					X: bedHeadPos.X, Y: bedHeadPos.Y, Z: bedHeadPos.Z,
+					BlockID: bedHeadState,
+				})
+			}
 		}
 	}
 	return ok
@@ -3272,6 +3302,30 @@ func (c *Client) PlaceBlockInFront() bool {
 func (c *Client) UpdateRightClick(isRightDown bool, dt float64) {
 	if c.player == nil || c.engine == nil || c.player.Inventory == nil {
 		return
+	}
+	if isRightDown && c.isLocal && c.placeCooldown <= 0 && c.hasTarget {
+		bedState := c.engine.GetBlockIfLoaded(c.targetedPos.X, c.targetedPos.Y, c.targetedPos.Z)
+		if _, _, _, isStrawBed := inventory.StrawBedStateProperties(bedState); isStrawBed {
+			sx, sz, otherState, _ := inventory.StrawBedOtherHalf(bedState)
+			otherPos := world.BlockPos{X: c.targetedPos.X + sx, Y: c.targetedPos.Y, Z: c.targetedPos.Z + sz}
+			hadOtherHalf := c.engine.GetBlockIfLoaded(otherPos.X, otherPos.Y, otherPos.Z) == otherState
+			slept, destroyed := c.engine.UseStrawBed(c.player.ID, c.targetedPos)
+			if destroyed {
+				c.RebuildAffectedMeshes(c.targetedPos)
+				c.RebuildAffectedMeshes(otherPos)
+				if c.conn != nil {
+					_ = c.sendPacket(&protocol.BlockUpdatePacket{X: c.targetedPos.X, Y: c.targetedPos.Y, Z: c.targetedPos.Z, BlockID: 0})
+					if hadOtherHalf {
+						_ = c.sendPacket(&protocol.BlockUpdatePacket{X: otherPos.X, Y: otherPos.Y, Z: otherPos.Z, BlockID: 0})
+					}
+				}
+				if slept {
+					sound.PlayHardwareFeedback("minecraft:block.straw_bed.use")
+				}
+				c.placeCooldown = 0.3
+			}
+			return
+		}
 	}
 
 	sel := c.player.Inventory.GetSelectedItem()

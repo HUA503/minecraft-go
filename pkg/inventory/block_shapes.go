@@ -214,6 +214,9 @@ func BlockCollisionBoxesAt(blockID, x, y, z int32, getBlock func(int32, int32, i
 	if IsCushionBlock(blockID) {
 		return cushionVisualBox, true
 	}
+	if _, _, _, ok := StrawBedStateProperties(blockID); ok {
+		return strawBedCollisionBox, true
+	}
 	if IsThinCarpetBlock(blockID) {
 		return carpetCollisionBox, true
 	}
@@ -450,6 +453,9 @@ func SlabMergeState(existingBlockID, itemID, faceY int32, localHitY float64) (in
 // BlockItemForState returns the placeable item represented by a runtime block
 // state, leaving ordinary block IDs unchanged.
 func BlockItemForState(blockID int32) int32 {
+	if itemID, _, _, ok := StrawBedStateProperties(blockID); ok {
+		return itemID
+	}
 	if itemID, _, ok := TallFlowerStateProperties(blockID); ok {
 		return itemID
 	}

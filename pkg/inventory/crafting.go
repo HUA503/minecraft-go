@@ -35,6 +35,13 @@ func (cm *CraftingManager) registerDefaults() {
 		Output:  ItemStack{ItemID: ItemMace, Count: 1},
 	})
 
+	// Three hay bales produce four disposable straw beds.
+	cm.Recipes = append(cm.Recipes, Recipe{
+		Width: 3, Height: 1,
+		Pattern: []int32{ItemHayBale, ItemHayBale, ItemHayBale},
+		Output:  ItemStack{ItemID: ItemStrawBed, Count: 4},
+	})
+
 	// 1. Oak Log -> 4 Oak Planks (1x1)
 	cm.Recipes = append(cm.Recipes, Recipe{
 		Width:   1,

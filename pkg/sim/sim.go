@@ -914,6 +914,12 @@ func (e *Engine) BreakBlockWithTool(playerID int32, pos world.BlockPos, toolID i
 		return 0, false
 	}
 	e.removeTallFlowerOtherHalf(pos, origBlock)
+	e.removeStrawBedOtherHalf(pos, origBlock)
+	if unsupportedBed := e.removeUnsupportedStrawBedAbove(pos); unsupportedBed != 0 {
+		e.mu.Lock()
+		e.spawnItemDropLocked(unsupportedBed, 1, Vec3{X: float64(pos.X) + 0.5, Y: float64(pos.Y) + 1.1, Z: float64(pos.Z) + 0.5}, Vec3{Y: 0.18}, 0.2)
+		e.mu.Unlock()
+	}
 	if carpet := e.removeUnsupportedCarpetAbove(pos); carpet != 0 {
 		e.mu.Lock()
 		e.spawnItemDropLocked(carpet, 1, Vec3{X: float64(pos.X) + 0.5, Y: float64(pos.Y) + 1.1, Z: float64(pos.Z) + 0.5}, Vec3{Y: 0.18}, 0.2)
@@ -1195,6 +1201,15 @@ func (e *Engine) rollBlockDropCount(blockID int32) int {
 
 // PlaceBlock places a block if it does not intersect the player's bounding box.
 func (e *Engine) PlaceBlock(playerID int32, pos world.BlockPos, blockID int32) bool {
+	if blockID == inventory.ItemStrawBed {
+		blockID, _ = inventory.StrawBedPlacementState(blockID, 0)
+	}
+	if _, _, isHead, isStrawBed := inventory.StrawBedStateProperties(blockID); isStrawBed {
+		if isHead {
+			return false
+		}
+		return e.placeStrawBed(playerID, pos, blockID)
+	}
 	if inventory.IsTallFlowerItem(blockID) {
 		if pos.Y <= world.MinWorldY || pos.Y >= world.MaxWorldY || !inventory.IsFlowerSoilBlock(e.GetBlock(pos.X, pos.Y-1, pos.Z)) {
 			return false
