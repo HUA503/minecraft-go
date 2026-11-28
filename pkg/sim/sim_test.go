@@ -3,6 +3,7 @@ package sim
 import (
 	"math"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -1114,6 +1115,55 @@ func TestBoneMealDoesNotConsumeWhenRedShrubCannotSpread(t *testing.T) {
 	}
 	if got := player.Inventory.Slots[0].Count; got != 2 {
 		t.Fatalf("failed bone meal use consumed an item: count = %d", got)
+	}
+}
+
+func TestConcurrentRedShrubBoneMealUseConsumesAndPlacesAtomically(t *testing.T) {
+	eng := NewEngine()
+	player := eng.AddPlayer("Steve", [16]byte{2}, Vec3{X: 20.5, Y: 64, Z: 20.5})
+	pos := world.BlockPos{X: 10, Y: 64, Z: 10}
+	eng.SetBlock(pos.X, pos.Y-1, pos.Z, inventory.ItemStone)
+	eng.SetBlock(pos.X, pos.Y, pos.Z, 10100)
+	for _, direction := range [][2]int32{{1, 0}, {-1, 0}, {0, 1}, {0, -1}} {
+		eng.SetBlock(pos.X+direction[0], pos.Y-1, pos.Z+direction[1], inventory.ItemStone)
+	}
+	player.Inventory.Slots[0] = inventory.ItemStack{ItemID: inventory.ItemBoneMeal, Count: 1}
+
+	start := make(chan struct{})
+	results := make(chan bool, 2)
+	var workers sync.WaitGroup
+	workers.Add(2)
+	for i := 0; i < 2; i++ {
+		go func() {
+			defer workers.Done()
+			<-start
+			_, grown := eng.UseBoneMealOnRedShrub(player.ID, pos)
+			results <- grown
+		}()
+	}
+	close(start)
+	workers.Wait()
+	close(results)
+	successes := 0
+	for grown := range results {
+		if grown {
+			successes++
+		}
+	}
+	if successes != 1 {
+		t.Fatalf("two concurrent bone meal uses succeeded %d times, want once", successes)
+	}
+	if player.Inventory.Slots[0] != (inventory.ItemStack{}) {
+		t.Fatalf("bone meal after concurrent use = %+v, want empty", player.Inventory.Slots[0])
+	}
+	spreadShrubs := 0
+	for _, direction := range [][2]int32{{1, 0}, {-1, 0}, {0, 1}, {0, -1}} {
+		if eng.GetBlock(pos.X+direction[0], pos.Y, pos.Z+direction[1]) == 10100 {
+			spreadShrubs++
+		}
+	}
+	if spreadShrubs != 1 {
+		t.Fatalf("concurrent bone meal placed %d shrubs, want exactly one", spreadShrubs)
 	}
 }
 

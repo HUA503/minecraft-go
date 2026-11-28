@@ -1773,8 +1773,14 @@ func (e *Engine) UseBoneMealOnRedShrub(playerID int32, pos world.BlockPos) (worl
 	}
 	e.mu.Lock()
 	player, ok := e.Players[playerID]
-	if !ok || player == nil || player.Inventory == nil || player.Inventory.GetSelectedItem().ItemID != inventory.ItemBoneMeal ||
-		e.CurrentDimension != 0 || e.getBlockLocked(pos.X, pos.Y, pos.Z) != 10100 {
+	if !ok || player == nil || player.Inventory == nil || e.CurrentDimension != 0 || e.getBlockLocked(pos.X, pos.Y, pos.Z) != 10100 {
+		e.mu.Unlock()
+		return world.BlockPos{}, false
+	}
+	selected := player.Inventory.GetSelectedItem()
+	slot := player.Inventory.SelectedHotbar
+	if selected.ItemID != inventory.ItemBoneMeal || (player.GameMode != 1 && selected.Count < 1) ||
+		player.GameMode != 1 && (slot < 0 || slot >= len(player.Inventory.Slots)) {
 		e.mu.Unlock()
 		return world.BlockPos{}, false
 	}
@@ -1796,27 +1802,25 @@ func (e *Engine) UseBoneMealOnRedShrub(playerID int32, pos world.BlockPos) (worl
 		grown, found = candidate, true
 		break
 	}
-	creative := player.GameMode == 1
-	e.mu.Unlock()
-	if !found || !e.SetBlockChecked(grown.X, grown.Y, grown.Z, 10100) {
+	if !found {
+		e.mu.Unlock()
 		return world.BlockPos{}, false
 	}
-	if !creative {
-		e.mu.Lock()
-		if current, exists := e.Players[playerID]; exists && current != nil && current.Inventory != nil {
-			slot := current.Inventory.SelectedHotbar
-			if slot >= 0 && slot < len(current.Inventory.Slots) {
-				stack := &current.Inventory.Slots[slot]
-				if stack.ItemID == inventory.ItemBoneMeal && stack.Count > 0 {
-					stack.Count--
-					if stack.Count == 0 {
-						*stack = inventory.ItemStack{}
-					}
-				}
-			}
-		}
+	// Commit the block mutation and item consumption together so simultaneous
+	// uses cannot both grow from a single remaining bone meal.
+	e.setBlockLocked(grown.X, grown.Y, grown.Z, 10100)
+	if e.getBlockLocked(grown.X, grown.Y, grown.Z) != 10100 {
 		e.mu.Unlock()
+		return world.BlockPos{}, false
 	}
+	if player.GameMode != 1 {
+		stack := &player.Inventory.Slots[slot]
+		stack.Count--
+		if stack.Count == 0 {
+			*stack = inventory.ItemStack{}
+		}
+	}
+	e.mu.Unlock()
 	return grown, true
 }
 
