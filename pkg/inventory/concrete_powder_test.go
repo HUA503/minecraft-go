@@ -52,3 +52,22 @@ func TestConcretePowderRecipesUseMatchingDye(t *testing.T) {
 		}
 	}
 }
+
+func TestConcretePowderCreativeOrderMatchesJavaColorGroup(t *testing.T) {
+	var got []string
+	for _, item := range CreativeCatalog(CreativeDecoration) {
+		name := creativeItemRegistryName(item.ID)
+		if IsConcretePowderBlock(item.ID) {
+			got = append(got, name)
+		}
+	}
+	if len(got) != len(cushionColors) {
+		t.Fatalf("creative tab has %d concrete powder colors, want %d", len(got), len(cushionColors))
+	}
+	for index, color := range cushionColors {
+		want := "minecraft:" + color.name + "_concrete_powder"
+		if got[index] != want {
+			t.Errorf("concrete powder color at creative index %d = %q, want %q", index, got[index], want)
+		}
+	}
+}

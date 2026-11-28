@@ -1530,7 +1530,7 @@ var vanillaCreativeTabRanks = func() map[CreativeCategory]map[string]int {
 	for category, names := range vanillaCreativeTabOrder {
 		rank := make(map[string]int, len(names))
 		for i, name := range names {
-			rank[name] = i
+			rank[name] = i * 16
 		}
 		ranks[category] = rank
 	}

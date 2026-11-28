@@ -11,6 +11,7 @@ Last checked: 2026-11-28 against the project's `vanillaCreativeTabOrder` and the
 - Added the Java 26.3 shelf mushroom in commit `b352209`: two size stages, side support/facing, bone-meal growth, stage-specific drops and the rabbit-stew recipe. Bouncing behavior and wandering-trader offers remain missing.
 - The creative catalog contains 1,060 entries after adding the 16 colored concrete powders.
 - Added all 16 dyed concrete-powder items with Java 26.3 textures and dye recipes. They fall through replaceable blocks in the current simulation and harden beside water into the matching concrete color.
+- The 16 powder colors now sort at the vanilla concrete-powder group position in Java's dye-color order instead of falling to the end of the tab.
 - Concrete-powder falling currently advances one block per game tick and does not create Java falling-block entities or preserve their full landing/drop behavior. This is functional coverage, not exact parity.
 - Powder block-tick state is rebuilt from block data when chunks load and is isolated per dimension, so save/reload or dimension switches do not silently stop or misapply pending falls. Added regression coverage for both paths.
 

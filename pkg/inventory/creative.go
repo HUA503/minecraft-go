@@ -126,10 +126,21 @@ func sortCreativeItemsByVanillaOrder(items []CreativeItem, groupByCategory bool)
 	}
 	itemRank := func(item CreativeItem) int {
 		rank := vanillaCreativeTabRanks[item.Category]
-		if position, ok := rank[creativeItemRegistryName(item.ID)]; ok {
+		registryName := creativeItemRegistryName(item.ID)
+		if position, ok := rank[registryName]; ok {
 			return position
 		}
-		return len(rank) + originalOrder[item.ID]
+		if strings.HasSuffix(registryName, "_concrete_powder") {
+			if powderGroupRank, ok := rank["minecraft:concrete_powder"]; ok {
+				colorName := strings.TrimSuffix(strings.TrimPrefix(registryName, "minecraft:"), "_concrete_powder")
+				for colorIndex, color := range cushionColors {
+					if color.name == colorName {
+						return powderGroupRank + colorIndex
+					}
+				}
+			}
+		}
+		return len(rank)*16 + originalOrder[item.ID]*16
 	}
 	sort.SliceStable(items, func(i, j int) bool {
 		itemI, itemJ := items[i], items[j]
