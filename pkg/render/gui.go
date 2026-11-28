@@ -659,59 +659,82 @@ func (fb *Framebuffer) DrawFurnaceGUI(furnace *inventory.FurnaceBlockEntity, inv
 	}
 }
 
-// DrawTitleScreen renders the authentic Minecraft main menu.
+// DrawTitleScreen renders the title screen using Java 26.3's official logo,
+// edition mark, button sprites and GUI-scaled menu geometry.
 func (fb *Framebuffer) DrawTitleScreen(mouseX, mouseY int) (spBtn, mpBtn, quitBtn [4]int) {
-	// Background dirt pattern
+	// The Java 26.3 distribution available to this project contains 1x1
+	// placeholders for its title panorama. Keep a neutral dark backing until
+	// the actual panorama is available instead of presenting another game's art.
 	for y := 0; y < fb.Height; y++ {
 		for x := 0; x < fb.Width; x++ {
-			// Dark textured dirt vignette
-			p := ((x ^ y) & 7) * 4
-			r := uint32(35 + p)
-			g := uint32(25 + p)
-			b := uint32(18 + p)
-			fb.Color[y*fb.Width+x] = 0xFF000000 | (r << 16) | (g << 8) | b
+			shade := uint32(19 + (fb.Height-y)*9/max(1, fb.Height))
+			fb.Color[y*fb.Width+x] = 0xFF000000 | (shade << 16) | (shade << 8) | shade
 		}
 	}
 
-	// Title Banner: "MINECRAFT"
-	title := "MINECRAFT"
-	tw := MeasureText5x7(title, 3)
-	tx := (fb.Width - tw) / 2
-	ty := fb.Height/4 - 30
-	fb.DrawText5x7(tx, ty, title, 0xFFE0E0E0, 3)
+	scale := CalculateGUIScaleFromDimensions(fb.Width, fb.Height)
+	if scale < 1 {
+		scale = 1
+	}
+	logicalW, logicalH := fb.Width/scale, fb.Height/scale
+	if logo, ok := GetOfficialImage("gui/title/minecraft.png"); ok {
+		drawTitleImageRegion(fb, (logicalW-256)/2*scale, 30*scale, scale, logo, 256, 64)
+	}
+	if edition, ok := GetOfficialImage("gui/title/edition.png"); ok {
+		drawTitleImageRegion(fb, (logicalW-128)/2*scale, (30+44-7)*scale, scale, edition, 128, 16)
+	}
 
-	sub := "Go Edition 1.0 (Pure Go)"
-	sw := MeasureText5x7(sub, 1)
-	fb.DrawText5x7((fb.Width-sw)/2, ty+28, sub, 0xFFFFFF55, 1)
-
-	// Buttons
-	btnW := 220
-	btnH := 26
+	btnW, btnH := 200*scale, 20*scale
 	btnX := (fb.Width - btnW) / 2
+	menuY := (logicalH/4 + 48) * scale
+	button := func(y int, label string) [4]int {
+		rect := [4]int{btnX, y, btnW, btnH}
+		hovered := mouseX >= btnX && mouseX < btnX+btnW && mouseY >= y && mouseY < y+btnH
+		texture := "gui/sprites/widget/button.png"
+		if hovered {
+			texture = "gui/sprites/widget/button_highlighted.png"
+		}
+		if sprite, ok := GetOfficialImage(texture); ok {
+			drawNineSliceRawImage(fb, sprite, btnX, y, scale, btnW, btnH, 3, true)
+		} else {
+			fb.DrawButton(btnX, y, btnW, btnH, "", hovered)
+		}
+		textWidth := MeasureText5x7(label, scale)
+		textY := y + (btnH-7*scale)/2
+		fb.DrawText5x7(btnX+(btnW-textWidth)/2, textY, label, 0xFFFFFFFF, scale)
+		return rect
+	}
 
-	// 1. Singleplayer (单人游戏)
-	spY := fb.Height/2 - 15
-	hoverSP := mouseX >= btnX && mouseX <= btnX+btnW && mouseY >= spY && mouseY <= spY+btnH
-	fb.DrawButton(btnX, spY, btnW, btnH, "单人游戏", hoverSP)
-	spBtn = [4]int{btnX, spY, btnW, btnH}
+	// The existing client routes these three actions. The title menu follows
+	// vanilla's 200x20 buttons and 24px row pitch at the configured GUI scale.
+	spBtn = button(menuY, "单人游戏")
+	mpBtn = button(menuY+24*scale, "多人游戏")
+	quitBtn = button(menuY+48*scale, "退出游戏")
 
-	// 2. Multiplayer (多人联机)
-	mpY := spY + 34
-	hoverMP := mouseX >= btnX && mouseX <= btnX+btnW && mouseY >= mpY && mouseY <= mpY+btnH
-	fb.DrawButton(btnX, mpY, btnW, btnH, "多人联机", hoverMP)
-	mpBtn = [4]int{btnX, mpY, btnW, btnH}
-
-	// 3. Quit Game (退出游戏)
-	qY := mpY + 34
-	hoverQ := mouseX >= btnX && mouseX <= btnX+btnW && mouseY >= qY && mouseY <= qY+btnH
-	fb.DrawButton(btnX, qY, btnW, btnH, "退出游戏", hoverQ)
-	quitBtn = [4]int{btnX, qY, btnW, btnH}
-
-	// Bottom copyright
-	copyRight := "Minecraft Go Clone - Pure Go"
-	fb.DrawText5x7(6, fb.Height-12, copyRight, 0xFF888888, 1)
+	copyRight := "Mojang AB"
+	copyWidth := MeasureText5x7(copyRight, scale)
+	fb.DrawText5x7(fb.Width-copyWidth-2*scale, fb.Height-10*scale, copyRight, 0xFFFFFFFF, scale)
 
 	return spBtn, mpBtn, quitBtn
+}
+
+// drawTitleImageRegion converts Mojang's four-times title textures into their
+// 256x64 and 128x16 logical GUI dimensions while preserving nearest-neighbour
+// pixels and alpha.
+func drawTitleImageRegion(fb *Framebuffer, x, y, scale int, image *RawImage, width, height int) {
+	if fb == nil || image == nil || scale < 1 || width < 1 || height < 1 ||
+		image.Width < width || image.Height < height || image.Height > len(image.Pixels)/image.Width {
+		return
+	}
+	stepX, stepY := max(1, image.Width/width), max(1, image.Height/height)
+	for iy := 0; iy < height; iy++ {
+		for ix := 0; ix < width; ix++ {
+			color := image.Pixels[(iy*stepY+stepY/2)*image.Width+ix*stepX+stepX/2]
+			if color>>24 != 0 {
+				fb.DrawRect(x+ix*scale, y+iy*scale, scale, scale, color)
+			}
+		}
+	}
 }
 
 // DrawAdvancementScreen renders the player's advancement overview.

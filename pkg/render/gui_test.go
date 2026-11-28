@@ -110,6 +110,42 @@ func TestGUIHitTestingAndDrawing(t *testing.T) {
 	}
 }
 
+func TestTitleScreenUsesJava263AssetsAndScaledGeometry(t *testing.T) {
+	for _, path := range []struct {
+		name string
+		w, h int
+	}{
+		{name: "small", w: 320, h: 240},
+		{name: "scaled", w: 1200, h: 700},
+	} {
+		fb := NewFramebuffer(path.w, path.h)
+		sp, mp, quit := fb.DrawTitleScreen(-1, -1)
+		scale := CalculateGUIScaleFromDimensions(path.w, path.h)
+		menuY := (path.h/scale/4 + 48) * scale
+		wantW, wantH := 200*scale, 20*scale
+		if sp != [4]int{(path.w - wantW) / 2, menuY, wantW, wantH} {
+			t.Fatalf("%s singleplayer button geometry = %v", path.name, sp)
+		}
+		if mp[1] != menuY+24*scale || quit[1] != menuY+48*scale {
+			t.Fatalf("%s button row geometry = multiplayer %v quit %v", path.name, mp, quit)
+		}
+	}
+	for _, asset := range []struct {
+		path string
+		w, h int
+	}{
+		{path: "gui/title/minecraft.png", w: 1024, h: 256},
+		{path: "gui/title/edition.png", w: 512, h: 64},
+		{path: "gui/sprites/widget/button.png", w: 200, h: 20},
+		{path: "gui/sprites/widget/button_highlighted.png", w: 200, h: 20},
+	} {
+		img, ok := GetOfficialImage(asset.path)
+		if !ok || img.Width != asset.w || img.Height != asset.h {
+			t.Fatalf("Java 26.3 title asset %q = (%v, %v), want %dx%d", asset.path, ok, img, asset.w, asset.h)
+		}
+	}
+}
+
 func TestCreativeInventoryCatalogAndHitTesting(t *testing.T) {
 	if tab := creativeTabForCategory(inventory.CreativeFood); tab.icon != inventory.ItemGoldenApple {
 		t.Fatalf("Java 26.3 food tab icon = %d, want golden apple (%d)", tab.icon, inventory.ItemGoldenApple)

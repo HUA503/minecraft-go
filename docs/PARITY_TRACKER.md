@@ -38,6 +38,7 @@ The table counts references in the official category lists that have no matching
 
 ## UI and runtime gaps
 
+- The title screen now uses the Java 26.3 logo, edition mark, normal/hover button textures, and GUI-scaled 200x20 button geometry with the vanilla 24px row spacing. The bundled Java client has only 1x1 title panorama placeholders, so its latest panorama background cannot be reconstructed from the checked-in release assets; the current dark fill is explicitly a temporary fallback. The Online/Realms and Options buttons, language/accessibility controls, exact title panorama, and full menu layout are still missing.
 - Creative inventory panel, representative tab textures, status-effect panel and icons use Java 26.3 assets; tab positions and hit regions have source-level checks. A full Java-client screenshot comparison at matching resolution and UI scale has not been completed, so pixel parity is unverified.
 - Search/catalog counts, mouse behavior, tooltips, scrolling, player preview, other inventory screens, fonts and UI scaling still need visual and interaction comparison against 26.3.
 - Rendering, items and blocks still have the tab-mapping gaps above; registered items are not necessarily behavior-complete.
