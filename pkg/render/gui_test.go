@@ -258,24 +258,25 @@ func TestCreativeTabsMatchJava263VanillaRows(t *testing.T) {
 		category inventory.CreativeCategory
 		column   int
 		bottom   bool
+		x        int
 	}{
-		{inventory.CreativeBlocks, 0, false},
-		{inventory.CreativeDecoration, 1, false},
-		{inventory.CreativeNatural, 2, false},
-		{inventory.CreativeFunctional, 3, false},
-		{inventory.CreativeRedstone, 4, false},
-		{inventory.CreativeHotbar, 5, false},
-		{inventory.CreativeAll, 6, false},
-		{inventory.CreativeTools, 0, true},
-		{inventory.CreativeCombat, 1, true},
-		{inventory.CreativeFood, 2, true},
-		{inventory.CreativeMaterials, 3, true},
-		{inventory.CreativeSpawnEggs, 4, true},
-		{inventory.CreativeInventory, 6, true},
+		{inventory.CreativeBlocks, 0, false, 0},
+		{inventory.CreativeDecoration, 1, false, 27},
+		{inventory.CreativeNatural, 2, false, 54},
+		{inventory.CreativeFunctional, 3, false, 81},
+		{inventory.CreativeRedstone, 4, false, 108},
+		{inventory.CreativeHotbar, 5, false, 142},
+		{inventory.CreativeAll, 6, false, 169},
+		{inventory.CreativeTools, 0, true, 0},
+		{inventory.CreativeCombat, 1, true, 27},
+		{inventory.CreativeFood, 2, true, 54},
+		{inventory.CreativeMaterials, 3, true, 81},
+		{inventory.CreativeSpawnEggs, 4, true, 108},
+		{inventory.CreativeInventory, 6, true, 169},
 	} {
 		tab := creativeTabForCategory(tc.category)
-		if tab.column != tc.column || tab.bottom != tc.bottom {
-			t.Errorf("creative tab %d position = bottom:%v column:%d, want bottom:%v column:%d", tc.category, tab.bottom, tab.column, tc.bottom, tc.column)
+		if tab.column != tc.column || tab.bottom != tc.bottom || creativeTabX(tab) != tc.x {
+			t.Errorf("creative tab %d position = bottom:%v column:%d x:%d, want bottom:%v column:%d x:%d", tc.category, tab.bottom, tab.column, creativeTabX(tab), tc.bottom, tc.column, tc.x)
 		}
 	}
 	hotbar := creativeTabForCategory(inventory.CreativeHotbar)
@@ -285,13 +286,24 @@ func TestCreativeTabsMatchJava263VanillaRows(t *testing.T) {
 	if got := creativeTabSpriteVariant(hotbar); got != 6 {
 		t.Fatalf("saved hotbars sprite variant = %d, want column variant 6", got)
 	}
+	if !hotbar.alignedRight {
+		t.Fatal("saved hotbars tab must use vanilla right alignment")
+	}
 
 	const width, height = 400, 300
 	scale, px, py := creativeGUIOrigin(width, height)
 	hit := HitTestCreativeInventory(width, height, inventory.CreativeAll, "", 0,
 		px+(creativeTabX(hotbar)+8)*scale, py+(creativeTabY(hotbar)+8)*scale)
 	if hit.Type != SlotCreativeTab || hit.Index != int(inventory.CreativeHotbar) {
-		t.Fatalf("saved hotbars tab hit = %+v, want top-row saved hotbars tab", hit)
+		t.Fatalf("saved hotbars tab hit = %+v, want right-aligned top-row saved hotbars tab", hit)
+	}
+	for _, category := range []inventory.CreativeCategory{inventory.CreativeAll, inventory.CreativeInventory} {
+		tab := creativeTabForCategory(category)
+		hit := HitTestCreativeInventory(width, height, category, "", 0,
+			px+(creativeTabX(tab)+8)*scale, py+(creativeTabY(tab)+8)*scale)
+		if hit.Type != SlotCreativeTab || hit.Index != int(category) {
+			t.Errorf("right-aligned tab %d hit = %+v", category, hit)
+		}
 	}
 }
 
