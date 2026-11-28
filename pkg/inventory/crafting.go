@@ -971,6 +971,10 @@ func (cm *CraftingManager) registerDyeRecipes() {
 			Output: ItemStack{ItemID: ItemPinkDye, Count: 1},
 		})
 	}
+	cm.Recipes = append(cm.Recipes,
+		Recipe{Pattern: []int32{ItemDandelion}, Shapeless: true, Output: ItemStack{ItemID: ItemYellowDye, Count: 1}},
+		Recipe{Pattern: []int32{ItemPoppy}, Shapeless: true, Output: ItemStack{ItemID: ItemRedDye, Count: 1}},
+	)
 }
 
 // MatchCrafting finds matching recipe for grid (gridSize = 2 for 2x2, 3 for 3x3).

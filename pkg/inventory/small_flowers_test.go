@@ -51,3 +51,15 @@ func TestSmallFlowerSoilWhitelist(t *testing.T) {
 		}
 	}
 }
+
+func TestDandelionAndPoppyDyeRecipes(t *testing.T) {
+	for _, tc := range []struct {
+		flower int32
+		dye    int32
+	}{{ItemDandelion, ItemYellowDye}, {ItemPoppy, ItemRedDye}} {
+		got, ok := NewCraftingManager().MatchCrafting([]int32{tc.flower, ItemAir, ItemAir, ItemAir}, 2)
+		if !ok || got != (ItemStack{ItemID: tc.dye, Count: 1}) {
+			t.Errorf("flower %d dye recipe = %+v, matched=%v; want one dye %d", tc.flower, got, ok, tc.dye)
+		}
+	}
+}
