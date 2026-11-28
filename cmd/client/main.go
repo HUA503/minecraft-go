@@ -3983,9 +3983,9 @@ func (c *Client) RenderFrame() {
 			mx, my = c.wndRef.GetCursorClientPos(c.framebuf.Width, c.framebuf.Height)
 		}
 		if c.isCreative && !c.isCraftingTableOpen {
-			c.framebuf.DrawCreativeInventoryGUIWithSearchState(c.player.Inventory, c.cursorItem, c.creativeTab, c.creativeSearch, c.creativeScrollRow, mx, my, c.creativeSearchCursor, c.creativeSearchAnchor, c.creativeSearchActive, c.creativeHotbars)
+			c.framebuf.DrawCreativeInventoryGUIWithEffects(c.player.Inventory, c.cursorItem, c.creativeTab, c.creativeSearch, c.creativeScrollRow, mx, my, c.creativeSearchCursor, c.creativeSearchAnchor, c.creativeSearchActive, c.creativeHotbars, c.player.ActiveEffects[:c.player.EffectCount])
 		} else {
-			c.framebuf.DrawCraftingGUI(c.player.Inventory, c.craftGrid[:], c.craftResult, c.isCraftingTableOpen, c.cursorItem, mx, my)
+			c.framebuf.DrawCraftingGUIWithEffects(c.player.Inventory, c.craftGrid[:], c.craftResult, c.isCraftingTableOpen, c.cursorItem, mx, my, c.player.ActiveEffects[:c.player.EffectCount])
 		}
 	} else if c.isFurnaceOpen && c.player != nil && c.player.Inventory != nil && c.engine != nil {
 		mx, my := -1, -1
