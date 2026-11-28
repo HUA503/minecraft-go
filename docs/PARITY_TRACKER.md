@@ -24,7 +24,7 @@ The table counts references in the official category lists that have no matching
 |---|---:|---:|
 | Building Blocks | 387 | 0 |
 | Colored Blocks | 162 | 4 |
-| Natural | 256 | 70 |
+| Natural | 254 | 70 |
 | Functional | 149 | 103 |
 | Redstone | 67 | 37 |
 | Tools & Utilities | 118 | 73 |
@@ -32,7 +32,7 @@ The table counts references in the official category lists that have no matching
 | Food & Drinks | 45 | 3 |
 | Ingredients | 151 | 0 |
 | Spawn Eggs | 89 | 79 |
-| **Total references** | **1,502** | **388** |
+| **Total references** | **1,500** | **388** |
 
 ## UI and runtime gaps
 
