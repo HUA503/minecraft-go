@@ -55,6 +55,20 @@ func TestNewClientDefaultsCreativeInventoryToSearch(t *testing.T) {
 	}
 }
 
+func TestSpyglassIsInCreativeToolsCatalog(t *testing.T) {
+	item, ok := inventory.ModernCreativeItemByID(inventory.ItemSpyglass)
+	if !ok || item.Name != "minecraft:spyglass" || item.Category != inventory.CreativeTools || item.MaxStack != 1 {
+		t.Fatalf("spyglass definition = %+v, found=%t", item, ok)
+	}
+	if got := inventory.GetMaxStackSize(inventory.ItemSpyglass); got != 1 {
+		t.Fatalf("spyglass maximum stack size = %d, want 1", got)
+	}
+	items := inventory.SearchCreativeCatalog(inventory.CreativeTools, "spyglass")
+	if len(items) != 1 || items[0].ID != inventory.ItemSpyglass {
+		t.Fatalf("search for spyglass = %+v", items)
+	}
+}
+
 func TestCreativeHotbarNumberKeyCopiesCatalogItem(t *testing.T) {
 	inv := inventory.NewPlayerInventory()
 	items := []inventory.CreativeItem{{ID: inventory.ItemStone}}

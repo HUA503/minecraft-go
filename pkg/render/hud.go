@@ -89,6 +89,35 @@ func (fb *Framebuffer) DrawRawImageScaled(x, y, scale int, img *RawImage) {
 	}
 }
 
+// DrawSpyglassScope scales Mojang's scope mask to the viewport while retaining
+// its alpha channel. The gameplay HUD is drawn afterward, as in vanilla.
+func (fb *Framebuffer) DrawSpyglassScope() {
+	if fb == nil || fb.Width <= 0 || fb.Height <= 0 || fb.Height > len(fb.Color)/fb.Width {
+		return
+	}
+	img, ok := GetOfficialImage("misc/spyglass_scope.png")
+	if !ok || img == nil || img.Width <= 0 || img.Height <= 0 || img.Height > len(img.Pixels)/img.Width {
+		return
+	}
+	for y := 0; y < fb.Height; y++ {
+		imgY := y * img.Height / fb.Height
+		for x := 0; x < fb.Width; x++ {
+			color := img.Pixels[imgY*img.Width+x*img.Width/fb.Width]
+			alpha := (color >> 24) & 0xFF
+			if alpha == 0 {
+				continue
+			}
+			index := y*fb.Width + x
+			background := fb.Color[index]
+			inverse := 255 - alpha
+			r := (((color>>16)&0xFF)*alpha + ((background>>16)&0xFF)*inverse) / 255
+			g := (((color>>8)&0xFF)*alpha + ((background>>8)&0xFF)*inverse) / 255
+			b := ((color&0xFF)*alpha + (background&0xFF)*inverse) / 255
+			fb.Color[index] = 0xFF000000 | (r << 16) | (g << 8) | b
+		}
+	}
+}
+
 // DrawCrosshair renders the official Mojang crosshair centered on the screen.
 func (fb *Framebuffer) DrawCrosshair() {
 	fb.DrawCrosshairScaled(1)

@@ -185,6 +185,7 @@ type Client struct {
 	hasMiningBlock         bool
 	swingProgress          float64 // 0.0 to 1.0
 	isSwinging             bool
+	isUsingSpyglass        bool
 	spearNextAttack        time.Time
 	spearChargeStarted     time.Time
 	spearChargeItem        int32
@@ -2495,11 +2496,7 @@ func (c *Client) PhysicsStep(fwdInput, strafeInput float64, jumpRequested bool, 
 	eyeZ := resolvedPos.Z
 
 	// Dynamic FOV for sprint speed rush feel
-	if c.isSprinting && c.isMoving && onGround {
-		c.targetFov = 82.0
-	} else {
-		c.targetFov = 70.0
-	}
+	c.targetFov = targetPlayerFOV(c.isUsingSpyglass, c.isSprinting, c.isMoving, onGround)
 	c.camera.Fov += (c.targetFov - c.camera.Fov) * math.Min(1.0, dt*8.0)
 
 	// Perspective camera positioning with obstacle raycast clipping (F5)
@@ -2573,7 +2570,6 @@ func (c *Client) PhysicsStep(fwdInput, strafeInput float64, jumpRequested bool, 
 			c.portalStandTime = math.Max(0, c.portalStandTime-dt*2.0)
 		}
 	}
-
 	// Stream chunks throttled (only when crossing chunk boundaries or periodically every 120ms)
 	pcx := int32(math.Floor(resolvedPos.X / 16.0))
 	pcz := int32(math.Floor(resolvedPos.Z / 16.0))
@@ -3326,6 +3322,9 @@ func (c *Client) UpdateRightClick(isRightDown bool, dt float64) {
 	if c.updateSpearCharge(isRightDown) {
 		return
 	}
+	if c.updateSpyglass(isRightDown) {
+		return
+	}
 	if isRightDown && c.isLocal && c.placeCooldown <= 0 && c.hasTarget {
 		bedState := c.engine.GetBlockIfLoaded(c.targetedPos.X, c.targetedPos.Y, c.targetedPos.Z)
 		if _, _, _, isStrawBed := inventory.StrawBedStateProperties(bedState); isStrawBed {
@@ -3909,6 +3908,9 @@ func (c *Client) RenderFrame() {
 		if (camEyeBlock == 8 || camEyeBlock == 9) && (aboveEyeBlock == 8 || aboveEyeBlock == 9 || c.camera.Y-float64(by) < 0.75) {
 			c.framebuf.DrawUnderwaterOverlay()
 		}
+	}
+	if c.isUsingSpyglass {
+		c.framebuf.DrawSpyglassScope()
 	}
 
 	// 4.7 Death Screen

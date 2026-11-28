@@ -89,6 +89,30 @@ func (c *Client) updateSpearCharge(isRightDown bool) bool {
 	return true
 }
 
+// updateSpyglass applies the held-use behavior and consumes the right-click so
+// the spyglass cannot also place or activate the targeted block.
+func (c *Client) updateSpyglass(isRightDown bool) bool {
+	selected := c.player.Inventory.GetSelectedItem()
+	if selected.ItemID != inventory.ItemSpyglass {
+		c.isUsingSpyglass = false
+		return false
+	}
+	c.isUsingSpyglass = isRightDown && c.isLocal &&
+		!c.showInventoryGUI && !c.isCraftingTableOpen && !c.isFurnaceOpen &&
+		!c.showPauseMenu && !c.showAdvancementsGUI
+	return true
+}
+
+func targetPlayerFOV(usingSpyglass, sprinting, moving, onGround bool) float64 {
+	if usingSpyglass {
+		return 7.0
+	}
+	if sprinting && moving && onGround {
+		return 82.0
+	}
+	return 70.0
+}
+
 // maceSmashBonus applies Java's Mace smash falloff to whole fallen blocks:
 // the first 3 add 4 damage each, the next 5 add 2, and later blocks add 1.
 // A smash only happens once the player has fallen more than 1.5 blocks.

@@ -51,3 +51,32 @@ func TestSpearChargeReleaseWithoutCameraClearsState(t *testing.T) {
 		t.Fatalf("release left spear charge active: item=%d started=%v", client.spearChargeItem, client.spearChargeStarted)
 	}
 }
+
+func TestSpyglassHeldUseConsumesRightClickAndStopsOnRelease(t *testing.T) {
+	inv := inventory.NewPlayerInventory()
+	inv.Slots[inv.SelectedHotbar] = inventory.ItemStack{ItemID: inventory.ItemSpyglass, Count: 1}
+	client := &Client{player: &sim.PlayerEntity{Inventory: inv}, isLocal: true}
+	if !client.updateSpyglass(true) || !client.isUsingSpyglass {
+		t.Fatal("holding right-click with a spyglass did not start scope use")
+	}
+	if !client.updateSpyglass(false) || client.isUsingSpyglass {
+		t.Fatal("releasing right-click did not stop scope use")
+	}
+	inv.Slots[inv.SelectedHotbar] = inventory.ItemStack{ItemID: inventory.ItemStone, Count: 1}
+	client.isUsingSpyglass = true
+	if client.updateSpyglass(true) || client.isUsingSpyglass {
+		t.Fatal("changing away from the spyglass left scope use active")
+	}
+}
+
+func TestSpyglassFOVOverridesSprintAndRestoresNormalFOV(t *testing.T) {
+	if got := targetPlayerFOV(true, true, true, true); got != 7 {
+		t.Fatalf("spyglass sprint FOV = %.1f, want 7", got)
+	}
+	if got := targetPlayerFOV(false, true, true, true); got != 82 {
+		t.Fatalf("sprint FOV = %.1f, want 82", got)
+	}
+	if got := targetPlayerFOV(false, false, false, true); got != 70 {
+		t.Fatalf("normal FOV = %.1f, want 70", got)
+	}
+}

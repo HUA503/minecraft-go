@@ -71,7 +71,7 @@ func TestJava263WoodFenceGatesCatalogRecipesAndStates(t *testing.T) {
 			}
 		}
 	}
-	if all := CreativeCatalog(CreativeAll); len(all) != 1023 {
-		t.Fatalf("catalog count = %d, want 1023", len(all))
+	if all := CreativeCatalog(CreativeAll); len(all) != 1024 {
+		t.Fatalf("catalog count = %d, want 1024", len(all))
 	}
 }

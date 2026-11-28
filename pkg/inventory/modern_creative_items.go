@@ -50,6 +50,7 @@ const (
 	ItemGoldenSpear        int32 = 16223
 	ItemDiamondSpear       int32 = 16224
 	ItemNetheriteSpear     int32 = 16225
+	ItemSpyglass           int32 = 16226
 	ItemWhiteDye           int32 = 17000
 	ItemOrangeDye          int32 = 17001
 	ItemMagentaDye         int32 = 17002
@@ -177,6 +178,7 @@ var modernCreativeItemDefinitions = [...]ModernCreativeItemDefinition{
 	{ItemGoldenSpear, "minecraft:golden_spear", "\u91d1\u77db", "golden_spear", CreativeCombat, 1},
 	{ItemDiamondSpear, "minecraft:diamond_spear", "\u94bb\u77db", "diamond_spear", CreativeCombat, 1},
 	{ItemNetheriteSpear, "minecraft:netherite_spear", "\u4e0b\u754c\u5408\u91d1\u77db", "netherite_spear", CreativeCombat, 1},
+	{ItemSpyglass, "minecraft:spyglass", "\u671b\u8fdc\u955c", "spyglass", CreativeTools, 1},
 	{ItemStrawBed, "minecraft:straw_bed", "\u7a3b\u8349\u5e8a", "straw_bed_particle", CreativeFunctional, 1},
 	{ItemWhiteDye, "minecraft:white_dye", "\u767d\u8272\u67d3\u6599", "white_dye", CreativeMaterials, 64},
 	{ItemOrangeDye, "minecraft:orange_dye", "\u6a59\u8272\u67d3\u6599", "orange_dye", CreativeMaterials, 64},
