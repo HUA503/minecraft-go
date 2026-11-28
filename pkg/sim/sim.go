@@ -1107,7 +1107,7 @@ func (e *Engine) BreakBlockWithTool(playerID int32, pos world.BlockPos, toolID i
 			e.mu.Lock()
 			canHarvest = e.nextRandomTickValueLocked()%20 == 0
 			e.mu.Unlock()
-			dropItem = poplarSaplingID
+			dropItem = inventory.LeafSaplingDropID(origBlock)
 		}
 	}
 
@@ -1148,7 +1148,7 @@ func (e *Engine) BreakBlockWithTool(playerID int32, pos world.BlockPos, toolID i
 		case 37, 38, 45, 49, 50, 87, 89, 121, 150:
 			dropItem = origBlock
 		}
-		if definition, ok := inventory.ExtendedBlockByID(inventory.BlockItemForState(origBlock)); ok {
+		if definition, ok := inventory.ExtendedBlockByID(inventory.BlockItemForState(origBlock)); ok && !inventory.IsExtendedLeaves(origBlock) {
 			if definition.DropsNothing {
 				dropItem = inventory.ItemAir
 			} else if definition.DropRuntimeID != 0 {
@@ -1268,7 +1268,7 @@ func (e *Engine) BreakBlock(playerID int32, pos world.BlockPos) int32 {
 		dropsSapling := e.nextRandomTickValueLocked()%20 == 0
 		e.mu.Unlock()
 		if dropsSapling {
-			dropItem = poplarSaplingID
+			dropItem = inventory.LeafSaplingDropID(origBlock)
 		} else {
 			dropItem = inventory.ItemAir
 		}
@@ -1293,7 +1293,7 @@ func (e *Engine) BreakBlock(playerID int32, pos world.BlockPos) int32 {
 	case 129: // Emerald Ore -> Emerald
 		dropItem = inventory.ItemEmerald
 	}
-	if definition, ok := inventory.ExtendedBlockByID(inventory.BlockItemForState(origBlock)); ok {
+	if definition, ok := inventory.ExtendedBlockByID(inventory.BlockItemForState(origBlock)); ok && !inventory.IsExtendedLeaves(origBlock) {
 		if definition.DropsNothing {
 			dropItem = inventory.ItemAir
 		} else if definition.DropRuntimeID != 0 {
@@ -1501,6 +1501,9 @@ func (e *Engine) PlaceBlock(playerID int32, pos world.BlockPos, blockID int32) b
 	if inventory.IsDryGrass(blockID) && (pos.Y <= world.MinWorldY || !inventory.IsDryVegetationSupport(below)) {
 		return false // Dry grass only grows on the vanilla dry-vegetation substrate tags.
 	}
+	if inventory.IsAdditionalTreeSapling(blockID) && (pos.Y <= world.MinWorldY || !inventory.IsFlowerSoilBlock(below)) {
+		return false // Tree saplings and azalea bushes need a valid dirt-like substrate.
+	}
 	if _, facing, _, isShelfMushroom := inventory.ShelfMushroomStateProperties(blockID); isShelfMushroom {
 		offsets := [4][2]int32{{0, 1}, {-1, 0}, {0, -1}, {1, 0}}
 		offset := offsets[facing]
@@ -1572,12 +1575,13 @@ func (e *Engine) removeUnsupportedFlowerAbove(pos world.BlockPos) int32 {
 	}
 	above := world.BlockPos{X: pos.X, Y: pos.Y + 1, Z: pos.Z}
 	flowerState := e.GetBlock(above.X, above.Y, above.Z)
-	if !inventory.IsDecorativePlantBlock(flowerState) {
+	isFlowerOrSapling := inventory.IsFlowerPlantBlock(flowerState) || inventory.IsAdditionalTreeSapling(flowerState)
+	isSupportedShrub := inventory.IsBush(flowerState) || inventory.IsCactusFlower(flowerState)
+	if !isFlowerOrSapling && !isSupportedShrub && !inventory.IsDryGrass(flowerState) {
 		return 0
 	}
 	support := e.GetBlock(pos.X, pos.Y, pos.Z)
-	if inventory.IsFlowerPlantBlock(flowerState) && inventory.IsFlowerSoilBlock(support) ||
-		(inventory.IsBush(flowerState) || inventory.IsCactusFlower(flowerState)) && IsSolidBlock(support) {
+	if isFlowerOrSapling && inventory.IsFlowerSoilBlock(support) || isSupportedShrub && IsSolidBlock(support) {
 		return 0
 	}
 	if inventory.IsDryGrass(flowerState) && inventory.IsDryVegetationSupport(support) {

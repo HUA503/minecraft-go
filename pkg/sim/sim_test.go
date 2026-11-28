@@ -831,6 +831,43 @@ func TestShelfMushroomPlacementGrowthAndDrops(t *testing.T) {
 	}
 }
 
+func TestAdditionalTreeSaplingPlacementAndShearedLeafDrop(t *testing.T) {
+	eng := NewEngine()
+	player := eng.AddPlayer("Steve", [16]byte{22}, Vec3{X: 32.5, Y: 64, Z: 32.5})
+	sapling, ok := inventory.ExtendedBlockByName("minecraft:cherry_sapling")
+	if !ok {
+		t.Fatal("cherry sapling definition missing")
+	}
+	pos := world.BlockPos{X: 33, Y: 64, Z: 32}
+	if eng.PlaceBlock(player.ID, pos, sapling.RuntimeID) {
+		t.Fatal("sapling placed without soil")
+	}
+	eng.SetBlock(pos.X, pos.Y-1, pos.Z, inventory.ItemDirt)
+	if !eng.PlaceBlock(player.ID, pos, sapling.RuntimeID) {
+		t.Fatal("sapling failed to place on dirt")
+	}
+	if got := eng.GetBlock(pos.X, pos.Y, pos.Z); got != sapling.RuntimeID {
+		t.Fatalf("sapling state=%d want %d", got, sapling.RuntimeID)
+	}
+	eng.BreakBlock(player.ID, world.BlockPos{X: pos.X, Y: pos.Y - 1, Z: pos.Z})
+	if got := eng.GetBlock(pos.X, pos.Y, pos.Z); got != 0 {
+		t.Fatalf("sapling remained after its soil was removed: state=%d", got)
+	}
+	if player.Inventory.Slots[0].ItemID != sapling.RuntimeID || player.Inventory.Slots[0].Count != 1 {
+		t.Fatalf("unsupported sapling drop=%+v, want one item %d", player.Inventory.Slots[0], sapling.RuntimeID)
+	}
+
+	leaves, ok := inventory.ExtendedBlockByName("minecraft:cherry_leaves")
+	if !ok {
+		t.Fatal("cherry leaves definition missing")
+	}
+	leafPos := world.BlockPos{X: 34, Y: 64, Z: 32}
+	eng.SetBlock(leafPos.X, leafPos.Y, leafPos.Z, leaves.RuntimeID)
+	if dropped, harvested := eng.BreakBlockWithTool(player.ID, leafPos, inventory.ItemShears); !harvested || dropped != leaves.RuntimeID {
+		t.Fatalf("shears leaf drop=(%d,%v), want (%d,true)", dropped, harvested, leaves.RuntimeID)
+	}
+}
+
 func TestColoredCushionPlacementCollisionAndDrop(t *testing.T) {
 	eng := NewEngine()
 	player := eng.AddPlayer("Steve", [16]byte{77}, Vec3{X: 10.5, Y: 64, Z: 10.5})

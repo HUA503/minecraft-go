@@ -35,18 +35,20 @@ var modernOreDropRanges = map[string][2]int{
 var extendedBlockDefinitions = buildExtendedBlockDefinitions()
 
 const (
-	FirstCushionBlock   int32 = 16200
-	LastCushionBlock    int32 = FirstCushionBlock + 15
-	FirstSmallFlower    int32 = 16300
-	LastSmallFlower     int32 = FirstSmallFlower + 9
-	FirstTallFlower     int32 = LastSmallFlower + 1
-	LastTallFlower      int32 = FirstTallFlower + 3
-	TallFlowerStateBase int32 = 52000
-	FirstCarpetBlock    int32 = 19600
-	LastCarpetBlock     int32 = FirstCarpetBlock + 15
-	FirstCandleItem     int32 = 17133
-	LastCandleItem      int32 = FirstCandleItem + 16
-	CandleStateBase     int32 = 40000
+	FirstCushionBlock      int32 = 16200
+	LastCushionBlock       int32 = FirstCushionBlock + 15
+	FirstSmallFlower       int32 = 16300
+	LastSmallFlower        int32 = FirstSmallFlower + 9
+	FirstTallFlower        int32 = LastSmallFlower + 1
+	LastTallFlower         int32 = FirstTallFlower + 3
+	TallFlowerStateBase    int32 = 52000
+	FirstCarpetBlock       int32 = 19600
+	LastCarpetBlock        int32 = FirstCarpetBlock + 15
+	FirstCandleItem        int32 = 17133
+	LastCandleItem         int32 = FirstCandleItem + 16
+	CandleStateBase        int32 = 40000
+	FirstAdditionalLeaves  int32 = 10400
+	FirstAdditionalSapling int32 = 10410
 )
 
 var cushionColors = [...]struct {
@@ -130,6 +132,7 @@ func buildExtendedBlockDefinitions() []ExtendedBlockDefinition {
 	definitions = append(definitions, mossCarpetBlockDefinitions()...)
 	definitions = append(definitions, springPlantBlockDefinitions()...)
 	definitions = append(definitions, dryGrassBlockDefinitions()...)
+	definitions = append(definitions, additionalTreeFoliageDefinitions()...)
 	definitions = append(definitions, ExtendedBlockDefinition{
 		RuntimeID: ItemShelfMushroom, Name: "minecraft:shelf_mushroom",
 		TextureTop: "shelf_mushroom_stage0", TextureBottom: "shelf_mushroom_stage0", TextureSide: "shelf_mushroom_stage0", TextureItem: "shelf_mushroom_stage0",
@@ -323,7 +326,7 @@ func IsBush(blockID int32) bool { return blockID == ItemBush }
 func IsCactusFlower(blockID int32) bool { return blockID == ItemCactusFlower }
 
 func IsDecorativePlantBlock(blockID int32) bool {
-	return IsFlowerPlantBlock(blockID) || IsBush(blockID) || IsCactusFlower(blockID) || IsDryGrass(blockID) || IsShelfMushroom(blockID)
+	return IsFlowerPlantBlock(blockID) || IsBush(blockID) || IsCactusFlower(blockID) || IsDryGrass(blockID) || IsShelfMushroom(blockID) || IsAdditionalTreeSapling(blockID)
 }
 
 func dryGrassBlockDefinitions() []ExtendedBlockDefinition {
@@ -349,6 +352,57 @@ func dryGrassBlockDefinitions() []ExtendedBlockDefinition {
 
 func IsDryGrass(blockID int32) bool {
 	return blockID == ItemDryShortGrass || blockID == ItemDryTallGrass
+}
+
+func additionalTreeFoliageDefinitions() []ExtendedBlockDefinition {
+	type foliage struct {
+		name, display, texture string
+		id                     int32
+	}
+	leaves := [...]foliage{
+		{"jungle_leaves", "丛林树叶", "jungle_leaves", FirstAdditionalLeaves},
+		{"acacia_leaves", "金合欢树叶", "acacia_leaves", FirstAdditionalLeaves + 1},
+		{"dark_oak_leaves", "深色橡树叶", "dark_oak_leaves", FirstAdditionalLeaves + 2},
+		{"mangrove_leaves", "红树树叶", "mangrove_leaves", FirstAdditionalLeaves + 3},
+		{"cherry_leaves", "樱花树叶", "cherry_leaves", FirstAdditionalLeaves + 4},
+		{"pale_oak_leaves", "苍白橡树叶", "pale_oak_leaves", FirstAdditionalLeaves + 5},
+		{"azalea_leaves", "杜鹃树叶", "azalea_leaves", FirstAdditionalLeaves + 6},
+		{"flowering_azalea_leaves", "盛开的杜鹃树叶", "flowering_azalea_leaves", FirstAdditionalLeaves + 7},
+	}
+	saplings := [...]foliage{
+		{"spruce_sapling", "云杉树苗", "spruce_sapling", FirstAdditionalSapling},
+		{"birch_sapling", "白桦树苗", "birch_sapling", FirstAdditionalSapling + 1},
+		{"jungle_sapling", "丛林树苗", "jungle_sapling", FirstAdditionalSapling + 2},
+		{"acacia_sapling", "金合欢树苗", "acacia_sapling", FirstAdditionalSapling + 3},
+		{"dark_oak_sapling", "深色橡树树苗", "dark_oak_sapling", FirstAdditionalSapling + 4},
+		{"mangrove_propagule", "红树胎生苗", "mangrove_propagule", FirstAdditionalSapling + 5},
+		{"cherry_sapling", "樱花树苗", "cherry_sapling", FirstAdditionalSapling + 6},
+		{"pale_oak_sapling", "苍白橡树树苗", "pale_oak_sapling", FirstAdditionalSapling + 7},
+		{"azalea", "杜鹃花丛", "azalea_side", FirstAdditionalSapling + 8},
+		{"flowering_azalea", "盛开的杜鹃花丛", "flowering_azalea_side", FirstAdditionalSapling + 9},
+	}
+	saplingByLeaf := map[string]int32{
+		"jungle_leaves": FirstAdditionalSapling + 2, "acacia_leaves": FirstAdditionalSapling + 3,
+		"dark_oak_leaves": FirstAdditionalSapling + 4, "mangrove_leaves": FirstAdditionalSapling + 5,
+		"cherry_leaves": FirstAdditionalSapling + 6, "pale_oak_leaves": FirstAdditionalSapling + 7,
+		"azalea_leaves": FirstAdditionalSapling + 8, "flowering_azalea_leaves": FirstAdditionalSapling + 9,
+	}
+	definitions := make([]ExtendedBlockDefinition, 0, len(leaves)+len(saplings))
+	for _, block := range leaves {
+		name := "minecraft:" + block.name
+		definitions = append(definitions, ExtendedBlockDefinition{RuntimeID: block.id, Name: name, TextureTop: block.texture, TextureBottom: block.texture, TextureSide: block.texture, Category: CreativeNatural, DropRuntimeID: saplingByLeaf[block.name]})
+		extendedBlockDisplayNames[name] = block.display
+	}
+	for _, block := range saplings {
+		name := "minecraft:" + block.name
+		definitions = append(definitions, ExtendedBlockDefinition{RuntimeID: block.id, Name: name, TextureTop: block.texture, TextureBottom: block.texture, TextureSide: block.texture, TextureItem: block.texture, Category: CreativeNatural, DropRuntimeID: block.id})
+		extendedBlockDisplayNames[name] = block.display
+	}
+	return definitions
+}
+
+func IsAdditionalTreeSapling(runtimeID int32) bool {
+	return runtimeID >= FirstAdditionalSapling && runtimeID < FirstAdditionalSapling+10
 }
 
 // IsDryVegetationSupport matches the vanilla support tags used by dry grass.
@@ -1079,11 +1133,24 @@ func StrippedWoodBlockVariant(runtimeID int32) (int32, bool) {
 }
 
 func IsExtendedLeaves(runtimeID int32) bool {
-	return runtimeID >= 10060 && runtimeID <= 10062
+	return runtimeID >= 10060 && runtimeID <= 10062 || runtimeID >= FirstAdditionalLeaves && runtimeID < FirstAdditionalLeaves+8
+}
+
+func LeafSaplingDropID(blockID int32) int32 {
+	if blockID >= 10060 && blockID <= 10062 {
+		return 10063
+	}
+	if !IsExtendedLeaves(blockID) {
+		return 0
+	}
+	if definition, ok := ExtendedBlockByID(blockID); ok {
+		return definition.DropRuntimeID
+	}
+	return 0
 }
 
 func IsExtendedFoliage(runtimeID int32) bool {
-	return runtimeID == 10063 || runtimeID == 10100 || IsSmallFlower(runtimeID) || IsTallFlowerBlock(runtimeID) || IsBush(runtimeID) || IsCactusFlower(runtimeID) || IsDryGrass(runtimeID)
+	return runtimeID == 10063 || runtimeID == 10100 || IsSmallFlower(runtimeID) || IsTallFlowerBlock(runtimeID) || IsBush(runtimeID) || IsCactusFlower(runtimeID) || IsDryGrass(runtimeID) || IsAdditionalTreeSapling(runtimeID)
 }
 
 func IsFlowerPlantBlock(blockID int32) bool {
