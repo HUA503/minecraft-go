@@ -1,5 +1,7 @@
 package inventory
 
+import "strings"
+
 // Recipe defines a craftable output from an input grid.
 type Recipe struct {
 	Width     int
@@ -41,6 +43,7 @@ func (cm *CraftingManager) registerDefaults() {
 		Pattern: []int32{ItemHayBale, ItemHayBale, ItemHayBale},
 		Output:  ItemStack{ItemID: ItemStrawBed, Count: 4},
 	})
+	cm.registerSpearRecipes()
 
 	// 1. Oak Log -> 4 Oak Planks (1x1)
 	cm.Recipes = append(cm.Recipes, Recipe{
@@ -789,6 +792,55 @@ func (cm *CraftingManager) registerDefaults() {
 		}
 	}
 	cm.registerDyeRecipes()
+}
+
+// registerSpearRecipes mirrors Java 26.3's diagonal spear recipe pattern and
+// expands the vanilla material tags over the material items implemented here.
+func (cm *CraftingManager) registerSpearRecipes() {
+	pattern := func(material int32) []int32 {
+		return []int32{
+			ItemAir, ItemAir, material,
+			ItemAir, ItemStick, ItemAir,
+			ItemStick, ItemAir, ItemAir,
+		}
+	}
+	appendVariants := func(output int32, materials []int32) {
+		seen := make(map[int32]struct{}, len(materials))
+		for _, material := range materials {
+			if material == ItemAir {
+				continue
+			}
+			if _, exists := seen[material]; exists {
+				continue
+			}
+			seen[material] = struct{}{}
+			cm.Recipes = append(cm.Recipes, Recipe{
+				Width: 3, Height: 3,
+				Pattern: pattern(material),
+				Output:  ItemStack{ItemID: output, Count: 1},
+			})
+		}
+	}
+
+	woodenPlanks := []int32{ItemOakPlanks}
+	for _, block := range ExtendedBlockDefinitions() {
+		if strings.HasSuffix(block.Name, "_planks") {
+			woodenPlanks = append(woodenPlanks, block.RuntimeID)
+		}
+	}
+	appendVariants(ItemWoodenSpear, woodenPlanks)
+
+	stoneMaterials := []int32{ItemCobblestone}
+	for _, name := range []string{"minecraft:blackstone", "minecraft:cobbled_deepslate"} {
+		if block, ok := ExtendedBlockByName(name); ok {
+			stoneMaterials = append(stoneMaterials, block.RuntimeID)
+		}
+	}
+	appendVariants(ItemStoneSpear, stoneMaterials)
+	appendVariants(ItemCopperSpear, []int32{ItemCopperIngot})
+	appendVariants(ItemIronSpear, []int32{ItemIronIngot})
+	appendVariants(ItemGoldenSpear, []int32{ItemGoldIngot})
+	appendVariants(ItemDiamondSpear, []int32{ItemDiamond})
 }
 
 func (cm *CraftingManager) registerDyeRecipes() {
