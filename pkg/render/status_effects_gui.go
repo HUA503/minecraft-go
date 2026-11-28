@@ -14,14 +14,14 @@ type statusEffectVisual struct {
 }
 
 var statusEffectVisuals = map[string]statusEffectVisual{
-	"minecraft:absorption":      {"mob_effect/absorption.png", "Absorption"},
-	"minecraft:fire_resistance": {"mob_effect/fire_resistance.png", "Fire Resistance"},
-	"minecraft:hunger":          {"mob_effect/hunger.png", "Hunger"},
-	"minecraft:nausea":          {"mob_effect/nausea.png", "Nausea"},
-	"minecraft:poison":          {"mob_effect/poison.png", "Poison"},
-	"minecraft:regeneration":    {"mob_effect/regeneration.png", "Regeneration"},
-	"minecraft:resistance":      {"mob_effect/resistance.png", "Resistance"},
-	"minecraft:wither":          {"mob_effect/wither.png", "Wither"},
+	"minecraft:absorption":      {"mob_effect/absorption.png", "伤害吸收"},
+	"minecraft:fire_resistance": {"mob_effect/fire_resistance.png", "抗火"},
+	"minecraft:hunger":          {"mob_effect/hunger.png", "饥饿"},
+	"minecraft:nausea":          {"mob_effect/nausea.png", "反胃"},
+	"minecraft:poison":          {"mob_effect/poison.png", "中毒"},
+	"minecraft:regeneration":    {"mob_effect/regeneration.png", "生命恢复"},
+	"minecraft:resistance":      {"mob_effect/resistance.png", "抗性提升"},
+	"minecraft:wither":          {"mob_effect/wither.png", "凋零"},
 }
 
 // DrawInventoryStatusEffects draws the vanilla inventory's right-side active
