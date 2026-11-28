@@ -39,6 +39,8 @@ const (
 	LastCushionBlock       int32 = FirstCushionBlock + 15
 	FirstSmallFlower       int32 = 16300
 	LastSmallFlower        int32 = FirstSmallFlower + 9
+	ItemDandelion          int32 = 16321
+	ItemPoppy              int32 = 16322
 	FirstTallFlower        int32 = LastSmallFlower + 1
 	LastTallFlower         int32 = FirstTallFlower + 3
 	TallFlowerStateBase    int32 = 52000
@@ -153,13 +155,26 @@ func smallFlowerBlockDefinitions() []ExtendedBlockDefinition {
 		{"pink_tulip", "粉红色郁金香"}, {"oxeye_daisy", "滨菊"}, {"cornflower", "矢车菊"},
 		{"lily_of_the_valley", "铃兰"},
 	}
-	definitions := make([]ExtendedBlockDefinition, 0, len(flowers))
+	definitions := make([]ExtendedBlockDefinition, 0, len(flowers)+2)
 	for index, flower := range flowers {
 		id := FirstSmallFlower + int32(index)
 		name := "minecraft:" + flower.name
 		definitions = append(definitions, ExtendedBlockDefinition{
 			RuntimeID: id, Name: name, TextureTop: flower.name, TextureBottom: flower.name, TextureSide: flower.name,
 			Category: CreativeNatural, DropRuntimeID: id,
+		})
+		extendedBlockDisplayNames[name] = flower.display
+	}
+	for _, flower := range [...]struct {
+		id      int32
+		name    string
+		display string
+	}{{ItemDandelion, "dandelion", "蒲公英"}, {ItemPoppy, "poppy", "虞美人"}} {
+		name := "minecraft:" + flower.name
+		definitions = append(definitions, ExtendedBlockDefinition{
+			RuntimeID: flower.id, Name: name, TextureTop: flower.name, TextureBottom: flower.name,
+			TextureSide: flower.name, TextureItem: flower.name, Category: CreativeNatural,
+			DropRuntimeID: flower.id,
 		})
 		extendedBlockDisplayNames[name] = flower.display
 	}
@@ -1197,7 +1212,7 @@ func IsFlowerPlantBlock(blockID int32) bool {
 
 // IsSmallFlower reports whether runtimeID is one of the single-block vanilla flowers.
 func IsSmallFlower(runtimeID int32) bool {
-	return runtimeID >= FirstSmallFlower && runtimeID <= LastSmallFlower
+	return runtimeID >= FirstSmallFlower && runtimeID <= LastSmallFlower || runtimeID == ItemDandelion || runtimeID == ItemPoppy
 }
 
 func IsTallFlowerItem(itemID int32) bool {

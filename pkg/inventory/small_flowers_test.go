@@ -3,34 +3,38 @@ package inventory
 import "testing"
 
 func TestSmallFlowerRegistryAndCreativeEntries(t *testing.T) {
-	flowers := []string{
-		"blue_orchid", "allium", "azure_bluet", "red_tulip", "orange_tulip",
-		"white_tulip", "pink_tulip", "oxeye_daisy", "cornflower", "lily_of_the_valley",
+	flowers := []struct {
+		name string
+		id   int32
+	}{
+		{"blue_orchid", FirstSmallFlower}, {"allium", FirstSmallFlower + 1}, {"azure_bluet", FirstSmallFlower + 2},
+		{"red_tulip", FirstSmallFlower + 3}, {"orange_tulip", FirstSmallFlower + 4}, {"white_tulip", FirstSmallFlower + 5},
+		{"pink_tulip", FirstSmallFlower + 6}, {"oxeye_daisy", FirstSmallFlower + 7}, {"cornflower", FirstSmallFlower + 8},
+		{"lily_of_the_valley", FirstSmallFlower + 9}, {"dandelion", ItemDandelion}, {"poppy", ItemPoppy},
 	}
-	for index, name := range flowers {
-		id := FirstSmallFlower + int32(index)
-		definition, ok := ExtendedBlockByName("minecraft:" + name)
-		if !ok || definition.RuntimeID != id || definition.TextureSide != name || definition.Category != CreativeNatural || definition.DropRuntimeID != id {
-			t.Errorf("flower %s definition = %+v, %v", name, definition, ok)
+	for _, flower := range flowers {
+		definition, ok := ExtendedBlockByName("minecraft:" + flower.name)
+		if !ok || definition.RuntimeID != flower.id || definition.TextureSide != flower.name || definition.Category != CreativeNatural || definition.DropRuntimeID != flower.id {
+			t.Errorf("flower %s definition = %+v, %v", flower.name, definition, ok)
 		}
-		if !IsPlaceableBlock(id) || !IsSmallFlower(id) || !IsExtendedFoliage(id) || !IsReplaceableBlock(id) {
-			t.Errorf("flower %s is missing plant block behavior", name)
+		if !IsPlaceableBlock(flower.id) || !IsSmallFlower(flower.id) || !IsExtendedFoliage(flower.id) || !IsReplaceableBlock(flower.id) {
+			t.Errorf("flower %s is missing plant block behavior", flower.name)
 		}
-		if got := GetBlockHardness(id); got != 0 || CalculateBlockDamagePerSecond(ItemAir, id) < 100 {
-			t.Errorf("flower %s hardness/damage = %v/%v; want instant break", name, got, CalculateBlockDamagePerSecond(ItemAir, id))
+		if got := GetBlockHardness(flower.id); got != 0 || CalculateBlockDamagePerSecond(ItemAir, flower.id) < 100 {
+			t.Errorf("flower %s hardness/damage = %v/%v; want instant break", flower.name, got, CalculateBlockDamagePerSecond(ItemAir, flower.id))
 		}
 		found := false
 		for _, item := range CreativeCatalog(CreativeNatural) {
-			if item.ID == id && item.Name != "" {
+			if item.ID == flower.id && item.Name != "" {
 				found = true
 				break
 			}
 		}
 		if !found {
-			t.Errorf("flower %s is missing from the Natural creative tab", name)
+			t.Errorf("flower %s is missing from the Natural creative tab", flower.name)
 		}
-		if got := CreativeItemDisplayName(id); got == "" || got == "物品 #0" {
-			t.Errorf("flower %s has no display name", name)
+		if got := CreativeItemDisplayName(flower.id); got == "" || got == "物品 #0" {
+			t.Errorf("flower %s has no display name", flower.name)
 		}
 	}
 }

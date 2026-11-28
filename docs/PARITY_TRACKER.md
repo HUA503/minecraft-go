@@ -9,7 +9,8 @@ Last checked: 2026-11-28 against the project's `vanillaCreativeTabOrder` and the
 - Sapling growth, tree-specific generation, leaf distance/persistence/decay, exact loot probabilities and drops for sticks/apples are not implemented. These entries therefore do not mean tree ecology matches vanilla.
 - Azalea bushes currently share the generic sapling crossed-plane renderer; their 26.3 multipart bush model and distinct top/side/plant geometry still need implementation.
 - Added the Java 26.3 shelf mushroom in commit `b352209`: two size stages, side support/facing, bone-meal growth, stage-specific drops and the rabbit-stew recipe. Bouncing behavior and wandering-trader offers remain missing.
-- The creative catalog contains 1,060 entries after adding the 16 colored concrete powders.
+- The creative catalog contains 1,062 entries after adding the 16 colored concrete powders, dandelion and poppy.
+- Added dandelion and poppy to the Natural tab with the official block textures, item sprites, plant placement rules, instant break and self-drops. Their flower-specific dye recipes and bone-meal world-generation behavior are not implemented yet.
 - Added all 16 dyed concrete-powder items with Java 26.3 textures and dye recipes. They fall through replaceable blocks in the current simulation and harden beside water into the matching concrete color.
 - The 16 powder colors now sort at the vanilla concrete-powder group position in Java's dye-color order instead of falling to the end of the tab.
 - Concrete-powder falling currently advances one block per game tick and does not create Java falling-block entities or preserve their full landing/drop behavior. This is functional coverage, not exact parity.
@@ -23,7 +24,7 @@ The table counts references in the official category lists that have no matching
 |---|---:|---:|
 | Building Blocks | 387 | 0 |
 | Colored Blocks | 162 | 4 |
-| Natural | 254 | 72 |
+| Natural | 256 | 70 |
 | Functional | 149 | 103 |
 | Redstone | 67 | 37 |
 | Tools & Utilities | 118 | 73 |
@@ -31,7 +32,7 @@ The table counts references in the official category lists that have no matching
 | Food & Drinks | 45 | 3 |
 | Ingredients | 151 | 0 |
 | Spawn Eggs | 89 | 79 |
-| **Total references** | **1,500** | **390** |
+| **Total references** | **1,502** | **388** |
 
 ## UI and runtime gaps
 
