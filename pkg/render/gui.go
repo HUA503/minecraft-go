@@ -662,15 +662,7 @@ func (fb *Framebuffer) DrawFurnaceGUI(furnace *inventory.FurnaceBlockEntity, inv
 // DrawTitleScreen renders the title screen using Java 26.3's official logo,
 // edition mark, button sprites and GUI-scaled menu geometry.
 func (fb *Framebuffer) DrawTitleScreen(mouseX, mouseY int) (spBtn, mpBtn, quitBtn [4]int) {
-	// The Java 26.3 distribution available to this project contains 1x1
-	// placeholders for its title panorama. Keep a neutral dark backing until
-	// the actual panorama is available instead of presenting another game's art.
-	for y := 0; y < fb.Height; y++ {
-		for x := 0; x < fb.Width; x++ {
-			shade := uint32(19 + (fb.Height-y)*9/max(1, fb.Height))
-			fb.Color[y*fb.Width+x] = 0xFF000000 | (shade << 16) | (shade << 8) | shade
-		}
-	}
+	drawTitlePanorama(fb)
 
 	scale := CalculateGUIScaleFromDimensions(fb.Width, fb.Height)
 	if scale < 1 {

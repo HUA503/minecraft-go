@@ -1,11 +1,13 @@
 package render
 
 import (
+	"bytes"
 	"image"
 	"image/color"
 	"image/png"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -143,6 +145,29 @@ func TestTitleScreenUsesJava263AssetsAndScaledGeometry(t *testing.T) {
 		if !ok || img.Width != asset.w || img.Height != asset.h {
 			t.Fatalf("Java 26.3 title asset %q = (%v, %v), want %dx%d", asset.path, ok, img, asset.w, asset.h)
 		}
+	}
+	for i := 0; i < 6; i++ {
+		path := "assets/textures/gui/title/background/panorama_" + strconv.Itoa(i) + ".png"
+		data, err := EmbeddedTextures.ReadFile(path)
+		if err != nil {
+			t.Fatalf("Java 26.3 panorama asset %q not embedded: %v", path, err)
+		}
+		img, err := LoadRawImage(bytes.NewReader(data))
+		if err != nil || img.Width != 1024 || img.Height != 1024 {
+			t.Fatalf("Java 26.3 panorama asset %q = (%v, %v), want 1024x1024", path, img, err)
+		}
+	}
+}
+
+func TestTitleScreenUsesOfficial26_3Panorama(t *testing.T) {
+	fb := NewFramebuffer(320, 240)
+	fb.DrawTitleScreen(-1, -1)
+	backgroundColors := map[uint32]struct{}{}
+	for _, point := range [][2]int{{0, 0}, {319, 0}, {0, 239}, {319, 239}, {30, 30}, {290, 30}, {30, 210}, {290, 210}} {
+		backgroundColors[fb.Color[point[1]*fb.Width+point[0]]] = struct{}{}
+	}
+	if len(backgroundColors) < 6 {
+		t.Fatalf("title panorama has only %d distinct sampled colors; expected the embedded scene", len(backgroundColors))
 	}
 }
 
