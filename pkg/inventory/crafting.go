@@ -798,6 +798,30 @@ func (cm *CraftingManager) registerDefaults() {
 		}
 	}
 	cm.registerDyeRecipes()
+	cm.registerConcretePowderRecipes()
+}
+
+func (cm *CraftingManager) registerConcretePowderRecipes() {
+	colors := []struct {
+		name string
+		dye  int32
+	}{
+		{"white", ItemWhiteDye}, {"orange", ItemOrangeDye}, {"magenta", ItemMagentaDye}, {"light_blue", ItemLightBlueDye},
+		{"yellow", ItemYellowDye}, {"lime", ItemLimeDye}, {"pink", ItemPinkDye}, {"gray", ItemGrayDye},
+		{"light_gray", ItemLightGrayDye}, {"cyan", ItemCyanDye}, {"purple", ItemPurpleDye}, {"blue", ItemBlueDye},
+		{"brown", ItemBrownDye}, {"green", ItemGreenDye}, {"red", ItemRedDye}, {"black", ItemBlackDye},
+	}
+	for _, color := range colors {
+		powder, ok := ExtendedBlockByName("minecraft:" + color.name + "_concrete_powder")
+		if !ok {
+			continue
+		}
+		cm.Recipes = append(cm.Recipes, Recipe{
+			Width: 3, Height: 3,
+			Pattern: []int32{12, 13, 12, 13, color.dye, 13, 12, 13, 12},
+			Output:  ItemStack{ItemID: powder.RuntimeID, Count: 8},
+		})
+	}
 }
 
 // registerSpearRecipes mirrors Java 26.3's diagonal spear recipe pattern and

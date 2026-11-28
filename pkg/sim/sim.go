@@ -161,6 +161,7 @@ type Engine struct {
 	DimensionStorage     [3]*world.SaveManager
 	Furnaces             map[world.BlockPos]*inventory.FurnaceBlockEntity
 	buttonReleaseAt      map[world.BlockPos]int64
+	concretePowderTicks  map[world.BlockPos]struct{}
 	pressurePlatePowered map[world.BlockPos]struct{}
 	IsPaused             bool
 	Difficulty           int // 0: Peaceful, 1: Easy, 2: Normal, 3: Hard
@@ -190,6 +191,7 @@ func NewEngine() *Engine {
 		tickDone:             make(chan struct{}),
 		Furnaces:             make(map[world.BlockPos]*inventory.FurnaceBlockEntity),
 		buttonReleaseAt:      make(map[world.BlockPos]int64),
+		concretePowderTicks:  make(map[world.BlockPos]struct{}),
 		pressurePlatePowered: make(map[world.BlockPos]struct{}),
 	}
 	eng.DimensionWorlds[0] = eng.World
@@ -958,6 +960,20 @@ func (e *Engine) setBlockLocked(x, y, z int32, state int32) {
 		e.World[cp] = chunk
 	}
 	chunk.SetBlock(x, y, z, state)
+	if e.concretePowderTicks == nil {
+		e.concretePowderTicks = make(map[world.BlockPos]struct{})
+	}
+	pos := world.BlockPos{X: x, Y: y, Z: z}
+	delete(e.concretePowderTicks, pos)
+	if inventory.IsConcretePowderBlock(state) {
+		e.concretePowderTicks[pos] = struct{}{}
+	}
+	for _, offset := range [6][3]int32{{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}} {
+		neighbor := world.BlockPos{X: x + offset[0], Y: y + offset[1], Z: z + offset[2]}
+		if inventory.IsConcretePowderBlock(e.getBlockLocked(neighbor.X, neighbor.Y, neighbor.Z)) {
+			e.concretePowderTicks[neighbor] = struct{}{}
+		}
+	}
 
 	// Broadcast block update event
 	select {
@@ -2429,6 +2445,7 @@ func (e *Engine) Tick() {
 
 	// Random block ticks are applied only to already loaded chunks near players.
 	e.tickRandomBlocksLocked()
+	e.tickConcretePowderLocked()
 
 	// Periodic natural mob spawning & despawning every 60 ticks (3 seconds)
 	if e.TickCount%60 == 0 && len(e.Players) > 0 {

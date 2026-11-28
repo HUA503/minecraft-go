@@ -49,6 +49,7 @@ const (
 	CandleStateBase        int32 = 40000
 	FirstAdditionalLeaves  int32 = 10400
 	FirstAdditionalSapling int32 = 10410
+	FirstConcretePowder    int32 = 10420
 )
 
 var cushionColors = [...]struct {
@@ -97,6 +98,7 @@ func buildExtendedBlockDefinitions() []ExtendedBlockDefinition {
 	definitions = append(definitions, strawBedBlockDefinition())
 	definitions = append(definitions, woodCubeDefinitions()...)
 	definitions = append(definitions, coloredBlockDefinitions()...)
+	definitions = append(definitions, coloredConcretePowderDefinitions()...)
 	definitions = append(definitions, stainedGlassBlockDefinitions()...)
 	definitions = append(definitions, glassPaneBlockDefinitions()...)
 	definitions = append(definitions, candleBlockDefinitions()...)
@@ -861,6 +863,42 @@ func coloredBlockDefinitions() []ExtendedBlockDefinition {
 		}
 	}
 	return definitions
+}
+
+func coloredConcretePowderDefinitions() []ExtendedBlockDefinition {
+	colors := []struct{ id, name string }{
+		{"white", "白"}, {"orange", "橙"}, {"magenta", "品红"}, {"light_blue", "淡蓝"},
+		{"yellow", "黄"}, {"lime", "黄绿"}, {"pink", "粉红"}, {"gray", "灰"},
+		{"light_gray", "淡灰"}, {"cyan", "青"}, {"purple", "紫"}, {"blue", "蓝"},
+		{"brown", "棕"}, {"green", "绿"}, {"red", "红"}, {"black", "黑"},
+	}
+	definitions := make([]ExtendedBlockDefinition, 0, len(colors))
+	for index, color := range colors {
+		name := "minecraft:" + color.id + "_concrete_powder"
+		texture := color.id + "_concrete_powder"
+		definitions = append(definitions, ExtendedBlockDefinition{
+			RuntimeID: FirstConcretePowder + int32(index), Name: name,
+			TextureTop: texture, TextureBottom: texture, TextureSide: texture,
+			Category: CreativeDecoration, Hardness: 0.5, DropRuntimeID: FirstConcretePowder + int32(index),
+		})
+		extendedBlockDisplayNames[name] = color.name + "色混凝土粉末"
+	}
+	return definitions
+}
+
+// ConcretePowderHardenedBlock returns the solid concrete block for a powder block.
+func ConcretePowderHardenedBlock(powderID int32) (int32, bool) {
+	powder, ok := ExtendedBlockByID(powderID)
+	if !ok || !strings.HasSuffix(powder.Name, "_concrete_powder") {
+		return 0, false
+	}
+	concreteName := strings.TrimSuffix(powder.Name, "_powder")
+	concrete, ok := ExtendedBlockByName(concreteName)
+	return concrete.RuntimeID, ok
+}
+
+func IsConcretePowderBlock(runtimeID int32) bool {
+	return runtimeID >= FirstConcretePowder && runtimeID < FirstConcretePowder+16
 }
 
 func stainedGlassBlockDefinitions() []ExtendedBlockDefinition {

@@ -9,7 +9,9 @@ Last checked: 2026-11-28 against the project's `vanillaCreativeTabOrder` and the
 - Sapling growth, tree-specific generation, leaf distance/persistence/decay, exact loot probabilities and drops for sticks/apples are not implemented. These entries therefore do not mean tree ecology matches vanilla.
 - Azalea bushes currently share the generic sapling crossed-plane renderer; their 26.3 multipart bush model and distinct top/side/plant geometry still need implementation.
 - Added the Java 26.3 shelf mushroom in commit `b352209`: two size stages, side support/facing, bone-meal growth, stage-specific drops and the rabbit-stew recipe. Bouncing behavior and wandering-trader offers remain missing.
-- The creative catalog contains 1,044 entries after these additions.
+- The creative catalog contains 1,060 entries after adding the 16 colored concrete powders.
+- Added all 16 dyed concrete-powder items with Java 26.3 textures and dye recipes. They fall through replaceable blocks in the current simulation and harden beside water into the matching concrete color.
+- Concrete-powder falling currently advances one block per game tick and does not create Java falling-block entities or preserve their full landing/drop behavior. This is functional coverage, not exact parity.
 
 ## Direct creative-tab mapping gaps
 
