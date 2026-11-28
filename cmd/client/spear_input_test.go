@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/HUA503/minecraft-go/pkg/inventory"
+	"github.com/HUA503/minecraft-go/pkg/render"
 	"github.com/HUA503/minecraft-go/pkg/sim"
 	"github.com/HUA503/minecraft-go/pkg/world"
 )
@@ -78,5 +79,49 @@ func TestSpyglassFOVOverridesSprintAndRestoresNormalFOV(t *testing.T) {
 	}
 	if got := targetPlayerFOV(false, false, false, true); got != 70 {
 		t.Fatalf("normal FOV = %.1f, want 70", got)
+	}
+}
+
+func TestTridentChargeReleaseLaunchesAndWearsRecoverableItem(t *testing.T) {
+	inv := inventory.NewPlayerInventory()
+	inv.Slots[inv.SelectedHotbar] = inventory.ItemStack{ItemID: inventory.ItemTrident, Count: 1}
+	engine := sim.NewEngine()
+	client := &Client{
+		player:            &sim.PlayerEntity{ID: 1, Inventory: inv},
+		engine:            engine,
+		camera:            render.NewCamera(0, 65, 0),
+		isLocal:           true,
+		tridentUseItem:    inventory.ItemTrident,
+		tridentUseStarted: time.Now().Add(-time.Second),
+	}
+	if !client.updateTridentUse(false) {
+		t.Fatal("trident release was not consumed")
+	}
+	if got := inv.Slots[inv.SelectedHotbar]; got.Damage != 1 || got.ItemID != inventory.ItemTrident {
+		t.Fatalf("thrown trident inventory stack = %+v, want one durability used", got)
+	}
+	projectiles := engine.GetTridentProjectiles()
+	if len(projectiles) != 1 || projectiles[0].Stack.Damage != 1 || projectiles[0].OwnerID != 1 {
+		t.Fatalf("launched trident projectile = %+v", projectiles)
+	}
+}
+
+func TestTridentReleaseBeforeChargeThresholdDoesNotThrow(t *testing.T) {
+	inv := inventory.NewPlayerInventory()
+	inv.Slots[inv.SelectedHotbar] = inventory.ItemStack{ItemID: inventory.ItemTrident, Count: 1}
+	engine := sim.NewEngine()
+	client := &Client{
+		player:            &sim.PlayerEntity{Inventory: inv},
+		engine:            engine,
+		camera:            render.NewCamera(0, 65, 0),
+		isLocal:           true,
+		tridentUseItem:    inventory.ItemTrident,
+		tridentUseStarted: time.Now().Add(-100 * time.Millisecond),
+	}
+	if !client.updateTridentUse(false) || len(engine.GetTridentProjectiles()) != 0 {
+		t.Fatal("early trident release launched a projectile")
+	}
+	if got := inv.Slots[inv.SelectedHotbar]; got.Damage != 0 {
+		t.Fatalf("early release damaged trident: %+v", got)
 	}
 }

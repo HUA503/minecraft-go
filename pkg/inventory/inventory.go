@@ -497,6 +497,13 @@ func CreativeItemStack(itemID int32, button int) ItemStack {
 
 // AddItem tries to stack or insert items into first available slot.
 func (inv *PlayerInventory) AddItem(itemID int32, count int) int {
+	return inv.AddItemStack(ItemStack{ItemID: itemID, Count: count})
+}
+
+// AddItemStack inserts a stack while preserving damage metadata. It returns
+// the number of items that did not fit, matching AddItem's partial-insert rule.
+func (inv *PlayerInventory) AddItemStack(stack ItemStack) int {
+	itemID, count := stack.ItemID, stack.Count
 	if inv == nil || itemID == ItemAir || count <= 0 {
 		return count
 	}
@@ -508,7 +515,7 @@ func (inv *PlayerInventory) AddItem(itemID int32, count int) int {
 	if maxStack > 1 {
 		for i := 0; i < len(inv.Slots); i++ {
 			slot := &inv.Slots[i]
-			if slot.ItemID == itemID && slot.Damage == 0 && slot.Count < maxStack {
+			if slot.ItemID == itemID && slot.Damage == stack.Damage && slot.Count < maxStack {
 				space := maxStack - slot.Count
 				if remaining <= space {
 					slot.Count += remaining
@@ -525,10 +532,10 @@ func (inv *PlayerInventory) AddItem(itemID int32, count int) int {
 		slot := &inv.Slots[i]
 		if slot.IsEmpty() {
 			if remaining <= maxStack {
-				*slot = ItemStack{ItemID: itemID, Count: remaining}
+				*slot = ItemStack{ItemID: itemID, Count: remaining, Damage: stack.Damage}
 				return 0
 			}
-			*slot = ItemStack{ItemID: itemID, Count: maxStack}
+			*slot = ItemStack{ItemID: itemID, Count: maxStack, Damage: stack.Damage}
 			remaining -= maxStack
 		}
 	}

@@ -60,6 +60,7 @@ var ToolRegistry = map[int32]ToolProperties{
 	ItemNetheriteShovel:  {Type: ToolShovel, Tier: TierNetherite, MaxDurability: 2031, MiningSpeed: 9.0, HarvestLevel: 3, AttackDamage: 6.5},
 	ItemNetheriteHoe:     {Type: ToolHoe, Tier: TierNetherite, MaxDurability: 2031, MiningSpeed: 9.0, HarvestLevel: 3, AttackDamage: 1.0},
 	ItemMace:             {Type: ToolSword, Tier: TierIron, MaxDurability: 500, MiningSpeed: 1.0, HarvestLevel: 0, AttackDamage: 5.0},
+	ItemTrident:          {Type: ToolSword, Tier: TierIron, MaxDurability: 250, MiningSpeed: 1.0, HarvestLevel: 0, AttackDamage: 9.0},
 	ItemWoodenSpear:      {Type: ToolSpear, Tier: TierWood, MaxDurability: 59, MiningSpeed: 1.0, HarvestLevel: 0, AttackDamage: 1.0},
 	ItemStoneSpear:       {Type: ToolSpear, Tier: TierStone, MaxDurability: 131, MiningSpeed: 1.0, HarvestLevel: 0, AttackDamage: 2.0},
 	ItemCopperSpear:      {Type: ToolSpear, Tier: TierCopper, MaxDurability: 190, MiningSpeed: 1.0, HarvestLevel: 0, AttackDamage: 2.0},

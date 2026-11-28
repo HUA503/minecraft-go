@@ -69,6 +69,30 @@ func TestSpyglassIsInCreativeToolsCatalog(t *testing.T) {
 	}
 }
 
+func TestTridentUsesOfficialCombatCatalogAndItemProperties(t *testing.T) {
+	item, ok := inventory.ModernCreativeItemByID(inventory.ItemTrident)
+	if !ok || item.Name != "minecraft:trident" || item.Category != inventory.CreativeCombat || item.Texture != "trident" || item.MaxStack != 1 {
+		t.Fatalf("trident definition = %+v, found=%t", item, ok)
+	}
+	tool, ok := inventory.GetToolProperties(inventory.ItemTrident)
+	if !ok || tool.MaxDurability != 250 || tool.AttackDamage != 9 {
+		t.Fatalf("trident melee properties = %+v, found=%t", tool, ok)
+	}
+	if inventory.GetMaxStackSize(inventory.ItemTrident) != 1 {
+		t.Fatal("trident should not stack")
+	}
+	found := false
+	for _, entry := range inventory.CreativeCatalog(inventory.CreativeCombat) {
+		if entry.ID == inventory.ItemTrident {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("trident is absent from the creative combat tab")
+	}
+}
+
 func TestCreativeHotbarNumberKeyCopiesCatalogItem(t *testing.T) {
 	inv := inventory.NewPlayerInventory()
 	items := []inventory.CreativeItem{{ID: inventory.ItemStone}}

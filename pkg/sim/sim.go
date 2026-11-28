@@ -108,6 +108,7 @@ type ItemDrop struct {
 	ID          int32
 	ItemID      int32
 	Count       int
+	Damage      int
 	Position    Vec3
 	Velocity    Vec3
 	Age         float64
@@ -141,6 +142,8 @@ type Engine struct {
 	nextMobID            int32
 	ItemDrops            map[int32]*ItemDrop
 	nextItemDropID       int32
+	TridentProjectiles   map[int32]*TridentProjectile
+	nextTridentID        int32
 	EnderDragon          *EnderDragon
 	EndCrystals          map[int32]*EndCrystal
 	nextCrystalID        int32
@@ -175,6 +178,8 @@ func NewEngine() *Engine {
 		nextMobID:            100,
 		ItemDrops:            make(map[int32]*ItemDrop),
 		nextItemDropID:       1,
+		TridentProjectiles:   make(map[int32]*TridentProjectile),
+		nextTridentID:        1,
 		EndCrystals:          make(map[int32]*EndCrystal),
 		nextCrystalID:        1,
 		WorldTime:            6000, // Canonical Minecraft noon daylight
@@ -255,6 +260,22 @@ func (e *Engine) SpawnItemDropWithDelay(itemID int32, count int, pos Vec3, vel V
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.spawnItemDropLocked(itemID, count, pos, vel, delay)
+}
+
+func (e *Engine) spawnItemDropStackLocked(stack inventory.ItemStack, pos, vel Vec3, delay float64) *ItemDrop {
+	drop := e.spawnItemDropLocked(stack.ItemID, stack.Count, pos, vel, delay)
+	drop.Damage = stack.Damage
+	return drop
+}
+
+// SpawnItemDropStack keeps item durability when a thrown tool becomes pickupable.
+func (e *Engine) SpawnItemDropStack(stack inventory.ItemStack, pos, vel Vec3, delay float64) *ItemDrop {
+	if stack.IsEmpty() {
+		return nil
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.spawnItemDropStackLocked(stack, pos, vel, delay)
 }
 
 func (e *Engine) GetItemDrops() []ItemDrop {
@@ -2182,7 +2203,7 @@ func (e *Engine) Tick() {
 					drop.Position.Z += dz * 0.2
 				}
 				if dist < 1.8 {
-					rem := p.Inventory.AddItem(drop.ItemID, drop.Count)
+					rem := p.Inventory.AddItemStack(inventory.ItemStack{ItemID: drop.ItemID, Count: drop.Count, Damage: drop.Damage})
 					pickedUp := drop.Count - rem
 					if pickedUp > 0 {
 						select {
@@ -2209,6 +2230,7 @@ func (e *Engine) Tick() {
 			delete(e.ItemDrops, id)
 		}
 	}
+	e.tickTridentProjectilesLocked(getBlock)
 
 	// Natural Health Regeneration & Starvation per canonical Minecraft Java rules
 	for _, p := range e.Players {

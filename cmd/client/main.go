@@ -189,6 +189,8 @@ type Client struct {
 	spearNextAttack        time.Time
 	spearChargeStarted     time.Time
 	spearChargeItem        int32
+	tridentUseStarted      time.Time
+	tridentUseItem         int32
 	lastHitSoundTime       time.Time
 	placeCooldown          float64
 	particles              []render.Particle
@@ -3325,6 +3327,9 @@ func (c *Client) UpdateRightClick(isRightDown bool, dt float64) {
 	if c.updateSpyglass(isRightDown) {
 		return
 	}
+	if c.updateTridentUse(isRightDown) {
+		return
+	}
 	if isRightDown && c.isLocal && c.placeCooldown <= 0 && c.hasTarget {
 		bedState := c.engine.GetBlockIfLoaded(c.targetedPos.X, c.targetedPos.Y, c.targetedPos.Z)
 		if _, _, _, isStrawBed := inventory.StrawBedStateProperties(bedState); isStrawBed {
@@ -3771,6 +3776,9 @@ func (c *Client) RenderFrame() {
 		drops := c.engine.GetItemDrops()
 		for _, drop := range drops {
 			c.drawItemDrop(drop)
+		}
+		for _, projectile := range c.engine.GetTridentProjectiles() {
+			c.drawTridentProjectile(projectile)
 		}
 	}
 
@@ -5112,6 +5120,11 @@ func (c *Client) TryQuickCraft(recipeIndex int) bool {
 func (c *Client) drawItemDrop(drop sim.ItemDrop) {
 	bobY := math.Sin(drop.Age*3.5) * 0.08
 	cx, cy, cz := drop.Position.X, drop.Position.Y+bobY+0.20, drop.Position.Z
+	if drop.ItemID == inventory.ItemTrident {
+		c.render3DBox(cx, cy, cz, 0.025, 0.025, 0.16, drop.Age*90, 58, 0xFF43B7A0, 0xFFBFC8C7, 0xFF91A8A3)
+		c.render3DBox(cx, cy+0.02, cz+0.14, 0.045, 0.045, 0.055, drop.Age*90, 58, 0xFFC5D1CF, 0xFF6C817D, 0xFF9DB3AE)
+		return
+	}
 	topCol := render.SampleBlockColor(drop.ItemID, 2, 0.5, 0.5, 1.0)
 	sideCol := render.SampleBlockColor(drop.ItemID, 0, 0.5, 0.5, 0.80)
 	darkCol := render.SampleBlockColor(drop.ItemID, 1, 0.5, 0.5, 0.60)
@@ -5119,6 +5132,22 @@ func (c *Client) drawItemDrop(drop sim.ItemDrop) {
 	// Authentic Minecraft item rotation: continuous 90 deg/s around Y axis
 	spinYaw := drop.Age * 90.0
 	c.render3DBox(cx, cy, cz, 0.12, 0.12, 0.12, spinYaw, 15.0, topCol, darkCol, sideCol)
+}
+
+func (c *Client) drawTridentProjectile(projectile sim.TridentProjectile) {
+	velocity := projectile.Velocity
+	speed := velocity.Length()
+	if speed <= 1e-9 {
+		return
+	}
+	yaw := math.Atan2(velocity.X, velocity.Z) * 180 / math.Pi
+	pitch := math.Asin(max(-1.0, min(1.0, velocity.Y/speed))) * 180 / math.Pi
+	position := projectile.Position
+	shaft := [6]uint32{0xFF459F91, 0xFF274E4A, 0xFF62D0B6, 0xFF459F91, 0xFF376A63, 0xFF4C9589}
+	tip := [6]uint32{0xFFD7E1DF, 0xFF687875, 0xFFADBDBA, 0xFFC5D3D0, 0xFF7F918E, 0xFFB4C3C0}
+	c.render3DBox(position.X, position.Y, position.Z, 0.025, 0.025, 0.34, yaw, pitch, shaft[0], shaft[1], shaft[2])
+	forward := velocity.Scale(0.15 / speed)
+	c.render3DBox(position.X+forward.X, position.Y+forward.Y, position.Z+forward.Z, 0.045, 0.045, 0.06, yaw, pitch, tip[0], tip[1], tip[2])
 }
 
 func darkenColor(c uint32, factor float32) uint32 {

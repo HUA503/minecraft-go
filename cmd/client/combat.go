@@ -113,6 +113,59 @@ func targetPlayerFOV(usingSpyglass, sprinting, moving, onGround bool) float64 {
 	return 70.0
 }
 
+// updateTridentUse charges and releases the vanilla trident throw action.
+func (c *Client) updateTridentUse(isRightDown bool) bool {
+	selected := c.player.Inventory.GetSelectedItem()
+	if selected.ItemID != inventory.ItemTrident {
+		c.tridentUseStarted = time.Time{}
+		c.tridentUseItem = 0
+		return false
+	}
+	if !c.isLocal {
+		return true
+	}
+	if isRightDown {
+		if c.tridentUseItem == 0 {
+			c.tridentUseItem = inventory.ItemTrident
+			c.tridentUseStarted = time.Now()
+		}
+		return true
+	}
+	if c.tridentUseItem != inventory.ItemTrident || c.tridentUseStarted.IsZero() {
+		return true
+	}
+	started := c.tridentUseStarted
+	c.tridentUseStarted = time.Time{}
+	c.tridentUseItem = 0
+	if time.Since(started) < 10*(time.Second/20) || c.camera == nil {
+		return true
+	}
+
+	stack := selected
+	stack.Count = 1
+	if !c.isCreative {
+		slot := &c.player.Inventory.Slots[c.player.Inventory.SelectedHotbar]
+		if inventory.ApplyToolWearAmount(slot, 1) {
+			return true
+		}
+		stack.Damage = slot.Damage
+	}
+	lx, ly, lz := c.camera.GetLookVector()
+	velocity := sim.Vec3{X: lx * 2.5, Y: ly * 2.5, Z: lz * 2.5}
+	velocity = velocity.Add(sim.Vec3{
+		X: float64(c.player.Velocity.X) * 0.025,
+		Y: float64(c.player.Velocity.Y) * 0.025,
+		Z: float64(c.player.Velocity.Z) * 0.025,
+	})
+	origin := sim.Vec3{X: c.camera.X + lx*0.35, Y: c.camera.Y + ly*0.35, Z: c.camera.Z + lz*0.35}
+	if c.engine.SpawnTridentProjectile(c.player.ID, stack, origin, velocity, !c.isCreative) != nil {
+		c.isSwinging = true
+		c.swingProgress = 0
+		sound.PlayHardwareFeedback("minecraft:item.trident.throw")
+	}
+	return true
+}
+
 // maceSmashBonus applies Java's Mace smash falloff to whole fallen blocks:
 // the first 3 add 4 damage each, the next 5 add 2, and later blocks add 1.
 // A smash only happens once the player has fallen more than 1.5 blocks.
