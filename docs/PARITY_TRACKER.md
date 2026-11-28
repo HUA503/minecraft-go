@@ -9,7 +9,7 @@ Last checked: 2026-11-28 against the project's `vanillaCreativeTabOrder` and the
 - Sapling growth, tree-specific generation, leaf distance/persistence/decay, exact loot probabilities and drops for sticks/apples are not implemented. These entries therefore do not mean tree ecology matches vanilla.
 - Azalea bushes currently share the generic sapling crossed-plane renderer; their 26.3 multipart bush model and distinct top/side/plant geometry still need implementation.
 - Added the Java 26.3 shelf mushroom in commit `b352209`: two size stages, side support/facing, bone-meal growth, stage-specific drops and the rabbit-stew recipe. Bouncing behavior and wandering-trader offers remain missing.
-- The creative catalog contains 1,065 entries after adding two mushroom plants. Red and brown mushrooms use the official textures, are placeable on flower soil and drop themselves; both plus a bowl craft mushroom stew. Their light-level/moisture placement rules and mushroom spread behavior are not implemented.
+- The creative catalog contains 1,070 entries after adding two mushrooms and five Nether plants. All seven use the official block/item textures, crossed-plane rendering, soil support checks and self-drops; mushrooms plus a bowl craft mushroom stew. Mushroom light/moisture limits and mushroom/fungus growth are not implemented.
 - Added dandelion and poppy to the Natural tab with the official block textures, item sprites, plant placement rules, instant break and self-drops. Each now crafts into its vanilla dye. Bone-meal world-generation behavior remains unimplemented.
 - Added the wither rose with its official item/block texture, plant placement and self-drop. Contact applies Wither and periodic damage to players and modeled non-undead mobs; zombies and skeletons are immune. Other mob families and effects beyond the currently mapped UI subset remain incomplete.
 - Added the Java 26.3 inventory status-effect panel to creative inventory and crafting screens. It uses the original nine-slice panel and icons for the eight currently simulated player effects, displays amplifier and remaining time, and collapses to icon-only at narrow widths. Effects outside this currently mapped set are intentionally not shown; ambient-effect visuals, hover details, all vanilla effect icons, and full screenshot comparison remain incomplete.
@@ -26,7 +26,7 @@ The table counts references in the official category lists that have no matching
 |---|---:|---:|
 | Building Blocks | 387 | 0 |
 | Colored Blocks | 162 | 12 |
-| Natural | 254 | 84 |
+| Natural | 254 | 79 |
 | Functional | 149 | 107 |
 | Redstone | 67 | 39 |
 | Tools & Utilities | 118 | 73 |
@@ -34,7 +34,7 @@ The table counts references in the official category lists that have no matching
 | Food & Drinks | 45 | 3 |
 | Ingredients | 151 | 0 |
 | Spawn Eggs | 89 | 79 |
-| **Total references** | **1,500** | **416** |
+| **Total references** | **1,500** | **411** |
 
 ## UI and runtime gaps
 

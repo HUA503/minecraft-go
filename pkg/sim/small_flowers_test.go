@@ -24,21 +24,42 @@ func TestSmallFlowerPlacementRequiresFlowerSoil(t *testing.T) {
 }
 
 func TestMushroomsPlaceAndDropAsNaturalPlants(t *testing.T) {
-	for _, mushroom := range []int32{inventory.ItemBrownMushroom, inventory.ItemRedMushroom} {
+	plants := []struct {
+		id        int32
+		supportID int32
+	}{
+		{inventory.ItemBrownMushroom, inventory.ItemGrass},
+		{inventory.ItemRedMushroom, inventory.ItemGrass},
+		{inventory.ItemCrimsonFungus, mustPlantBlockID(t, "minecraft:crimson_nylium")},
+		{inventory.ItemWarpedFungus, mustPlantBlockID(t, "minecraft:warped_nylium")},
+		{inventory.ItemCrimsonRoots, 87},
+		{inventory.ItemWarpedRoots, mustPlantBlockID(t, "minecraft:soul_soil")},
+		{inventory.ItemNetherSprouts, mustPlantBlockID(t, "minecraft:warped_nylium")},
+	}
+	for _, plant := range plants {
 		engine := NewEngine()
-		engine.SetBlock(0, 63, 0, inventory.ItemGrass)
+		engine.SetBlock(0, 63, 0, plant.supportID)
 		pos := world.BlockPos{X: 0, Y: 64, Z: 0}
-		if !engine.PlaceBlock(0, pos, mushroom) {
-			t.Fatalf("mushroom %d placement on grass failed", mushroom)
+		if !engine.PlaceBlock(0, pos, plant.id) {
+			t.Fatalf("plant %d placement on block %d failed", plant.id, plant.supportID)
 		}
 		player := engine.AddPlayer("mushroom-test", [16]byte{}, Vec3{X: 8.5, Y: 64, Z: 8.5})
 		if player == nil {
 			t.Fatal("failed to add player")
 		}
-		if got := engine.BreakBlock(player.ID, pos); got != mushroom {
-			t.Fatalf("mushroom %d break drop = %d", mushroom, got)
+		if got := engine.BreakBlock(player.ID, pos); got != plant.id {
+			t.Fatalf("plant %d break drop = %d", plant.id, got)
 		}
 	}
+}
+
+func mustPlantBlockID(t *testing.T, name string) int32 {
+	t.Helper()
+	block, ok := inventory.ExtendedBlockByName(name)
+	if !ok {
+		t.Fatalf("missing support block %s", name)
+	}
+	return block.RuntimeID
 }
 
 func TestBreakingFlowerSupportDropsFlower(t *testing.T) {

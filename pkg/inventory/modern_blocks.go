@@ -41,6 +41,11 @@ const (
 	LastSmallFlower        int32 = FirstSmallFlower + 9
 	ItemBrownMushroom      int32 = 16330
 	ItemRedMushroom        int32 = 16331
+	ItemCrimsonFungus      int32 = 16332
+	ItemWarpedFungus       int32 = 16333
+	ItemCrimsonRoots       int32 = 16334
+	ItemWarpedRoots        int32 = 16335
+	ItemNetherSprouts      int32 = 16336
 	ItemDandelion          int32 = 16321
 	ItemPoppy              int32 = 16322
 	ItemWitherRose         int32 = 16323
@@ -158,6 +163,11 @@ func mushroomPlantDefinitions() []ExtendedBlockDefinition {
 	}{
 		{ItemBrownMushroom, "brown_mushroom", "棕色蘑菇"},
 		{ItemRedMushroom, "red_mushroom", "红色蘑菇"},
+		{ItemCrimsonFungus, "crimson_fungus", "绯红菌"},
+		{ItemWarpedFungus, "warped_fungus", "诡异菌"},
+		{ItemCrimsonRoots, "crimson_roots", "绯红菌索"},
+		{ItemWarpedRoots, "warped_roots", "诡异菌索"},
+		{ItemNetherSprouts, "nether_sprouts", "下界蕨"},
 	}
 	definitions := make([]ExtendedBlockDefinition, 0, len(plants))
 	for _, plant := range plants {
@@ -1236,11 +1246,11 @@ func IsFlowerPlantBlock(blockID int32) bool {
 	return IsSmallFlower(blockID) || IsTallFlowerBlock(blockID)
 }
 
-// IsSmallFlower reports whether runtimeID is one of the single-block vanilla flowers.
+// IsSmallFlower reports whether runtimeID uses the single-block crossed-plane plant model.
 func IsSmallFlower(runtimeID int32) bool {
 	return runtimeID >= FirstSmallFlower && runtimeID <= LastSmallFlower ||
 		runtimeID == ItemDandelion || runtimeID == ItemPoppy || runtimeID == ItemWitherRose ||
-		runtimeID == ItemBrownMushroom || runtimeID == ItemRedMushroom
+		runtimeID >= ItemBrownMushroom && runtimeID <= ItemNetherSprouts
 }
 
 func IsTallFlowerItem(itemID int32) bool {
@@ -1305,7 +1315,7 @@ func TallFlowerItemTextureName(itemID int32) string {
 
 // IsFlowerSoilBlock reports whether a block can support a small flower.
 func IsFlowerSoilBlock(blockID int32) bool {
-	if blockID == ItemGrass || blockID == ItemDirt {
+	if blockID == ItemGrass || blockID == ItemDirt || blockID == 87 { // netherrack
 		return true
 	}
 	definition, ok := ExtendedBlockByID(blockID)
@@ -1313,7 +1323,7 @@ func IsFlowerSoilBlock(blockID int32) bool {
 		return false
 	}
 	switch definition.Name {
-	case "minecraft:podzol", "minecraft:mycelium", "minecraft:coarse_dirt", "minecraft:rooted_dirt", "minecraft:moss_block", "minecraft:mud", "minecraft:muddy_mangrove_roots", "minecraft:farmland":
+	case "minecraft:podzol", "minecraft:mycelium", "minecraft:coarse_dirt", "minecraft:rooted_dirt", "minecraft:moss_block", "minecraft:mud", "minecraft:muddy_mangrove_roots", "minecraft:farmland", "minecraft:crimson_nylium", "minecraft:warped_nylium", "minecraft:soul_soil", "minecraft:soul_sand", "minecraft:netherrack":
 		return true
 	default:
 		return false

@@ -12,6 +12,8 @@ func TestSmallFlowerRegistryAndCreativeEntries(t *testing.T) {
 		{"pink_tulip", FirstSmallFlower + 6}, {"oxeye_daisy", FirstSmallFlower + 7}, {"cornflower", FirstSmallFlower + 8},
 		{"lily_of_the_valley", FirstSmallFlower + 9}, {"dandelion", ItemDandelion}, {"poppy", ItemPoppy},
 		{"wither_rose", ItemWitherRose}, {"brown_mushroom", ItemBrownMushroom}, {"red_mushroom", ItemRedMushroom},
+		{"crimson_fungus", ItemCrimsonFungus}, {"warped_fungus", ItemWarpedFungus},
+		{"crimson_roots", ItemCrimsonRoots}, {"warped_roots", ItemWarpedRoots}, {"nether_sprouts", ItemNetherSprouts},
 	}
 	for _, flower := range flowers {
 		definition, ok := ExtendedBlockByName("minecraft:" + flower.name)
