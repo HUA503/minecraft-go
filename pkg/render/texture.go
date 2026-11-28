@@ -993,6 +993,16 @@ func initOfficialBlockTextures() {
 			loadBlock(state, "straw_bed_particle", "straw_bed_particle", "straw_bed_particle")
 		}
 	}
+	for facing := 0; facing < 4; facing++ {
+		for age := 0; age <= 1; age++ {
+			stateID := inventory.ShelfMushroomBlockState(facing, age)
+			texture := "shelf_mushroom_stage0"
+			if age == 1 {
+				texture = "shelf_mushroom_stage1"
+			}
+			loadBlock(stateID, texture, texture, texture)
+		}
+	}
 	for _, candle := range inventory.ExtendedBlockDefinitions() {
 		if !inventory.IsCandleItem(candle.RuntimeID) {
 			continue

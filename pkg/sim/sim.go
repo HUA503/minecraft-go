@@ -1058,6 +1058,11 @@ func (e *Engine) BreakBlockWithTool(playerID int32, pos world.BlockPos, toolID i
 	}
 	e.removeTallFlowerOtherHalf(pos, origBlock)
 	e.removeStrawBedOtherHalf(pos, origBlock)
+	for _, drop := range e.removeUnsupportedShelfMushrooms(pos) {
+		e.mu.Lock()
+		e.spawnItemDropLocked(drop.itemID, drop.count, Vec3{X: float64(drop.pos.X) + 0.5, Y: float64(drop.pos.Y) + 0.5, Z: float64(drop.pos.Z) + 0.5}, Vec3{Y: 0.18}, 0.2)
+		e.mu.Unlock()
+	}
 	if unsupportedBed := e.removeUnsupportedStrawBedAbove(pos); unsupportedBed != 0 {
 		e.mu.Lock()
 		e.spawnItemDropLocked(unsupportedBed, 1, Vec3{X: float64(pos.X) + 0.5, Y: float64(pos.Y) + 1.1, Z: float64(pos.Z) + 0.5}, Vec3{Y: 0.18}, 0.2)
@@ -1202,6 +1207,13 @@ func (e *Engine) BreakBlock(playerID int32, pos world.BlockPos) int32 {
 	}
 	e.removeTallFlowerOtherHalf(pos, origBlock)
 	e.removeWoodDoorOtherHalf(pos, origBlock)
+	for _, drop := range e.removeUnsupportedShelfMushrooms(pos) {
+		e.mu.Lock()
+		if player, ok := e.Players[playerID]; ok && player.Inventory != nil {
+			player.Inventory.AddItem(drop.itemID, drop.count)
+		}
+		e.mu.Unlock()
+	}
 	if carpet := e.removeUnsupportedCarpetAbove(pos); carpet != 0 {
 		e.mu.Lock()
 		if player, ok := e.Players[playerID]; ok && player.Inventory != nil {
@@ -1331,6 +1343,41 @@ func (e *Engine) BreakBlock(playerID int32, pos world.BlockPos) int32 {
 	return dropItem
 }
 
+type unsupportedShelfMushroomDrop struct {
+	pos    world.BlockPos
+	itemID int32
+	count  int
+}
+
+func (e *Engine) removeUnsupportedShelfMushrooms(support world.BlockPos) []unsupportedShelfMushroomDrop {
+	// Each facing attaches to the block directly opposite its outward direction.
+	candidates := [...]struct {
+		dx, dz int32
+		facing int
+	}{
+		{0, -1, 0}, {1, 0, 1}, {0, 1, 2}, {-1, 0, 3},
+	}
+	drops := make([]unsupportedShelfMushroomDrop, 0, len(candidates))
+	for _, candidate := range candidates {
+		pos := world.BlockPos{X: support.X + candidate.dx, Y: support.Y, Z: support.Z + candidate.dz}
+		state := e.GetBlock(pos.X, pos.Y, pos.Z)
+		_, facing, age, ok := inventory.ShelfMushroomStateProperties(state)
+		if !ok || facing != candidate.facing || !e.SetBlockChecked(pos.X, pos.Y, pos.Z, 0) {
+			continue
+		}
+		minCount, maxCount := inventory.BlockDropCountRange(state)
+		count := minCount
+		if maxCount > minCount {
+			count = e.rollBlockDropCount(state)
+		}
+		if age == 1 {
+			count = 2
+		}
+		drops = append(drops, unsupportedShelfMushroomDrop{pos: pos, itemID: inventory.ItemShelfMushroom, count: count})
+	}
+	return drops
+}
+
 func (e *Engine) rollBlockDropCount(blockID int32) int {
 	minCount, maxCount := inventory.BlockDropCountRange(blockID)
 	if maxCount <= minCount {
@@ -1453,6 +1500,14 @@ func (e *Engine) PlaceBlock(playerID int32, pos world.BlockPos, blockID int32) b
 	}
 	if inventory.IsDryGrass(blockID) && (pos.Y <= world.MinWorldY || !inventory.IsDryVegetationSupport(below)) {
 		return false // Dry grass only grows on the vanilla dry-vegetation substrate tags.
+	}
+	if _, facing, _, isShelfMushroom := inventory.ShelfMushroomStateProperties(blockID); isShelfMushroom {
+		offsets := [4][2]int32{{0, 1}, {-1, 0}, {0, -1}, {1, 0}}
+		offset := offsets[facing]
+		sx, sz := pos.X+offset[0], pos.Z+offset[1]
+		if !world.ValidBlockCoordinates(sx, pos.Y, sz) || !IsSolidBlock(e.GetBlock(sx, pos.Y, sz)) {
+			return false // Shelf mushrooms attach to a sturdy horizontal face.
+		}
 	}
 	if (blockID == 10100 || inventory.IsCushionBlock(blockID) || inventory.IsCandleBlock(blockID) || inventory.IsThinCarpetBlock(blockID)) && (pos.Y <= world.MinWorldY || !IsSolidBlock(below) || (inventory.IsThinCarpetBlock(blockID) && inventory.IsThinCarpetBlock(below))) {
 		return false // Red shrubs, cushions, candles, and carpets need a solid block beneath them.
@@ -1790,6 +1845,39 @@ func (e *Engine) UseBoneMealOnDryGrass(playerID int32, pos world.BlockPos) (worl
 		}
 	}
 	return resultPos, newState, true
+}
+
+// UseBoneMealOnShelfMushroom advances a small shelf mushroom to its large stage.
+func (e *Engine) UseBoneMealOnShelfMushroom(playerID int32, pos world.BlockPos) bool {
+	if !world.ValidBlockCoordinates(pos.X, pos.Y, pos.Z) {
+		return false
+	}
+	e.mu.Lock()
+	player := e.Players[playerID]
+	if player == nil || player.Inventory == nil || e.CurrentDimension != 0 {
+		e.mu.Unlock()
+		return false
+	}
+	selected := player.Inventory.GetSelectedItem()
+	state := e.getBlockLocked(pos.X, pos.Y, pos.Z)
+	itemID, facing, age, ok := inventory.ShelfMushroomStateProperties(state)
+	if selected.ItemID != inventory.ItemBoneMeal || !ok || itemID != inventory.ItemShelfMushroom || age != 0 || (player.GameMode != 1 && selected.Count < 1) {
+		e.mu.Unlock()
+		return false
+	}
+	e.setBlockLocked(pos.X, pos.Y, pos.Z, inventory.ShelfMushroomBlockState(facing, 1))
+	if player.GameMode != 1 {
+		slot := player.Inventory.SelectedHotbar
+		if slot >= 0 && slot < len(player.Inventory.Slots) {
+			stack := &player.Inventory.Slots[slot]
+			stack.Count--
+			if stack.Count == 0 {
+				*stack = inventory.ItemStack{}
+			}
+		}
+	}
+	e.mu.Unlock()
+	return true
 }
 
 func (e *Engine) AddPlayer(username string, uuid [16]byte, spawnPos Vec3) *PlayerEntity {

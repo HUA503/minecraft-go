@@ -130,6 +130,12 @@ func buildExtendedBlockDefinitions() []ExtendedBlockDefinition {
 	definitions = append(definitions, mossCarpetBlockDefinitions()...)
 	definitions = append(definitions, springPlantBlockDefinitions()...)
 	definitions = append(definitions, dryGrassBlockDefinitions()...)
+	definitions = append(definitions, ExtendedBlockDefinition{
+		RuntimeID: ItemShelfMushroom, Name: "minecraft:shelf_mushroom",
+		TextureTop: "shelf_mushroom_stage0", TextureBottom: "shelf_mushroom_stage0", TextureSide: "shelf_mushroom_stage0", TextureItem: "shelf_mushroom_stage0",
+		Category: CreativeNatural, Hardness: 0.2, DropRuntimeID: ItemShelfMushroom,
+	})
+	extendedBlockDisplayNames["minecraft:shelf_mushroom"] = "架子蘑菇"
 	return definitions
 }
 
@@ -236,11 +242,58 @@ func IsThinCarpetBlock(blockID int32) bool {
 }
 
 const (
-	ItemBush          int32 = 16316
-	ItemCactusFlower  int32 = 16317
-	ItemDryShortGrass int32 = 16318
-	ItemDryTallGrass  int32 = 16319
+	ItemBush                 int32 = 16316
+	ItemCactusFlower         int32 = 16317
+	ItemDryShortGrass        int32 = 16318
+	ItemDryTallGrass         int32 = 16319
+	ItemShelfMushroom        int32 = 16320
+	ShelfMushroomStateBase   int32 = 54100
+	ShelfMushroomTextureBase int32 = 54110
 )
+
+// ShelfMushroomBlockState encodes facing (north, east, south, west) and age.
+func ShelfMushroomBlockState(facing, age int) int32 {
+	if facing < 0 || facing > 3 || age < 0 || age > 1 {
+		return ItemShelfMushroom
+	}
+	return ShelfMushroomStateBase + int32(facing*2+age)
+}
+
+// ShelfMushroomStateProperties decodes a shelf mushroom state.
+func ShelfMushroomStateProperties(state int32) (itemID int32, facing, age int, ok bool) {
+	offset := state - ShelfMushroomStateBase
+	if offset >= 0 && offset < 8 {
+		return ItemShelfMushroom, int(offset / 2), int(offset % 2), true
+	}
+	if state == ItemShelfMushroom {
+		return ItemShelfMushroom, 0, 0, true
+	}
+	return 0, 0, 0, false
+}
+
+func IsShelfMushroom(blockID int32) bool {
+	_, _, _, ok := ShelfMushroomStateProperties(blockID)
+	return ok
+}
+
+// ShelfMushroomPlacementState uses the clicked horizontal face as its facing.
+func ShelfMushroomPlacementState(itemID, faceX, faceY, faceZ int32) (int32, bool) {
+	if itemID != ItemShelfMushroom || faceY != 0 {
+		return itemID, false
+	}
+	switch {
+	case faceZ == -1:
+		return ShelfMushroomBlockState(0, 0), true
+	case faceX == 1:
+		return ShelfMushroomBlockState(1, 0), true
+	case faceZ == 1:
+		return ShelfMushroomBlockState(2, 0), true
+	case faceX == -1:
+		return ShelfMushroomBlockState(3, 0), true
+	default:
+		return itemID, false
+	}
+}
 
 func springPlantBlockDefinitions() []ExtendedBlockDefinition {
 	blocks := [...]struct {
@@ -270,7 +323,7 @@ func IsBush(blockID int32) bool { return blockID == ItemBush }
 func IsCactusFlower(blockID int32) bool { return blockID == ItemCactusFlower }
 
 func IsDecorativePlantBlock(blockID int32) bool {
-	return IsFlowerPlantBlock(blockID) || IsBush(blockID) || IsCactusFlower(blockID) || IsDryGrass(blockID)
+	return IsFlowerPlantBlock(blockID) || IsBush(blockID) || IsCactusFlower(blockID) || IsDryGrass(blockID) || IsShelfMushroom(blockID)
 }
 
 func dryGrassBlockDefinitions() []ExtendedBlockDefinition {
@@ -912,6 +965,9 @@ func CandleStateProperties(stateID int32) (itemID int32, count int, lit bool, ok
 
 // BlockTextureForState preserves candle lighting in render texture lookup.
 func BlockTextureForState(blockID int32) int32 {
+	if _, _, age, ok := ShelfMushroomStateProperties(blockID); ok {
+		return ShelfMushroomTextureBase + int32(age)
+	}
 	if _, _, _, ok := CandleStateProperties(blockID); ok {
 		return blockID
 	}
@@ -980,6 +1036,9 @@ func ExtendedBlockByName(name string) (ExtendedBlockDefinition, bool) {
 
 // BlockDropCountRange returns the base quantity range before enchantment bonuses.
 func BlockDropCountRange(blockID int32) (int, int) {
+	if _, _, age, ok := ShelfMushroomStateProperties(blockID); ok && age == 1 {
+		return 2, 2
+	}
 	if definition, ok := ExtendedBlockByID(blockID); ok {
 		if definition.DropsNothing {
 			return 0, 0
@@ -1131,6 +1190,8 @@ func ExtendedBlockItemTextureName(runtimeID int32) string {
 		return "poplar_sapling"
 	case 10100:
 		return "red_shrub"
+	case ItemShelfMushroom:
+		return "shelf_mushroom_stage0"
 	default:
 		if definition, ok := ExtendedBlockByID(runtimeID); ok {
 			if definition.TextureItem != "" {

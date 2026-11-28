@@ -3236,6 +3236,9 @@ func (c *Client) PlaceBlockInFront() bool {
 	if bedState, isStrawBed := inventory.StrawBedPlacementState(selected.ItemID, float64(c.camera.Yaw)); isStrawBed {
 		placedBlockID = bedState
 	}
+	if shelfState, isShelfMushroom := inventory.ShelfMushroomPlacementState(selected.ItemID, res.FaceX, res.FaceY, res.FaceZ); isShelfMushroom {
+		placedBlockID = shelfState
+	}
 	if stackCandle {
 		// The engine adds one matching candle to the clicked cluster.
 	} else if mergeSlab {
@@ -3385,7 +3388,11 @@ func (c *Client) UpdateRightClick(isRightDown bool, dt float64) {
 	}
 	if sel.ItemID == inventory.ItemBoneMeal {
 		if isRightDown && c.isLocal && c.placeCooldown <= 0 && c.hasTarget {
-			if grown, ok := c.engine.UseBoneMealOnRedShrub(c.player.ID, c.targetedPos); ok {
+			if c.engine.UseBoneMealOnShelfMushroom(c.player.ID, c.targetedPos) {
+				c.RebuildAffectedMeshes(c.targetedPos)
+				c.spawnBlockDebris(c.targetedPos, inventory.ItemShelfMushroom, 6)
+				sound.PlayHardwareFeedback("minecraft:item.bone_meal.use")
+			} else if grown, ok := c.engine.UseBoneMealOnRedShrub(c.player.ID, c.targetedPos); ok {
 				c.RebuildAffectedMeshes(grown)
 				c.spawnBlockDebris(grown, 10100, 6)
 				sound.PlayHardwareFeedback("minecraft:item.bone_meal.use")

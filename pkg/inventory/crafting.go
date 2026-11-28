@@ -29,6 +29,12 @@ func (cm *CraftingManager) registerDefaults() {
 		Pattern: []int32{ItemBone},
 		Output:  ItemStack{ItemID: ItemBoneMeal, Count: 3},
 	})
+	// Java 26.3 adds shelf mushrooms as a rabbit stew ingredient.
+	cm.Recipes = append(cm.Recipes, Recipe{
+		Width: 3, Height: 3, Shapeless: true,
+		Pattern: []int32{ItemBakedPotato, ItemCookedRabbit, ItemModernBowl, ItemCarrot, ItemShelfMushroom},
+		Output:  ItemStack{ItemID: ItemRabbitStew, Count: 1},
+	})
 
 	// Mace: the Heavy Core and Breeze Rod occupy opposite corners.
 	cm.Recipes = append(cm.Recipes, Recipe{

@@ -778,6 +778,59 @@ func TestRedShrubPlacementCollisionAndDrop(t *testing.T) {
 	}
 }
 
+func TestShelfMushroomPlacementGrowthAndDrops(t *testing.T) {
+	eng := NewEngine()
+	player := eng.AddPlayer("Steve", [16]byte{21}, Vec3{X: 20.5, Y: 64, Z: 20.5})
+	pos := world.BlockPos{X: 21, Y: 64, Z: 20}
+	state := inventory.ShelfMushroomBlockState(1, 0) // East facing, supported by the west block.
+	if eng.PlaceBlock(player.ID, pos, state) {
+		t.Fatal("shelf mushroom placed without a sturdy side support")
+	}
+	eng.SetBlock(pos.X-1, pos.Y, pos.Z, inventory.ItemStone)
+	if !eng.PlaceBlock(player.ID, pos, state) {
+		t.Fatal("shelf mushroom failed to attach to a sturdy side")
+	}
+	if got := eng.GetBlock(pos.X, pos.Y, pos.Z); got != state {
+		t.Fatalf("placed state=%d want %d", got, state)
+	}
+	player.Inventory.Slots[0] = inventory.ItemStack{ItemID: inventory.ItemBoneMeal, Count: 1}
+	if !eng.UseBoneMealOnShelfMushroom(player.ID, pos) {
+		t.Fatal("bone meal failed to grow small shelf mushroom")
+	}
+	large := inventory.ShelfMushroomBlockState(1, 1)
+	if got := eng.GetBlock(pos.X, pos.Y, pos.Z); got != large {
+		t.Fatalf("grown state=%d want %d", got, large)
+	}
+	if dropped := eng.BreakBlock(player.ID, pos); dropped != inventory.ItemShelfMushroom {
+		t.Fatalf("drop ID=%d want %d", dropped, inventory.ItemShelfMushroom)
+	}
+	count := 0
+	for _, stack := range player.Inventory.Slots {
+		if stack.ItemID == inventory.ItemShelfMushroom {
+			count += stack.Count
+		}
+	}
+	if count != 2 {
+		t.Fatalf("large shelf mushroom drop count=%d want 2", count)
+	}
+	if !eng.PlaceBlock(player.ID, pos, inventory.ShelfMushroomBlockState(1, 0)) {
+		t.Fatal("shelf mushroom could not be placed for support-removal check")
+	}
+	eng.BreakBlock(player.ID, world.BlockPos{X: pos.X - 1, Y: pos.Y, Z: pos.Z})
+	if got := eng.GetBlock(pos.X, pos.Y, pos.Z); got != 0 {
+		t.Fatalf("shelf mushroom remained after its support broke: state=%d", got)
+	}
+	count = 0
+	for _, stack := range player.Inventory.Slots {
+		if stack.ItemID == inventory.ItemShelfMushroom {
+			count += stack.Count
+		}
+	}
+	if count != 2 {
+		t.Fatalf("support break shelf mushroom drop count=%d want total 2", count)
+	}
+}
+
 func TestColoredCushionPlacementCollisionAndDrop(t *testing.T) {
 	eng := NewEngine()
 	player := eng.AddPlayer("Steve", [16]byte{77}, Vec3{X: 10.5, Y: 64, Z: 10.5})

@@ -193,6 +193,9 @@ func BlockCollisionBoxes(blockID int32) ([]BlockBox, bool) {
 // BlockCollisionBoxesAt resolves neighbor-dependent block outlines (currently
 // stair corners) at a world position. A nil callback gives the straight shape.
 func BlockCollisionBoxesAt(blockID, x, y, z int32, getBlock func(int32, int32, int32) int32) ([]BlockBox, bool) {
+	if _, facing, age, ok := ShelfMushroomStateProperties(blockID); ok {
+		return shelfMushroomBoxes(facing, age), true
+	}
 	if boxes, ok := IronChainModelBoxes(blockID); ok {
 		return boxes, true
 	}
@@ -260,6 +263,36 @@ func BlockCollisionBoxesAt(blockID, x, y, z int32, getBlock func(int32, int32, i
 		return bottomSlabBox, true
 	}
 	return nil, false
+}
+
+func shelfMushroomBoxes(facing, age int) []BlockBox {
+	models := [2][]BlockBox{
+		{
+			{MinX: 3.0 / 16, MinY: 9.0 / 16, MinZ: 9.0 / 16, MaxX: 13.0 / 16, MaxY: 11.0 / 16, MaxZ: 1},
+			{MinX: 5.0 / 16, MinY: 8.0 / 16, MinZ: 12.0 / 16, MaxX: 11.0 / 16, MaxY: 9.0 / 16, MaxZ: 1},
+		},
+		{
+			{MinX: 1.0 / 16, MinY: 8.0 / 16, MinZ: 6.0 / 16, MaxX: 15.0 / 16, MaxY: 11.0 / 16, MaxZ: 1},
+			{MinX: 4.0 / 16, MinY: 6.0 / 16, MinZ: 10.0 / 16, MaxX: 12.0 / 16, MaxY: 8.0 / 16, MaxZ: 1},
+		},
+	}
+	if age < 0 || age > 1 {
+		age = 0
+	}
+	boxes := append([]BlockBox(nil), models[age]...)
+	for i := range boxes {
+		box := &boxes[i]
+		x0, x1, z0, z1 := box.MinX, box.MaxX, box.MinZ, box.MaxZ
+		switch facing {
+		case 1: // East
+			box.MinX, box.MaxX, box.MinZ, box.MaxZ = z0, z1, 1-x1, 1-x0
+		case 2: // South
+			box.MinX, box.MaxX, box.MinZ, box.MaxZ = 1-x1, 1-x0, 1-z1, 1-z0
+		case 3: // West
+			box.MinX, box.MaxX, box.MinZ, box.MaxZ = 1-z1, 1-z0, x0, x1
+		}
+	}
+	return boxes
 }
 
 var candleCollisionBox = []BlockBox{{MinX: 7.0 / 16.0, MinY: 0, MinZ: 7.0 / 16.0, MaxX: 9.0 / 16.0, MaxY: 6.0 / 16.0, MaxZ: 9.0 / 16.0}}
@@ -453,6 +486,9 @@ func SlabMergeState(existingBlockID, itemID, faceY int32, localHitY float64) (in
 // BlockItemForState returns the placeable item represented by a runtime block
 // state, leaving ordinary block IDs unchanged.
 func BlockItemForState(blockID int32) int32 {
+	if itemID, _, _, ok := ShelfMushroomStateProperties(blockID); ok {
+		return itemID
+	}
 	if itemID, _, _, ok := StrawBedStateProperties(blockID); ok {
 		return itemID
 	}
