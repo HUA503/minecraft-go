@@ -39,6 +39,8 @@ const (
 	LastCushionBlock       int32 = FirstCushionBlock + 15
 	FirstSmallFlower       int32 = 16300
 	LastSmallFlower        int32 = FirstSmallFlower + 9
+	ItemBrownMushroom      int32 = 16330
+	ItemRedMushroom        int32 = 16331
 	ItemDandelion          int32 = 16321
 	ItemPoppy              int32 = 16322
 	ItemWitherRose         int32 = 16323
@@ -133,6 +135,7 @@ func buildExtendedBlockDefinitions() []ExtendedBlockDefinition {
 	definitions = append(definitions, masonryWallBlockDefinitions()...)
 	definitions = append(definitions, cushionBlockDefinitions()...)
 	definitions = append(definitions, smallFlowerBlockDefinitions()...)
+	definitions = append(definitions, mushroomPlantDefinitions()...)
 	definitions = append(definitions, tallFlowerBlockDefinitions()...)
 	definitions = append(definitions, mossCarpetBlockDefinitions()...)
 	definitions = append(definitions, springPlantBlockDefinitions()...)
@@ -144,6 +147,28 @@ func buildExtendedBlockDefinitions() []ExtendedBlockDefinition {
 		Category: CreativeNatural, Hardness: 0.2, DropRuntimeID: ItemShelfMushroom,
 	})
 	extendedBlockDisplayNames["minecraft:shelf_mushroom"] = "架子蘑菇"
+	return definitions
+}
+
+func mushroomPlantDefinitions() []ExtendedBlockDefinition {
+	plants := [...]struct {
+		id      int32
+		name    string
+		display string
+	}{
+		{ItemBrownMushroom, "brown_mushroom", "棕色蘑菇"},
+		{ItemRedMushroom, "red_mushroom", "红色蘑菇"},
+	}
+	definitions := make([]ExtendedBlockDefinition, 0, len(plants))
+	for _, plant := range plants {
+		name := "minecraft:" + plant.name
+		definitions = append(definitions, ExtendedBlockDefinition{
+			RuntimeID: plant.id, Name: name, TextureTop: plant.name, TextureBottom: plant.name,
+			TextureSide: plant.name, TextureItem: plant.name, Category: CreativeNatural,
+			Hardness: 0, DropRuntimeID: plant.id,
+		})
+		extendedBlockDisplayNames[name] = plant.display
+	}
 	return definitions
 }
 
@@ -1214,7 +1239,8 @@ func IsFlowerPlantBlock(blockID int32) bool {
 // IsSmallFlower reports whether runtimeID is one of the single-block vanilla flowers.
 func IsSmallFlower(runtimeID int32) bool {
 	return runtimeID >= FirstSmallFlower && runtimeID <= LastSmallFlower ||
-		runtimeID == ItemDandelion || runtimeID == ItemPoppy || runtimeID == ItemWitherRose
+		runtimeID == ItemDandelion || runtimeID == ItemPoppy || runtimeID == ItemWitherRose ||
+		runtimeID == ItemBrownMushroom || runtimeID == ItemRedMushroom
 }
 
 func IsTallFlowerItem(itemID int32) bool {

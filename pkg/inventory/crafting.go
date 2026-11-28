@@ -35,6 +35,11 @@ func (cm *CraftingManager) registerDefaults() {
 		Pattern: []int32{ItemBakedPotato, ItemCookedRabbit, ItemModernBowl, ItemCarrot, ItemShelfMushroom},
 		Output:  ItemStack{ItemID: ItemRabbitStew, Count: 1},
 	})
+	cm.Recipes = append(cm.Recipes, Recipe{
+		Width: 2, Height: 2, Shapeless: true,
+		Pattern: []int32{ItemBrownMushroom, ItemRedMushroom, 281},
+		Output:  ItemStack{ItemID: ItemMushroomStew, Count: 1},
+	})
 
 	// Mace: the Heavy Core and Breeze Rod occupy opposite corners.
 	cm.Recipes = append(cm.Recipes, Recipe{

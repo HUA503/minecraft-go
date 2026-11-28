@@ -11,7 +11,7 @@ func TestSmallFlowerRegistryAndCreativeEntries(t *testing.T) {
 		{"red_tulip", FirstSmallFlower + 3}, {"orange_tulip", FirstSmallFlower + 4}, {"white_tulip", FirstSmallFlower + 5},
 		{"pink_tulip", FirstSmallFlower + 6}, {"oxeye_daisy", FirstSmallFlower + 7}, {"cornflower", FirstSmallFlower + 8},
 		{"lily_of_the_valley", FirstSmallFlower + 9}, {"dandelion", ItemDandelion}, {"poppy", ItemPoppy},
-		{"wither_rose", ItemWitherRose},
+		{"wither_rose", ItemWitherRose}, {"brown_mushroom", ItemBrownMushroom}, {"red_mushroom", ItemRedMushroom},
 	}
 	for _, flower := range flowers {
 		definition, ok := ExtendedBlockByName("minecraft:" + flower.name)
@@ -37,6 +37,13 @@ func TestSmallFlowerRegistryAndCreativeEntries(t *testing.T) {
 		if got := CreativeItemDisplayName(flower.id); got == "" || got == "物品 #0" {
 			t.Errorf("flower %s has no display name", flower.name)
 		}
+	}
+}
+
+func TestMushroomStewRecipe(t *testing.T) {
+	got, ok := NewCraftingManager().MatchCrafting([]int32{ItemBrownMushroom, ItemRedMushroom, 281, ItemAir}, 2)
+	if !ok || got != (ItemStack{ItemID: ItemMushroomStew, Count: 1}) {
+		t.Fatalf("mushroom stew recipe = %+v, matched=%v", got, ok)
 	}
 }
 
